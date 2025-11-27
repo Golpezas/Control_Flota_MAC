@@ -20,19 +20,6 @@ import CostosTable from '../components/CostosTable';
 const API_URL = 'http://localhost:8000'; 
 
 // =================================================================
-// CORRECCIONES DE TIPADO (Asume que el backend solo acepta estas 2)
-// =================================================================
-// 🔑 FIX 3a: Tipo de unión explícito para el origen del costo
-//type CostoOrigen = 'Finanzas' | 'Mantenimiento';
-
-// 🔑 FIX 3b & 5: Extensión de la interfaz CostoItem para incluir el _id 
-//interface CostoItemExtended extends Omit<CostoItem, 'origen'> {
-//    _id: string; // FIX: Propiedad _id necesaria para el mapeo y eliminación.
-//    origen: CostoOrigen; // FIX: Aseguramos el tipo de origen para la API de eliminación.
-//}
-// Usaremos CostoItemExtended en CostosTableProps y en la lógica principal.
-
-// =================================================================
 // UTILITY FUNCTION
 // =================================================================
 // Función de formato de moneda (Definida afuera para ser compartida)

@@ -6,18 +6,6 @@ import { deleteCostoItem } from '../api/vehiculos';
 const formatCurrency = (amount: number): string =>
     `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
-// Tipo completo y limpio (sin any!)
-/*export interface CostoItemExtended {
-    id?: string;
-    _id?: string;
-    tipo: string;
-    fecha: string;
-    descripcion: string;
-    importe: number;
-    origen: 'Finanzas' | 'Mantenimiento';
-    metadata_adicional?: Record<string, unknown> | null; // Reemplaza "any" por esto
-}*/
-
 interface CostosTableProps {
     costos: CostoItemExtended[];
     onRefresh: () => void;
