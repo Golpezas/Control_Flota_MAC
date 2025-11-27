@@ -12,13 +12,20 @@ app = FastAPI(
     description="API para gestión de vehículos, costos y alertas"
 )
 
-# CORS PERFECTO PARA PRODUCCIÓN
+# Conectar a MongoDB al iniciar — VERSIÓN QUE FUNCIONA EN RENDER
+@app.on_event("startup")
+async def startup_event():
+    try:
+        connect_to_mongodb()  # tu función síncrona
+        print("API iniciada y conectada a MongoDB Atlas")
+    except Exception as e:
+        print(f"ERROR CRÍTICO EN CONEXIÓN A MONGODB: {e}")
+        raise  # ← IMPORTANTE: si falla, Render marca el deploy como fallido (así sabemos rápido)
+
+# TEMPORAL: CORS ABIERTO 48 HS (para que el cliente pruebe YA)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://control-flota-mac.vercel.app",   # ← dominio real
-        "http://localhost:5173"                   # ← desarrollo local
-    ],
+    allow_origins=["*"],  # ← acepta Vercel, localhost, celular, todo
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,12 +34,6 @@ app.add_middleware(
 # Routers
 app.include_router(archivos_router)
 app.include_router(flota.router)
-
-# Conectar a MongoDB al iniciar
-@app.on_event("startup")
-async def startup_event():
-    connect_to_mongodb()
-    print("API iniciada y conectada a MongoDB Atlas")
 
 @app.get("/")
 def root():
