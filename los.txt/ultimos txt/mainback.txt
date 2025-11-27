@@ -1,0 +1,103 @@
+from fastapi import FastAPI, HTTPException, status, Query
+from dependencies import UpdateMonto, get_db_collection, connect_to_mongodb # Importar función de conexión
+from bson.objectid import ObjectId
+from routers import flota 
+from typing import List, Optional, Any
+
+# =========================================================================
+# 5. INSTANCIA DE FASTAPI Y INCLUSIÓN DE ROUTERS
+# =========================================================================
+
+app = FastAPI(
+    title="Control de Flota - API",
+    description="API de gestión y monitoreo de flota vehicular. Base para una herramienta web/móvil.",
+    version="1.0.0",
+)
+
+# 🟢 EVENTO DE INICIO: FORZAR CONEXIÓN A MONGODB
+@app.on_event("startup")
+def startup_db_client():
+    """Ejecuta la conexión a MongoDB cuando la app inicia."""
+    connect_to_mongodb()
+    
+# Incluir el router de flota
+app.include_router(flota.router, prefix="") 
+
+# =========================================================================
+# 6. ENDPOINTS GLOBALES (Estado y Modificación de Monto)
+# =========================================================================
+
+@app.get(
+    "/",
+    tags=["General"], # Etiqueta específica para este endpoint
+    summary="Estado de la API"
+)
+def read_root():
+    """Retorna un mensaje de estado indicando que la API está funcionando."""
+    return {"status": "ok", "message": "API Control de Flota funcionando correctamente"}
+
+@app.patch(
+    "/monto/{collection_name}/{doc_id}",
+    response_model=dict,
+    summary="Actualizar monto y motivo de un registro (Finanzas/Mantenimiento)",
+    tags=["Modificación de Datos"] # Etiqueta específica para este endpoint
+)
+async def update_monto(
+    collection_name: str,
+    doc_id: str,
+    data: UpdateMonto
+):
+    """
+    Permite actualizar el campo 'MONTO' y opcionalmente el campo 'MOTIVO' 
+    de un documento específico en las colecciones 'Finanzas' o 'Mantenimiento'.
+    """
+    collection_name = collection_name.lower()
+    
+    if collection_name == 'finanzas':
+        collection = get_db_collection("Finanzas")
+        monto_field = "monto" # Usamos el campo en minúscula del modelo
+        motivo_field = "motivo" # Usamos el campo en minúscula del modelo
+    elif collection_name == 'mantenimiento':
+        collection = get_db_collection("Mantenimiento")
+        monto_field = "costo_monto" # Usamos el campo en minúscula del modelo (mapea a costo_monto)
+        motivo_field = "motivo" # Usamos el campo en minúscula del modelo
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Colección no válida. Use 'finanzas' o 'mantenimiento'."
+        )
+
+    # Convertir el string _id a ObjectId
+    try:
+        obj_id = ObjectId(doc_id)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="ID de documento no válido. Asegúrese de usar un ObjectId válido (24 caracteres hexadecimales)."
+        )
+
+    # El campo en la DB es 'monto' para Finanzas y 'costo_monto' para Mantenimiento (o el alias en la DB)
+    # Aquí estamos usando los nombres de campo de Pydantic, pero necesitamos los nombres de la DB.
+    # Dado que los campos en la DB pueden ser inconsistentes (MONTO, costo_monto), 
+    # es más seguro usar los nombres de campo de la DB directamente si la colección no es Vehiculos.
+    
+    db_monto_field = "MONTO" if collection_name == 'finanzas' else "costo_monto"
+    db_motivo_field = "motivo" # Asumo que 'motivo' es consistente.
+
+    # Construir el objeto de actualización
+    update_fields = {db_monto_field: data.monto}
+    
+    # Si se proporciona un motivo, añadirlo a la actualización
+    if data.motivo is not None:
+        update_fields[db_motivo_field] = data.motivo
+            
+    # Ejecutar la actualización
+    update_result = collection.update_one(
+        {"_id": obj_id},
+        {"$set": update_fields}
+    )
+
+    if update_result.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"Documento no encontrado con ID: {doc_id} en la colección '{collection_name}'.")
+    
+    return {"message": f"Monto actualizado con éxito en la colección '{collection_name}' para el ID: {doc_id}", "modified_count": update_result.modified_count}

@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.mypy_cache/
+.pytest_cache/
+
+# Node / Frontend
+node_modules/
+flota-frontend/node_modules/
+flota-frontend/dist/
+flota-frontend/.vite/
+flota-frontend/.env
+
+# Vercel / Render / Deploy
+.vercel
+.render
+.output
+
+# IDEs y editores
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Base de datos local (si alguna vez usás)
+*.db
+*.sqlite3

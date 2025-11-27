@@ -1,0 +1,892 @@
+// src/pages/CostoCreatePage.tsx
+
+import React from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+// Corregido: Se elimina la extensión .tsx para asegurar la correcta resolución del módulo.
+import CostoForm from '../components/CostoForm'; 
+
+const CostoCreatePage: React.FC = () => {
+    const navigate = useNavigate();
+    
+    // Al crearse con éxito, redirigimos al Dashboard para que vea los resultados actualizados.
+    const handleSuccess = () => {
+        navigate('/');
+    };
+
+    return (
+        <div style={{ padding: '30px', maxWidth: '600px', margin: '0 auto' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
+                💸 Registrar Gasto Manual
+            </h1>
+            
+            <p style={{ marginBottom: '20px', color: '#495057' }}>
+                Utiliza este formulario para registrar reparaciones, multas, combustible, o cualquier otro gasto no capturado automáticamente por el ETL.
+            </p>
+
+            {/*
+                El CostoForm se utiliza en modo autónomo aquí. 
+                El usuario deberá ingresar la patente manualmente.
+            */}
+            <CostoForm 
+                onSuccess={handleSuccess}
+            />
+            
+            <Link 
+                to="/" 
+                style={{ 
+                    display: 'inline-block', 
+                    marginTop: '30px', 
+                    color: '#457B9D', 
+                    textDecoration: 'none', 
+                    fontWeight: 'bold' 
+                }}
+            >
+                 ← Volver al Dashboard
+            </Link>
+        </div>
+    );
+};
+
+export default CostoCreatePage;
+
+// src/pages/DashboardPage.tsx
+
+import React, { useEffect, useState, useMemo } from 'react';
+import type { Vehiculo, Alerta } from '../api/models/vehiculos';
+import { fetchVehiculos, fetchGlobalAlertas } from '../api/vehiculos';
+import { Link } from 'react-router-dom';
+
+// =================================================================
+// COMPONENTE: TARJETA DE RESUMEN
+// =================================================================
+
+interface SummaryCardProps {
+    title: string;
+    value: number;
+    color: string;
+    icon: string;
+}
+
+const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, color, icon }) => (
+    <div style={{ 
+        padding: '20px', 
+        borderRadius: '8px', 
+        backgroundColor: color, 
+        color: 'white', 
+        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        textAlign: 'center'
+    }}>
+        <div style={{ fontSize: '2.5em' }}>{icon}</div>
+        <h3 style={{ margin: '5px 0' }}>{title}</h3>
+        <p style={{ fontSize: '2.2em', fontWeight: 'bold', margin: 0 }}>{value}</p>
+    </div>
+);
+
+// =================================================================
+// COMPONENTE: ALERTA CRÍTICA
+// =================================================================
+
+interface AlertaItemProps {
+    alerta: Alerta;
+}
+
+const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
+    // Determinar color basado en la prioridad del backend
+    let color: string;
+    
+    // 🔑 CORRECCIÓN: Usamos 'CRÍTICA' y 'ALTA' que son los valores del backend
+    switch (alerta.prioridad) {
+        case 'CRÍTICA':
+            color = '#E63946'; // Rojo
+            break;
+        case 'ALTA':
+            color = '#FFB703'; // Amarillo/Naranja
+            break;
+        default:
+            color = '#457B9D'; 
+    }
+
+    // 🔑 CORRECCIÓN: Usamos el mensaje pre-calculado del backend
+    const diasTexto = alerta.mensaje; 
+
+    return (
+        <div style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            padding: '12px 15px',
+            borderBottom: '1px solid #f0f0f0',
+        }}>
+            <div>
+                <strong style={{ display: 'block' }}>
+                    {/* 🔑 CORRECCIÓN: tipo_documento en lugar de tipo */}
+                    {alerta.tipo_documento} en <Link to={`/vehiculos/${alerta.patente}`} style={{ color: color, textDecoration: 'none', fontWeight: 'bold' }}>
+                        {alerta.patente} ({alerta.movil_nro || 'N/A'}) {/* 🔑 CORRECCIÓN: movil_nro en lugar de nro_movil */}
+                    </Link>
+                </strong>
+                <span style={{ fontSize: '0.9em', color: '#666' }}>
+                    {/* 🔑 CORRECCIÓN: descripcion_modelo en lugar de modelo */}
+                    {alerta.descripcion_modelo || 'Sin Modelo'} | Vencimiento: {alerta.fecha_vencimiento}
+                </span>
+            </div>
+            <span style={{ 
+                color: 'white', 
+                backgroundColor: color, 
+                padding: '5px 10px', 
+                borderRadius: '4px',
+                fontWeight: 'bold',
+                fontSize: '0.9em'
+            }}>
+                {diasTexto}
+            </span>
+        </div>
+    );
+};
+
+// =================================================================
+// PÁGINA PRINCIPAL: DASHBOARD
+// =================================================================
+
+const DashboardPage: React.FC = () => {
+    const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
+    const [alertas, setAlertas] = useState<Alerta[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    const loadData = async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            // Carga paralela de datos de resumen y alertas
+            const [vehiculosData, alertasData] = await Promise.all([
+                fetchVehiculos(),
+                fetchGlobalAlertas(),
+            ]);
+
+            setVehiculos(vehiculosData);
+            setAlertas(alertasData);
+        } catch (e: unknown) {
+            if (e instanceof Error) {
+                setError(e.message);
+            } else {
+                setError('Ocurrió un error desconocido al cargar el Dashboard.');
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        loadData();
+    }, []);
+
+    // 1. CÁLCULO DEL RESUMEN
+    const summary = useMemo(() => {
+        const total_vehiculos = vehiculos.length;
+        const activos = vehiculos.filter(v => v.activo).length;
+        const inactivos = total_vehiculos - activos;
+        return { total_vehiculos, activos, inactivos };
+    }, [vehiculos]);
+
+    // 2. FILTRADO Y ORDENAMIENTO DE ALERTAS
+    const alertasCriticas = useMemo(() => {
+        // 🔑 CORRECCIÓN: Mapeo de prioridad ajustado a los valores del backend
+        const prioridadMap: Record<Alerta['prioridad'], number> = { 'CRÍTICA': 3, 'ALTA': 2, 'media': 1, 'baja': 0 };
+        
+        return alertas.sort((a, b) => {
+            // Ordenar por prioridad (descendente: CRÍTICA > ALTA)
+            if (prioridadMap[b.prioridad] !== prioridadMap[a.prioridad]) {
+                // El error 'Element implicitly has an any type...' se soluciona definiendo 
+                // el tipo de 'prioridadMap' como 'Record<Alerta['prioridad'], number>'
+                return prioridadMap[b.prioridad] - prioridadMap[a.prioridad];
+            }
+            // Luego, ordenar por días restantes (ascendente: más cerca/vencido primero)
+            return a.dias_restantes - b.dias_restantes;
+        });
+    }, [alertas]);
+
+
+    if (isLoading) {
+        return <div style={{ padding: '20px', textAlign: 'center' }}>Cargando Dashboard... 📊</div>;
+    }
+
+    if (error) {
+        return <div style={{ color: '#E63946', padding: '20px', textAlign: 'center' }}>❌ Error al cargar los datos: {error}</div>;
+    }
+
+    return (
+        <div style={{ padding: '30px' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '30px' }}>
+                Dashboard: Resumen de Flota y Alertas
+            </h1>
+
+            {/* Panel de Resumen */}
+            <h2 style={{ marginBottom: '20px' }}>Estado General de la Flota</h2>
+            <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(3, 1fr)', 
+                gap: '20px',
+                marginBottom: '40px'
+            }}>
+                <SummaryCard 
+                    title="Total de Vehículos" 
+                    value={summary.total_vehiculos} 
+                    color="#1D3557" // Azul Oscuro
+                    icon="🚚" 
+                />
+                <SummaryCard 
+                    title="Vehículos Activos" 
+                    value={summary.activos} 
+                    color="#38B000" // Verde
+                    icon="✅" 
+                />
+                <SummaryCard 
+                    title="Vehículos Inactivos" 
+                    value={summary.inactivos} 
+                    color="#E63946" // Rojo
+                    icon="🛑" 
+                />
+            </div>
+
+            {/* Panel de Alertas */}
+            <h2 style={{ marginBottom: '20px', color: alertasCriticas.length > 0 ? '#E63946' : '#457B9D' }}>
+                🚨 Alertas de Vencimiento Críticas ({alertasCriticas.length})
+            </h2>
+            <div style={{ 
+                border: '1px solid #ddd', 
+                borderRadius: '8px', 
+                overflow: 'hidden', 
+                backgroundColor: 'white' 
+            }}>
+                {alertasCriticas.length > 0 ? (
+                    alertasCriticas.map((alerta, index) => (
+                        <AlertaItem key={index} alerta={alerta} />
+                    ))
+                ) : (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#457B9D' }}>
+                        🎉 ¡No hay alertas de vencimiento críticas!
+                    </div>
+                )}
+            </div>
+            
+            <p style={{ marginTop: '30px', fontSize: '0.9em', color: '#666' }}>
+                *Las alertas se basan en la documentación con vencimiento cercano o expirado (próximos 30 días).
+            </p>
+        </div>
+    );
+};
+
+export default DashboardPage;
+
+// src/pages/VehiculoCreatePage.tsx
+
+import React from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import VehiculoForm from '../components/VehiculoForm.tsx'; 
+
+const VehiculoCreatePage: React.FC = () => {
+    const navigate = useNavigate();
+    
+    // Al crearse con éxito, redirigimos al listado principal.
+    const handleSuccess = () => {
+        navigate('/vehiculos');
+    };
+
+    return (
+        <div style={{ padding: '30px', maxWidth: '600px', margin: '0 auto' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px' }}>
+                ➕ Crear Nuevo Vehículo
+            </h1>
+            
+            {/* El formulario se renderiza sin initialData ni isEditMode, activando el modo CREACIÓN */}
+            <VehiculoForm 
+                onSuccess={handleSuccess}
+            />
+            
+            <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px' }}>
+                 ← Volver al Listado
+            </Link>
+        </div>
+    );
+};
+
+export default VehiculoCreatePage;
+
+// src/pages/VehiculoDetail.tsx
+
+import React, { useEffect, useState, useMemo, useCallback } from 'react'; // 🔑 Agregamos 'useCallback'
+import { useParams, Link } from 'react-router-dom';
+import type { Vehiculo, ReporteCostosResponse, Alerta } from '../api/models/vehiculos';
+// 🔑 Importamos deleteCostoItem, fetchVehiculoByPatente, fetchReporteVehiculo
+import { fetchVehiculoByPatente, fetchReporteVehiculo, deleteCostoItem } from '../api/vehiculos';
+import CostoForm from '../components/CostoForm'; // 🔑 IMPORTAR EL NUEVO COMPONENTE
+
+// =================================================================
+// UTILITY FUNCTION
+// =================================================================
+// 💰 Función de formato de moneda (Definida afuera para ser compartida)
+const formatCurrency = (amount: number): string => `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+
+
+// =================================================================
+// COMPONENTES AUXILIARES
+// =================================================================
+
+// 1. Componente DetailItem 
+interface DetailItemProps {
+    label: string;
+    value: string | number;
+}
+const DetailItem: React.FC<DetailItemProps> = ({ label, value }) => (
+    <div style={{ borderBottom: '1px solid #f0f0f0', paddingBottom: '5px' }}>
+        <strong style={{ display: 'block', color: '#555' }}>{label}:</strong>
+        <span style={{ fontSize: '1.1em' }}>{value}</span>
+    </div>
+);
+
+// 2. Componente ReporteCostosPanel (Incluye la lógica de Eliminación)
+const ReporteCostosPanel: React.FC<{
+    reporte: ReporteCostosResponse | null;
+    formatCurrency: (n: number) => string;
+    onDeleteSuccess: () => void; // Callback para refrescar datos
+}> = ({ reporte, formatCurrency, onDeleteSuccess }) => {
+
+    const [filterType, setFilterType] = useState<string>('all');
+    const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+    const [filterDateTo, setFilterDateTo] = useState<string>('');
+
+    const uniqueTypes = useMemo(() => {
+        const costs = reporte?.costos || [];
+        const types = costs.map(c => c.tipo);
+        return ['all', ...Array.from(new Set(types))].filter(t => t);
+    }, [reporte]);
+
+    const filteredCosts = useMemo(() => {
+        const costs = reporte?.costos || [];
+
+        return costs.filter(costo => {
+            if (filterType !== 'all' && costo.tipo !== filterType) return false;
+            if (filterDateFrom && costo.fecha < filterDateFrom) return false;
+            if (filterDateTo && costo.fecha > filterDateTo) return false;
+            return true;
+        });
+    }, [reporte, filterType, filterDateFrom, filterDateTo]);
+
+    const totalFiltered = filteredCosts.reduce((sum, costo) => sum + costo.importe, 0);
+
+    // 🔑 FUNCIÓN: Manejar la eliminación del costo/gasto
+const handleDeleteCosto = async (docId: string, origen: 'Finanzas' | 'Mantenimiento', descripcion: string) => {
+    if (!docId || !origen) {
+        alert('❌ Error: El costo no tiene ID o Origen definido para la eliminación.');
+        return;
+    }
+
+    if (!window.confirm(`¿Seguro que desea eliminar el gasto "${descripcion}" (Origen: ${origen})? Esta acción es irreversible.`)) {
+        return;
+    }
+
+    try {
+        // 🔑 CORRECCIÓN CLAVE: Usamos 'origen' directamente. 
+        // TypeScript y la API están de acuerdo en que es 'Finanzas' o 'Mantenimiento'.
+        // La función deleteCostoItem internamente construye: /costos/Finanzas/ID
+        await deleteCostoItem(origen, docId); 
+        
+        alert(`✅ Gasto ${docId} eliminado con éxito.`);
+        onDeleteSuccess(); // Llama al padre para recargar todos los datos
+    } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Error desconocido al eliminar el costo.';
+        alert(`❌ Error al eliminar el gasto: ${message}`);
+    }
+};
+
+
+    if (!reporte) {
+        return <div style={{ padding: '20px', border: '1px solid #ccc' }}>Cargando reporte de costos...</div>;
+    }
+
+
+    return (
+        <div>
+            <h2 style={{ fontSize: '1.4em', marginBottom: '15px' }}>Reporte de Costos</h2>
+
+            {/* Controles de Filtro */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '15px', padding: '15px 0', borderBottom: '1px solid #ddd', marginBottom: '15px' }}>
+                <label>
+                    Tipo de Costo:
+                    <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ width: '100%', padding: '8px' }}>
+                        <option value="all">Todos</option>
+                        {uniqueTypes.filter(t => t !== 'all').map(type => (
+                            <option key={type} value={type}>{type}</option>
+                        ))}
+                    </select>
+                </label>
+                <label>
+                    Fecha Desde:
+                    <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+                </label>
+                <label>
+                    Fecha Hasta:
+                    <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} style={{ width: '100%', padding: '8px' }} />
+                </label>
+            </div>
+
+            {/* Resumen del Total Filtrado */}
+            <div style={{ border: '2px solid #007bff', borderRadius: '8px', padding: '15px', marginBottom: '20px', backgroundColor: '#f0f8ff' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '1.2em', borderBottom: '1px dashed #007bff', paddingBottom: '5px' }}>
+                    <span>TOTAL VISIBLE (FILTRADO):</span>
+                    <span style={{ color: '#007bff' }}>{formatCurrency(totalFiltered)}</span>
+                </div>
+                {filterType === 'all' && !filterDateFrom && !filterDateTo ? (
+                    <p style={{ marginTop: '5px', fontSize: '0.9em' }}>Total General Acumulado: {formatCurrency(reporte.total_general)}</p>
+                ) : (
+                    <p style={{ marginTop: '5px', fontSize: '0.9em' }}>Aplicando filtros sobre el Total General Acumulado: {formatCurrency(reporte.total_general)}</p>
+                )}
+            </div>
+
+            <h3 style={{ fontSize: '1.2em', borderBottom: '1px solid #ddd', paddingBottom: '5px' }}>Detalle de Gastos ({filteredCosts.length} registros)</h3>
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9em' }}>
+                    <thead>
+                        <tr style={{ backgroundColor: '#f4f4f4' }}>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Fecha</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Tipo</th>
+                            <th style={{ padding: '8px', textAlign: 'left' }}>Descripción</th>
+                            <th style={{ padding: '8px', textAlign: 'right' }}>Importe</th>
+                            <th style={{ padding: '8px', textAlign: 'center' }}>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredCosts.length > 0 ? (
+                            filteredCosts.map((costo, index) => (
+                                <tr key={costo._id || index} style={{ borderBottom: '1px dotted #eee' }}>
+                                    <td style={{ padding: '8px' }}>{costo.fecha}</td>
+                                    <td style={{ padding: '8px' }}>{costo.tipo} <small style={{ color: '#6c757d' }}>({costo.origen.charAt(0)})</small></td> {/* Indicamos origen */}
+                                    <td style={{ padding: '8px' }}>{costo.descripcion}</td>
+                                    <td style={{ padding: '8px', textAlign: 'right' }}>{formatCurrency(costo.importe)}</td>
+                                    {/* 🔑 BOTÓN DE ELIMINAR CON CHEQUEO DE ID */}
+                                    <td style={{ padding: '8px', textAlign: 'center' }}>
+                                        {costo._id && costo.origen ? (
+                                            <button
+                                                onClick={() => handleDeleteCosto(costo._id, costo.origen, costo.descripcion)}
+                                                style={{ backgroundColor: '#dc3545', color: 'white', padding: '4px 8px', fontSize: '0.8em', border: 'none', borderRadius: '3px', cursor: 'pointer' }}
+                                            >
+                                                🗑️ Eliminar
+                                            </button>
+                                        ) : (
+                                            <span style={{ color: '#ccc', fontSize: '0.8em' }}>Sin ID</span>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={5} style={{ textAlign: 'center', padding: '15px', color: '#888' }}>
+                                    No hay costos que coincidan con los filtros aplicados.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+// 3. Componente AlertasPanel (Definición completa)
+const AlertasPanel: React.FC<{ vehiculo: Vehiculo; alertas: Alerta[] | null }> = ({ alertas }) => {
+    if (!alertas || alertas.length === 0) {
+        return (
+            <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '8px', backgroundColor: '#e9ecef' }}>
+                <h2 style={{ fontSize: '1.4em', marginBottom: '10px' }}>Alertas y Vencimientos</h2>
+                <p>✅ El vehículo no presenta alertas de documentación o mantenimiento críticas.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ border: '2px solid #dc3545', padding: '15px', borderRadius: '8px', backgroundColor: '#fff0f0' }}>
+            <h2 style={{ fontSize: '1.4em', marginBottom: '10px', color: '#dc3545' }}>🚨 Alertas Críticas ({alertas.length})</h2>
+            <ul style={{ listStyleType: 'none', padding: 0 }}>
+                {alertas.map((alerta, index) => (
+                    <li key={index} style={{ borderBottom: '1px dotted #f8d7da', padding: '5px 0' }}>
+                        <strong style={{ color: '#dc3545' }}>{alerta.tipo_documento}:</strong> Vence el **{alerta.fecha_vencimiento}** ({alerta.dias_restantes} días)
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+
+// =================================================================
+// COMPONENTE PRINCIPAL
+// =================================================================
+
+const VehiculoDetail: React.FC = () => {
+    const { patente } = useParams<{ patente: string }>(); 
+
+    const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
+    const [reporte, setReporte] = useState<ReporteCostosResponse | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    
+    // Función que carga los datos del vehículo y el reporte (la usaremos para refrescar)
+    // 🔑 APLICAMOS useCallback
+    const loadData = useCallback(async () => {
+        if (!patente) return;
+        setIsLoading(true);
+        setError(null);
+        try {
+            const [vehiculoData, reportData] = await Promise.all([
+                fetchVehiculoByPatente(patente),
+                fetchReporteVehiculo(patente)
+            ]);
+            setVehiculo(vehiculoData);
+            setReporte(reportData);
+        } catch (e: unknown) {
+            const message = e instanceof Error ? e.message : 'Error desconocido.';
+            setError(`Error al cargar los datos del vehículo: ${message}`);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [patente]); // 🔑 Dependencia: solo 'patente'.
+
+    // Callback simple para refrescar datos tras una operación (DELETE/POST de costos)
+    const handleRefreshData = () => {
+        loadData();
+    };
+
+    useEffect(() => {
+        loadData();
+    }, [loadData]); // 🔑 CAMBIAMOS LA DEPENDENCIA: Ahora usamos 'loadData' (la función estable).
+
+    // Control de estado/errores
+    if (isLoading) {
+        return <div style={{ padding: '30px' }}>Cargando datos de **{patente}**... ⏳</div>;
+    }
+    if (error) {
+        return <div style={{ color: 'red', padding: '30px' }}>❌ Error: {error}</div>;
+    }
+    if (!vehiculo || !reporte) {
+        return <div style={{ padding: '30px' }}>No se encontró el vehículo o su reporte para detalle.</div>;
+    }
+
+    // Desestructurar las alertas del reporte (siempre estará presente aquí)
+    const { alertas } = reporte;
+
+    return (
+        <div style={{ padding: '30px', maxWidth: '1000px', margin: '0 auto' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px' }}>
+                Detalle y Reporte de Costos: {vehiculo.patente_original || vehiculo._id}
+            </h1>
+
+            {/* Encabezado y botones de acción */}
+            <div style={{ marginBottom: '30px' }}>
+                {/* ⚠️ Nota: Revisé la ruta en App.tsx y la ajusté a /vehiculos/:patente/editar */}
+                <Link to={`/vehiculos/${vehiculo._id}/editar`}> 
+                    <button style={{ 
+                        padding: '10px 15px', 
+                        backgroundColor: '#457B9D', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                    }}>
+                        ✏️ Editar Vehículo
+                    </button>
+                </Link>
+            </div>
+
+            {/* ZONA DE CONTENIDO: Estructura de 2 Columnas */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '30px', marginTop: '30px' }}>
+
+                {/* COLUMNA 1: REPORTES Y COSTOS */}
+                <ReporteCostosPanel
+                    reporte={reporte}
+                    formatCurrency={formatCurrency}
+                    onDeleteSuccess={handleRefreshData}
+                />
+
+                {/* COLUMNA 2: DATOS, ALERTAS Y FORMULARIO */}
+                <div>
+                    {/* Panel de Datos Principales */}
+                    <h2 style={{ fontSize: '1.4em', marginBottom: '15px', color: '#1D3557' }}>Datos Principales</h2>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', border: '1px solid #ccc', padding: '15px', borderRadius: '8px', marginBottom: '30px', background: '#F1FAEE' }}>
+                        <DetailItem label="Patente (ID)" value={vehiculo._id} />
+                        <DetailItem label="Nro Móvil" value={vehiculo.nro_movil || 'N/A'} />
+                        <DetailItem label="Modelo" value={vehiculo.descripcion_modelo || 'N/A'} />
+                        <DetailItem label="Estado" value={vehiculo.activo ? '✅ Activo' : '🛑 Inactivo'} />
+                    </div>
+
+                    {/* Panel de Alertas */}
+                    <AlertasPanel vehiculo={vehiculo} alertas={alertas} />
+                    
+                    {/* INTEGRACIÓN DEL FORMULARIO DE COSTOS MANUALES */}
+                    <div style={{ marginTop: '30px' }}>
+                        <CostoForm 
+                            initialPatente={vehiculo._id}
+                            onSuccess={handleRefreshData} // ¡Éxito! Refresca la lista de costos.
+                        />
+                    </div>
+                </div>
+            </div>
+
+            <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', textDecoration: 'none', fontWeight: 'bold' }}>
+                ← Volver al Listado de Vehículos
+            </Link>
+        </div>
+    );
+};
+
+export default VehiculoDetail;
+
+// src/pages/VehiculoEditPage.tsx
+
+import React, { useEffect, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import type { Vehiculo } from '../api/models/vehiculos';
+import { fetchVehiculoByPatente } from '../api/vehiculos'; 
+// Asumimos que la ruta al componente es correcta (../components/VehiculoForm.tsx)
+import VehiculoForm from '../components/VehiculoForm.tsx'; 
+
+const VehiculoEditPage: React.FC = () => {
+    // 1. Obtener la patente de la URL
+    const { patente } = useParams<{ patente: string }>(); 
+    const navigate = useNavigate();
+    
+    const [initialData, setInitialData] = useState<Vehiculo | null>(null); 
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // 2. Cargar datos iniciales
+    useEffect(() => {
+        if (!patente) {
+            setError('Error: Patente no especificada.');
+            setIsLoading(false);
+            return;
+        }
+
+        const loadVehiculo = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                // Cargar los datos del vehículo a editar
+                const data = await fetchVehiculoByPatente(patente);
+                setInitialData(data);
+            } catch (e: unknown) {
+                const message = e instanceof Error ? e.message : 'Error al cargar datos del vehículo.';
+                setError(message);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadVehiculo();
+    }, [patente]);
+
+    // Función a llamar tras una actualización exitosa
+    const handleSuccess = () => {
+        // Redirigir al detalle del vehículo después de guardar
+        navigate(`/vehiculos/${patente}`);
+    };
+
+    if (isLoading) {
+        return <div style={{ padding: '20px' }}>Cargando datos del vehículo para edición... ⏳</div>;
+    }
+    if (error) {
+        return <div style={{ color: 'red', padding: '20px' }}>❌ Error: {error}</div>;
+    }
+    if (!initialData) {
+        return <div style={{ padding: '20px' }}>No se encontró el vehículo para edición.</div>;
+    }
+
+    return (
+        <div style={{ padding: '30px', maxWidth: '600px', margin: '0 auto' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px' }}>
+                ✏️ Editar Vehículo: {initialData.patente_original || initialData._id}
+            </h1>
+            
+            {/* 3. Pasar datos iniciales y activar modo edición */}
+            <VehiculoForm 
+                onSuccess={handleSuccess}
+                initialData={initialData}
+                isEditMode={true} 
+            />
+            
+            <Link to={`/vehiculos/${patente}`} style={{ display: 'block', marginTop: '30px' }}>
+                 ← Volver al Detalle
+            </Link>
+        </div>
+    );
+};
+
+export default VehiculoEditPage;
+
+// En C:\Users\Antonio\Documents\Projects\Control_Flota\flota-frontend\src\pages\Vehiculos.tsx
+
+import React, { useEffect, useState } from 'react';
+import type { Vehiculo } from '../api/models/vehiculos'; 
+import { fetchVehiculos, deleteVehiculo } from '../api/vehiculos'; 
+import VehiculoForm from '../components/VehiculoForm.tsx'; 
+import { Link } from 'react-router-dom';
+
+const VehiculosPage: React.FC = () => {
+  const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Estado para forzar recarga tras POST/DELETE
+  const [lastUpdated, setLastUpdated] = useState(Date.now()); 
+
+  // ... (loadVehiculos, useEffect y handleSuccess se mantienen igual)
+  const loadVehiculos = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await fetchVehiculos();
+      setVehiculos(data);
+    } catch (e: unknown) {
+      if (e instanceof Error) {
+        setError(e.message);
+      } else {
+        setError('Ocurrió un error desconocido durante la carga.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadVehiculos();
+  }, [lastUpdated]);
+
+  const handleSuccess = () => {
+    setLastUpdated(Date.now()); 
+  };
+  
+  const handleDelete = async (patente: string, nroMovil: string | null) => {
+    const confirmDelete = window.confirm(
+      `¿Está seguro de eliminar el vehículo ${nroMovil ? `Móvil N°${nroMovil}` : patente}? Esta acción es irreversible.`
+    );
+    if (!confirmDelete) return;
+
+    try {
+      await deleteVehiculo(patente);
+      alert(`Vehículo ${patente} eliminado con éxito.`);
+      handleSuccess(); // Refrescar la lista
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'Error desconocido al eliminar.';
+      alert(`Error al eliminar el vehículo: ${errorMessage}`);
+    }
+  };
+
+
+  if (isLoading) {
+    return <div style={{ padding: '20px' }}>Cargando vehículos... ⏳</div>;
+  }
+
+  if (error) {
+    return <div style={{ color: 'red', padding: '20px' }}>❌ Error al cargar los datos: {error}</div>;
+  }
+
+  return (
+    <div style={{ padding: '30px' }}> {/* Aumento el padding general para mejor estética */}
+      <h1>Gestión de Flota ({vehiculos.length})</h1>
+      
+      {/* ⚠️ Nota: Mantener el formulario de Creación AQUÍ hace que se renderice en la misma página que la lista. 
+         Si prefieres tener una página /vehiculos/crear dedicada, este componente debería ir allí.
+         Como ya tienes la ruta y la página creada (VehiculoCreatePage.tsx), 
+         podríamos quitar el VehiculoForm de aquí y dejar solo el botón de Crear.
+      */}
+      <VehiculoForm onSuccess={handleSuccess} />
+
+      <hr style={{ margin: '30px 0', border: 'none', borderTop: '1px solid #ccc' }} />
+      
+      <h2>Lista de Vehículos</h2>
+      
+      {/* 🎨 Botón de Crear - Diseño mejorado (Si quitas el formulario de arriba, usa este botón) */}
+      {/* <Link to="/vehiculos/crear" style={{ textDecoration: 'none' }}>
+        <button style={{ 
+            padding: '10px 20px', 
+            fontSize: '1em', 
+            marginBottom: '20px',
+            backgroundColor: '#457B9D', 
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer'
+        }}>
+          ➕ Añadir Nuevo Vehículo
+        </button>
+      </Link> 
+      */}
+      
+      {/* 🎨 Estilos de Tabla Mejorados */}
+      <table style={{ 
+          width: '100%', 
+          borderCollapse: 'collapse',
+          boxShadow: '0 1px 5px rgba(0,0,0,0.1)', // Sombra más visible
+          backgroundColor: 'white',
+          borderRadius: '8px',
+          overflow: 'hidden' // Para que la sombra se vea bien en las esquinas
+      }}>
+        <thead>
+          <tr style={{ backgroundColor: '#1D3557', color: 'white' }}>
+            <th style={{ padding: '15px', textAlign: 'left' }}>Patente</th>
+            <th style={{ padding: '15px', textAlign: 'left' }}>Móvil N°</th>
+            <th style={{ padding: '15px', textAlign: 'left' }}>Modelo</th>
+            <th style={{ padding: '15px', textAlign: 'center' }}>Activo</th>
+            <th style={{ padding: '15px', textAlign: 'center' }}>Acciones</th> 
+          </tr>
+        </thead>
+        <tbody>
+          {vehiculos.map((v, index) => (
+            <tr 
+                key={v._id} 
+                style={{ 
+                    borderBottom: '1px solid #eee', 
+                    background: index % 2 === 0 ? '#FFFFFF' : '#F4F4F4', // Alternar colores
+                    transition: 'background-color 0.2s'
+                }}
+                onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#A8DADC')} // Hover effect
+                onMouseOut={(e) => (e.currentTarget.style.backgroundColor = index % 2 === 0 ? '#FFFFFF' : '#F4F4F4')}
+            >
+              <td style={{ padding: '15px' }}>{v.patente_original || v._id}</td>
+              <td style={{ padding: '15px' }}>{v.nro_movil || 'N/A'}</td>
+              <td style={{ padding: '15px' }}>{v.descripcion_modelo || 'Sin Modelo'}</td>
+              <td style={{ padding: '15px', textAlign: 'center' }}>{v.activo ? '✅' : '🛑'}</td>
+              <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                
+                {/* 1. Botón Detalle */}
+                <Link to={`/vehiculos/${v._id}`} style={{ marginRight: '10px', textDecoration: 'none' }}>
+                  <button style={{ padding: '8px 12px', cursor: 'pointer', border: '1px solid #A8DADC', backgroundColor: '#F1FAEE', borderRadius: '4px' }}>
+                      Detalle
+                  </button>
+                </Link>
+                
+                {/* 2. Botón Editar (AHORA FUNCIONAL) */}
+                <Link to={`/vehiculos/editar/${v._id}`} style={{ marginRight: '10px', textDecoration: 'none' }}>
+                  <button style={{ padding: '8px 12px', cursor: 'pointer', border: '1px solid #457B9D', backgroundColor: '#457B9D', color: 'white', borderRadius: '4px' }}>
+                      Editar
+                  </button>
+                </Link>
+
+                {/* 3. Botón Eliminar */}
+                <button 
+                  onClick={() => handleDelete(v._id, v.nro_movil)}
+                  style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#E63946', color: 'white', border: 'none', borderRadius: '4px' }}
+                >
+                  Eliminar
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+export default VehiculosPage;

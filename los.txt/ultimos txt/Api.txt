@@ -1,0 +1,398 @@
+// Control_Flota\flota-frontend\src\api\models\vehiculos.ts
+
+// =================================================================
+// ESTRUCTURAS DE VEHÍCULO
+// =================================================================
+
+export interface Vehiculo {
+  _id: string; // Patente normalizada (usada como ID)
+  patente_original?: string; 
+  activo: boolean;
+  anio: number | null;
+  color: string | null; 
+  descripcion_modelo: string | null; 
+  nro_movil: string | null;
+  tipo_combustible: string | null;
+}
+
+export interface VehiculoInput { 
+  patente: string; // Se necesita para el POST
+  activo: boolean;
+  anio: number | null;
+  color: string | null; 
+  descripcion_modelo: string | null;
+  nro_movil: string | null;
+  tipo_combustible: string | null;
+}
+
+// Interfaz necesaria para el PUT (Actualización)
+export interface VehiculoUpdateInput {
+    activo: boolean;
+    anio: number | null;
+    color: string | null;
+    descripcion_modelo: string | null;
+    nro_movil: string | null;
+    tipo_combustible: string | null;
+}
+
+
+// =================================================================
+// ESTRUCTURAS DE REPORTE Y COSTOS
+// =================================================================
+
+/**
+ * Define la estructura de un ítem de costo/gasto individual.
+ */
+export interface CostoItem {
+    _id: string; // ID del documento en su colección original (Crucial)
+    tipo: string; // Ej: 'Mantenimiento', 'Infracción', 'Gasto Seguro'
+    fecha: string; // Formato YYYY-MM-DD
+    descripcion: string;
+    importe: number;
+    // Origen crucial para saber de dónde eliminar en el backend
+    origen: 'Finanzas' | 'Mantenimiento'; 
+    // Usamos unknown para mayor seguridad, pero si lo necesitas, puedes usar 'any'
+    metadata_adicional: Record<string, unknown>; 
+}
+
+// =================================================================
+// 🔑 INTERFAZ AÑADIDA: Para CREACIÓN (Input)
+// =================================================================
+
+/**
+ * Define la estructura de datos para crear un nuevo costo manual.
+ * Se mapea al modelo CostoManualInput de FastAPI.
+ */
+export interface NewCostoInput { // 🔑 Asegúrate de que lleva 'export'
+    patente: string;
+    tipo_costo: string; 
+    fecha: string; // Envía como string ISO o YYYY-MM-DD
+    descripcion: string;
+    importe: number;
+    origen: 'Finanzas' | 'Mantenimiento'; 
+}
+
+export interface CreateCostoResponse {
+    status: 'success' | 'error';
+    message: string;
+    document_id: string;
+}
+
+/**
+ * Define la estructura para una alerta de vencimiento (Actualizada).
+ * Debe coincidir con el resultado de get_vencimientos_criticos_alertas.
+ */
+export interface Alerta {
+    patente: string; // 🔑 Agregado
+    tipo_documento: string; // 🔑 Renombrado de 'tipo' a 'tipo_documento'
+    fecha_vencimiento: string; // Formato YYYY-MM-DD
+    dias_restantes: number;
+    mensaje: string; // 🔑 Agregado
+    prioridad: 'CRÍTICA' | 'ALTA' | 'media' | 'baja'; // 🔑 Valores ajustados a los usados en el backend
+    movil_nro?: string; // 🔑 Agregado
+    descripcion_modelo?: string; // 🔑 Agregado
+}
+
+/**
+ * Define la estructura de la respuesta completa del reporte para un vehículo.
+ */
+export interface ReporteCostosResponse {
+    patente: string;
+    total_general: number;
+    // Lista unificada de todos los costos
+    costos: CostoItem[]; 
+    // Lista de todas las alertas activas
+    alertas: Alerta[];
+}
+
+/**
+ * Define el resumen de costos globales por tipo (para el Dashboard).
+ */
+export interface ResumenCostoGlobal {
+    total_mantenimiento: number;
+    total_infracciones: number;
+    total_general: number;
+}
+
+/**
+ * Define la respuesta consolidada para el Dashboard.
+ */
+export interface DashboardResponse {
+    alertas_criticas: Alerta[];
+    resumen_costos: ResumenCostoGlobal;
+    total_vehiculos: number;
+}
+
+// Control_Flota\flota-frontend\src\api\vehiculos.ts
+
+import axios from 'axios';
+// Asegúrate de que solo importas, no defines las interfaces aquí.
+import type { Vehiculo, VehiculoInput, ReporteCostosResponse, VehiculoUpdateInput, NewCostoInput, CreateCostoResponse, 
+    DashboardResponse, } from './models/vehiculos';
+import type { Alerta } from './models/vehiculos';
+
+const API_URL = 'http://localhost:8000'; 
+
+const apiClient = axios.create({
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
+});
+
+interface FastAPIErrorResponse {
+    detail?: string;
+}
+
+/**
+ * 🗂️ Obtiene el listado completo de vehículos. (GET /vehiculos)
+ */
+export async function fetchVehiculos(): Promise<Vehiculo[]> {
+  try {
+    console.log(`[LOG:API] Solicitando listado de vehículos.`);
+    const response = await apiClient.get<Vehiculo[]>('/vehiculos');
+    
+    console.log(`[LOG:INFO] Recepción exitosa de ${response.data.length} vehículos.`);
+    return response.data;
+  } catch (error: unknown) {
+    let errorMessage = 'Error desconocido al listar vehículos.';
+    
+    // AxiosError se usa aquí internamente a través de axios.isAxiosError
+    if (axios.isAxiosError(error) && error.response) { 
+        const errorData = error.response.data as FastAPIErrorResponse; 
+        const detail = errorData.detail || error.message;
+
+        console.error(`[LOG:ERROR] Error ${error.response.status} al listar vehículos:`, detail);
+        errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+    } else {
+        console.error(`[LOG:CRITICO] Fallo de conexión o proceso:`, error);
+        errorMessage = 'Error de conexión con el servidor. Verifique que el Backend esté corriendo.';
+    }
+    throw new Error(errorMessage);
+  }
+}
+
+/**
+ * ➕ Crea un nuevo vehículo. (POST /vehiculos)
+ */
+export async function createVehiculo(data: VehiculoInput): Promise<Vehiculo> {
+  try {
+    console.log(`[LOG:API] Creando vehículo con patente: ${data.patente}`);
+    const response = await apiClient.post<Vehiculo>('/vehiculos', data);
+    
+    console.log(`[LOG:INFO] Creación exitosa de vehículo: ${response.data._id}`);
+    return response.data;
+  } catch (error: unknown) {
+    let errorMessage = 'Error desconocido al crear vehículo.';
+    
+    if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data as FastAPIErrorResponse;
+        const detail = errorData.detail || error.message;
+
+        console.error(`[LOG:ERROR] Fallo en la creación de vehículo (${data.patente}):`, detail);
+        errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+    }
+    throw new Error(`Fallo en la creación del vehículo: ${errorMessage}`);
+  }
+}
+
+/**
+ * 🗑️ Elimina un ítem de costo/gasto por su ID y origen (Finanzas o Mantenimiento).
+ * (DELETE /costos/{origen}/{document_id})
+ */
+export async function deleteCostoItem(origen: 'Finanzas' | 'Mantenimiento', document_id: string): Promise<void> {
+    try {
+        console.log(`[LOG:API] Eliminando costo ID ${document_id} de origen: ${origen}`);
+        const url = `/costos/${origen}/${document_id}`;
+        
+        await apiClient.delete(url); // Esperamos 204 No Content
+        
+        console.log(`[LOG:INFO] Costo eliminado con éxito: ${document_id}`);
+    } catch (error: unknown) {
+        let errorMessage = 'Error desconocido al eliminar el costo.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || error.message;
+
+            console.error(`[LOG:ERROR] Fallo al eliminar costo (Status: ${error.response.status}):`, detail);
+            errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 🗑️ Elimina un vehículo por su patente normalizada (ID).
+ * (DELETE /vehiculos/{patente})
+ */
+export async function deleteVehiculo(patente: string): Promise<void> {
+    try {
+        // La patente aquí ya debe estar normalizada si la API lo requiere, 
+        // pero la función normalize_patente del backend lo maneja.
+        console.log(`[LOG:API] Eliminando vehículo con ID/Patente: ${patente}`);
+        const url = `/vehiculos/${patente}`;
+        
+        // Esperamos 204 No Content
+        await apiClient.delete(url); 
+        
+        console.log(`[LOG:INFO] Vehículo eliminado con éxito: ${patente}`);
+    } catch (error: unknown) {
+        let errorMessage = 'Error desconocido al eliminar el vehículo.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || error.message;
+
+            console.error(`[LOG:ERROR] Fallo al eliminar vehículo (Status: ${error.response.status}):`, detail);
+            errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * ✏️ Actualiza la información de un vehículo. (PUT /vehiculos/{patente})
+ */
+export async function updateVehiculo(patente: string, data: VehiculoUpdateInput): Promise<Vehiculo> {
+    try {
+        console.log(`[LOG:API] Actualizando vehículo: ${patente}`);
+        const url = `/vehiculos/${patente}`;
+        const response = await apiClient.put<Vehiculo>(url, data); 
+        console.log(`[LOG:INFO] Actualización exitosa de vehículo: ${patente}.`);
+        return response.data;
+    } catch (error: unknown) {
+        let errorMessage = 'Error desconocido al actualizar vehículo.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || (error.message as string);
+            errorMessage = `Fallo al actualizar (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+export async function fetchVehiculoByPatente(patente: string): Promise<Vehiculo> {
+    try {
+        console.log(`[LOG:API] Solicitando vehículo: ${patente}`);
+        const url = `/vehiculos/${patente}`;
+        const response = await apiClient.get<Vehiculo>(url);
+        
+        console.log(`[LOG:INFO] Recepción exitosa de vehículo: ${response.data._id}.`);
+        return response.data;
+    } catch (error: unknown) {
+        let errorMessage = 'Error desconocido al obtener vehículo.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || error.message;
+
+            console.error(`[LOG:ERROR] Error ${error.response.status} al obtener vehículo (${patente}):`, detail);
+            errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 📊 Obtiene el reporte de costos (mantenimiento e infracciones) y alertas para un vehículo.
+ * (GET /vehiculos/{patente}/reporte)
+ */
+export async function fetchReporteVehiculo(patente: string): Promise<ReporteCostosResponse> {
+    try {
+        console.log(`[LOG:API] Solicitando reporte para vehículo: ${patente}`);
+        const url = `/vehiculos/${patente}/reporte`;
+        // La API devuelve el objeto ReporteCostosResponse
+        const response = await apiClient.get<ReporteCostosResponse>(url); 
+        
+        console.log(`[LOG:INFO] Reporte recibido para vehículo: ${patente}.`);
+        return response.data;
+    } catch (error: unknown) {
+        let errorMessage = 'Error desconocido al obtener el reporte del vehículo.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || error.message;
+
+            console.error(`[LOG:ERROR] Fallo al obtener reporte (${patente}):`, detail);
+            errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 📈 Obtiene el resumen consolidado de costos y alertas para el Dashboard.
+ * (GET /dashboard/resumen)
+ */
+export async function fetchDashboardData(): Promise<DashboardResponse> {
+    try {
+        console.log(`[LOG:API] Solicitando datos de Dashboard.`);
+        const url = `/dashboard/resumen`;
+        
+        const response = await apiClient.get<DashboardResponse>(url); 
+        
+        console.log(`[LOG:INFO] Datos de Dashboard recibidos.`);
+        return response.data;
+    } catch (error: unknown) {
+        // 🔑 CORRECCIÓN: Usa 'const' y maneja el error 'e' (o 'error')
+        let errorMessage = 'Error desconocido al obtener datos del Dashboard.';
+        
+        if (axios.isAxiosError(error) && error.response) { 
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || (error.message as string);
+            
+            console.error(`[LOG:ERROR] Fallo al obtener Dashboard (Status: ${error.response.status}):`, detail);
+            // 🔑 CORRECCIÓN: Si actualizas errorMessage, debes mantener 'let'
+            errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 💸 Registra un nuevo costo o gasto de forma manual. (POST /costos/crear)
+ */
+export async function createCostoItem(data: NewCostoInput): Promise<CreateCostoResponse> { // 🔑 CORREGIDO: Usamos CreateCostoResponse en lugar de any
+    try {
+        console.log(`[LOG:API] Creando nuevo costo para vehículo: ${data.patente}`);
+        const url = `/costos/crear`;
+        
+        // 🔑 CORREGIDO: El tipo genérico de post ahora usa CreateCostoResponse
+        const response = await apiClient.post<CreateCostoResponse>(url, data); 
+        
+        console.log(`[LOG:INFO] Costo creado con éxito: ${response.data.document_id}`);
+        return response.data;
+    } catch (error: unknown) {
+        // ... (el manejo de errores permanece igual)
+        let errorMessage = 'Error desconocido al registrar el costo manual.';
+        if (axios.isAxiosError(error) && error.response) {
+            const errorData = error.response.data as FastAPIErrorResponse;
+            const detail = errorData.detail || (error.message as string);
+            
+            console.error(`[LOG:ERROR] Fallo al crear costo (Status: ${error.response.status}):`, detail);
+            errorMessage = `Fallo al crear costo (Status: ${error.response.status}): ${detail}`;
+        }
+        throw new Error(errorMessage);
+    }
+}
+
+/**
+ * 🚨 Obtiene todas las alertas críticas de documentación de la flota.
+ * (GET /alertas/criticas)
+ */
+export async function fetchGlobalAlertas(): Promise<Alerta[]> {
+  try {
+    console.log(`[LOG:API] Solicitando listado de alertas críticas.`);
+    const response = await apiClient.get<Alerta[]>('/alertas/criticas');
+    
+    console.log(`[LOG:INFO] Recepción exitosa de ${response.data.length} alertas.`);
+    return response.data;
+  } catch (error: unknown) {
+    let errorMessage = 'Error desconocido al listar alertas críticas.';
+    if (axios.isAxiosError(error) && error.response) {
+        const errorData = error.response.data as FastAPIErrorResponse;
+        const detail = errorData.detail || error.message;
+
+        console.error(`[LOG:ERROR] Error ${error.response.status} al listar alertas:`, detail);
+        errorMessage = `Fallo del servidor (Status: ${error.response.status}): ${detail}`;
+    }
+    throw new Error(errorMessage);
+  }
+}

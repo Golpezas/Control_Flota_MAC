@@ -1,0 +1,29 @@
+{
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.css": "tailwindcss",
+      "*.pcss": "tailwindcss",
+      "*.postcss": "tailwindcss"
+    },
+    // Desactivar la validación CSS incorporada para evitar advertencias sobre at-rules de Tailwind
+    "css.validate": false,
+    "tailwindCSS.includeLanguages": {
+      "javascript": "javascript",
+      "javascriptreact": "javascript",
+      "typescript": "javascript",
+      "typescriptreact": "javascript",
+      "plaintext": "html",
+      "css": "css",
+      "postcss": "css"
+    },
+    "tailwindCSS.emmetCompletions": true,
+    "editor.quickSuggestions": {
+      "strings": true
+    }
+  }
+}

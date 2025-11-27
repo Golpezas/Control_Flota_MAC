@@ -1,0 +1,197 @@
+alaskan
+
+PATENTES	Nº	MODELO	AÑO	UBICACIÓN Y SERVICIO 	Neumaticos delanteros	Reemplazo Nuematicos Traseros	Reemplazo Baterias			
+AF757AS	1	RENAULT ALASKAN CONFORT 4X4 MT	2023	MOVIL 1 ACUDE LA LATA	08/03/25      (02)	19/05/25    (02)	19/08/24   -  19/03/25			
+AF757AU	2	RENAULT ALASKAN CONFORT 4X4 MT	2023	MOVIL 13 ACUDE CABA	26/11/24      (02)	01/04/25    (02)	02/01/24   -  28/09/24   -   11/02/25  - 12/06/25			
+AF757AZ	3	RENAULT ALASKAN CONFORT 4X4 MT	2023	MOVIL 21 SITIO 74  BERAZATEGUI	28/03/25    (02)    05/09/25   (02)	26/06/25     (02)	23/02/24  -   23/04/25			
+AF857HF	4	RENAULT ALASKAN CONFORT 4X4 MT	2023	LAVALLOL	 	21/03/25     (02)	27/11/24   -  07/04/25			
+AG059DG	5	RENAULT ALASKAN CONFORT 2.3 dCi 160 4 WD	2023	MOVIL 11 ACUDE BERAZATEGUI	04/03/24     (02)	19/07/25     (02)	15/01/24   -   10/09/24   -   21/03/25	
+
+autos_todos
+
+PATENTES	Nº	MODELO	AÑO	UBICACIÓN Y SERVICIO 		CONDICION DEL AUTO
+MNF932	1	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2013	LAVALLOL		Tapa de Cilindro / Valvulas
+NHK226	2	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2013	BASE NUÑEZ		
+NOU018	3	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2014	LAVALLOL		Revisar Pablo Reparacion
+NSA764	4	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2014	BASE NUÑEZ		
+MVE291	5	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2013	LLAVALLOL		Reparacion del Motor 02/10/25
+NXI181	6	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2014	LAVALLOL		REPARANDO Cambiar Aros del Motor / Embrague
+NXI182	7	RENAULT CLIO MIO 1.2 3P AUTHEN PK	2014	LAVALLOL		Golpeteo en Motor Bielas 
+
+baterias_neumaticos
+
+PATENTES	Nº	MODELO	AÑO	UBICACIÓN Y SERVICIO 	Reemplazo Neumaticos delanteros	Reemplazo Nuematicos Traseros	Reemplazo Baterias
+AA909VN	1	RENAULT DUSTER OROCH DY NAMIQUE 2	2017	TALLER DE PABLO			12/6/2025
+AA909VM	2	RENAULT DUSTER OROCH DY NAMIQUE 2	2017	Sup VISCARRA	12/06/25   (02) 	06/08/25    (02)	17/7/2024
+AE626OT	3	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2021	LAVALLOL			
+AE626OU	4	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2021	LAVALLOL			
+AE667QV	5	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2021	LAVALLOL	20/03/24    (02)		
+AE667QX	6	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2021	SOL CERNADAS			28/2/2025
+AE694IC	7	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2021	LAVALLOL			
+AE870CP	8	RENAULT DUSTER OROCH 2,0 DYNAMIQUE 4X4	2021	VENTA			22/08/24   -   22/01/25  - 31/05/25
+
+documentación
+
+Patente	Nro Movil	Tipo de Comb	MOVIL	Modelo	Vencimiento Cedula	Días	Vencimiento Seguro	Aseguradora	VENC GAS	VTV	Telepase	TARJ YPF	Color	Ploteo	Baliza	Grabado	 medidas de cubiertas	CLAVE RADIO
+MVE291	5	Nafta	Renault Clio	2013	SIN VENCIMIENTO	 	25/8/2026	HDI		nov-25	94193715	jul-26	Rojo				165/70/13	
+NHK226	6	Nafta	Renault Clio	2013	1/12/2024	-326	25/8/2026	HDI		jun-23	94196854		Rojo	SI calcos		SI	165/70/13	
+MNF900	3	Nafta	Renault Clio	2013	1/12/2024	-326	 	 		oct-23	99557594		Rojo				165/70/13	
+MNF932	4	GNC	Renault Clio	2013	1/12/2023	-692	25/8/2026	HDI		feb-24	94970806		Rojo	SI	SI	SI	165/70/13	
+NOU018	7	Nafta	Renault Clio	2014	16/12/2024	-311	25/8/2026	HDI		ago-24	94193945		Rojo			SI	165/70/13	
+NSA764	8	Nafta	Renault Clio	2014	1/12/2024	-326	25/8/2026	HDI		abr-26	90994935		Rojo				165/70/13	
+NSA765	9	Nafta	Renault Clio	2014	1/12/2023	-692	 	 		may-24	94220846		Rojo	SI calcos			165/70/13	
+NXI181	10	Nafta	Renault Clio	2014	15/12/2024	-312	25/8/2026	HDI		nov-23	94223566		Rojo				165/70/13	
+NXI182	11	GNC	Renault Clio	2014	15/12/2024	-312	25/8/2026	HDI		feb-24	94220803		Rojo	SI calcos			165/70/13	
+
+infracciones_caba
+
+Dominio	Nro.	Acta	Dia	Año	Hora	Importe	Hasta	Falta	Lugar	Datos Conductor	Datos Acompañante
+AF481OU	1	G03815002	25/9/2024	2024	05:15	119.776,50	9/2/2025	Exceso de velocidad mas de lo permitida	Av. Gral. Paz km 22,5 DESCENDENTE	LOPEZ MARCELO	
+AF481OQ	2	G03362105	10/10/2024	2024	11:20	159.702,00	15/1/2025	Estac. LUGAR RESERVADO (paradas/garage/ciclovias/carril exclusivo/Micro-Macrocentro/otros)	 JARAMILLO 1773	EXEQUIEL CERNADAS	
+AF270OX	3	G04153284	26/10/2024	2024	03:42	359.329,50	12/3/2025	Exceso de velocidad mas de lo permitida	Av. Gral. Paz km 4.3 DESCENDENTE	BARRERA BRIAN	
+AF237KR	4	G03402020	4/9/2024	2024	12:49	119.776,50	15/1/2024	Exceso de velocidad mas de lo permitida	Au6. Perito Moreno Km 4.8 ASCENDENTE	ARIEL CABANA	
+AF270OX	5	G03719370	17/4/2024	2024	14:11	119.776,50	2/2/2025	Exceso de velocidad mas de lo permitida	Calle Galvan 3647 ASCENDENTE	JUAN SILVA	
+
+infracciones_ezeiza
+
+Patente	Nro.	Nro.Acta	Fecha Infracción	Hora Infracción	Lugar Infracción	Monto		Fecha Vencimiento	STATUS	Motivo	Conductor y Compañeras
+AF047UQ	1	F-492320	10/10/2022	06:53	PRES. N. KIRCHNER Y ZENAVILLA	79.134,00		3/8/2023	PAGADO	 DETENERSE EN SENDA PEATONAL O LINEA.	Areyano Leandro .(1966) y Amaya Ricardo(2079)  
+AF047UQ	2	LB-020597	30/12/2022	12:58	RN58 Y SAINT THOMAS COUNTRY CLUB MANO A RUTA 52	151.734,00		3/8/2023	PAGADO	ENCENDIDO DE LUCES BAJAS OBLIGATORIO DURANTE LAS 24 HS EN RUTA, CARRETERA, SEMIAUTOPISTA Y/O AUTOPISTA.	Areyano Leandro .(1966) y Amaya Ricardo(2079)  
+AF047UQ	3	LB-028208	25/1/2023	12:55	RN58 Y SAINT THOMAS COUNTRY CLUB MANO A RUTA 52	151.734,00		3/8/2023	PAGADO	ENCENDIDO DE LUCES BAJAS OBLIGATORIO DURANTE LAS 24 HS EN RUTA, CARRETERA, SEMIAUTOPISTA Y/O AUTOPISTA	Areyano Leandro .(1966) y Stadnyczuk Jose (1928)
+NXI181	4	LB-047675	8/3/2023	15:15	 R58 Y SAINT THOMAS COUNTRY CLUB MANO A RUTA 52	151.734,00		3/8/2023	PAGADO	ENCENDIDO DE LUCES BAJAS OBLIGATORIO DURANTE LAS 24 HS EN RUTA, CARRETERA, SEMIAUTOPISTA Y/O AUTOPISTA.	Rodolfo Alejandro Zarate
+AF571RW	5	F-577005	9/8/2023	22:27	PRES. N. KIRCHNER Y ZENAVILLA	79.134,00		3/11/2023	PAGADO	NO RESPETAR LAS REGLAS MULTICARRILES	Galarza Rodolfo
+AF571RW	6	V-087717	24/9/2023	14:48	AV MARIANO CASTEX 4787	442.134,00			PAGADO	EXCESO DE VELOCIDAD	Barrientos Axel /Pérez Walter
+AF481OU	7	F-584003	8/10/2023	10:21	PRES. NÉSTOR KIRCHNER & EL TREBOL (MANO CAÑUELAS)	79.134,00		1/12/2023	PAGADO	 DETENERSE EN SENDA PEATONAL O LINEA.	Gonzalo Dominguez
+AF481PG	8	F-599276	15/11/2023	00:16	PRES. N. KIRCHNER Y SGTO. CABRAL	442.134,00		16/10/2024	PAGADO	VIOLACION DE SEMAFOROS	Gerula
+
+infracciones_florencio_varela
+
+Dominio	Nro.	Nro.Acta	FECHA DE OCURRENCIA	Hora de ocurrencia	FECHA DE VENCIMIENTO	IMPORTE__	FALTA	Lugar de Ocurrencia	Conductor y acompañante
+AG278OZ	1	1008043	13/7/2027	06:10	29/9/2025	113.760,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	FLORENCIO VARELA	Chofer: Santos Ivan Leg 2167 / Acompañante: Navarro Adrian Leg 2082
+
+infracciones_zamora
+
+Dominio		Causa	Fecha Infracción	Hora	Importe	Pago Voluntario	Fecha de Vcmto	Falta	Lugar	Conductor y acompañante
+NSA765	1	217349-62-2022	19/5/2022	13:02:31	259.320,00	129.990,00	28/4/2023	Gastos Administrativo 51, 77-N-Exceso de velocidad.	Presidente Juan Domingo Peron 2480	Sr. JAVIER ACUÑA
+NXI181	2	140081-62-2022	19/5/2022	13:02:31	500.220,00	242.940,00	28/4/2023	Semaforo en rojo	Yrigoyen Hipolito 11925	No se sabe quien tenia el veh.
+AF333BS	3	34706-62-2022	15/6/2022	15:26:00	179.020,00	92.340,00	28/8/2023	Estacionamiento irregular en bandas de circulación	Yrigoyen Hipolito 9600	No se sabe quien tenia el veh.
+NSA765	4	217231-62-2022	12/7/2022	14:17:01	259.320,00	129.990,00	28/4/2023	77-N-Exceso de velocidad. -	Presidente Juan Domingo Peron 2480	Sr. JAVIER ACUÑA
+NOU018	5	185710-62-2022	14/8/2022	07:53:11	259.320,00	129.990,00	28/4/2023	77-N-Exceso de velocidad. -	Juan XXIII 3161	Zarate Rodolfo (2081)
+AB027KF	6	198398-62-2022	16/8/2022	15:28:34	259.320,00	129.990,00	28/4/2023	77-N-Exceso de velocidad. -	Juan XXIII 3730	Hugo Luminoso
+MNF932	7	186346-62-2022	18/8/2022	17:17:34	259.320,00	129.990,00	28/4/2023	77-N-Exceso de velocidad. -	9 de JULIO	No se sabe quien tenia el veh.
+NHK226	8	173172-62-2022	24/8/2022	15:25:16	259.320,00	129.990,00	28/4/2023	77-N-Exceso de velocidad. -	Juan XXIII 3730	No existe control movil del 24-8-22
+
+moviles_octubre
+
+Patente	Nro.	VTV	MOVIL	Marca	Modelo	Kilometraje 29/9/2025	Kilometraje 6/10/2025	Kilometraje 13/10/2025	Kilometraje 20/10/2025	Prom.Sem	AÑO	Usuario	Prox. Serv KM Aceite y filtros	OBSERVACIONES
+MNF900	1	oct-22	3	Renault	Clio					0	2012	3003	171.300	VENDIDA
+MNF932	2	feb-23	4	Renault	Clio					0	2013	3004	231.000	En fecha 24-1-23, se le reemplazo las dos homocinética delanteras y se le realizó cambio de filtros y aceite a los KM 221.395.En fecha 27-8-22,  Se le hizo cambio de cazoletas y Crapodina , extremos y precap de dirección de ambos lados, bujes de parrillas ambos lados, rotulas de ambos lados y se le realizó cambio de filtros y aceite a los KM 208756.
+MVE291	3	nov-22	5	Renault	Clio	214.834				-71611	2013	3005	215.000	Se le hizo el servis de los 205.000 km  el 05/6/25. Se le hizo el servis de los 190.000 km  el 14/1/25. se le hizo servis a las 180.000 km el 30/8/24. YA SE LE HIZO SERVICIO 04-6-24 a los KMS. 172.032
+
+moviles_septiembre
+
+Patente	Nro.	VTV	MOVIL	Marca	Modelo	Kilometraje 8/9/2025	Kilometraje 15/9/2025	Kilometraje 22/9/2025	Kilometraje 29/9/2025	Prom.Sem	AÑO	Usuario	Prox. Serv KM Aceite y filtros	OBSERVACIONES
+MNF900	1	oct-22	3	Renault	Clio					0	2012	3003	171.300	VENDIDA
+MNF932	2	feb-23	4	Renault	Clio					0	2013	3004	231.000	En fecha 24-1-23, se le reemplazo las dos homocinética delanteras y se le realizó cambio de filtros y aceite a los KM 221.395.En fecha 27-8-22,  Se le hizo cambio de cazoletas y Crapodina , extremos y precap de dirección de ambos lados, bujes de parrillas ambos lados, rotulas de ambos lados y se le realizó cambio de filtros y aceite a los KM 208756.
+MVE291	3	nov-22	5	Renault	Clio	214.834				-71611	2013	3005	215.000	Se le hizo el servis de los 205.000 km  el 05/6/25. Se le hizo el servis de los 190.000 km  el 14/1/25. se le hizo servis a las 180.000 km el 30/8/24. YA SE LE HIZO SERVICIO 04-6-24 a los KMS. 172.032
+NHK226	4	jun-23	6	Renault	Clio					0	2014	3006	236.000	Se le hizo servicio de cambio de filtro y Aceite a los 226.795 km. Se le hizo serv. de aceite y filtros, a los 210.308 kms. en fecha 2-5-23. Se le cambio el regulador de voltage del alternador a los 209354 (25-4-2023)...Se le realizo cambio  de pata central de caja, a los  208.186Kms.  Se le hizo servicio 31/01/23, a los 198,993. Se le hizo servicio el 2-11-22, a los 187,141KMS. Se le hizo servicio 13/08/22, A LOS 176,896KMS.
+NOU018	5	ago-22	7	Renault	Clio	218.000				-72667	2014	3007	226.000	se le hizo servis a los 217.762 km. Se le hizo servicio de cambio de aceite y filtros el 16-2-23, a los 206.635 km. Se le realizo servicio de aceite y filtros a los 195743, el dia 7-12-22..Quedando operativo  ...
+NSA764	6	abr-23	8	Renault	Clio	202.750				-67583	2014	3008	206.000	Se le hizo servis a los 196.552 km el 5/4/24. Se le hizo cambio de aceite y filtros en el taller de PABLO, en FECHA  24-5-23. A los 176.000Kms. Se le hizo servicio de filtros y aceite el 25-1-23 a los 171,237 Kms. y  se le cambio manija interna levanta vidrio lado derecho. Se le hizo serrvicio 10/08/22, a los Kms. 160,333
+NSA765	7	may-23	9	Renault	Clio					0	2014	3009	128.000	VENDIDA
+
+multas_prov_bs_as
+
+Dominio	Nro.	Nro.Acta	FECHA DE OCURRENCIA	Hora de ocurrencia	FECHA DE VENCIMIENTO	IMPORTE__	Falta	Lugar de Ocurrencia	Veredicto	Conductor y acompañante	EL 03/01/2025
+AF333BT	1	02-161-00507154-3	25/10/2003	06:18	29/3/2024	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Vicente Lopez	APLICA	GARCIA FEDERICO	
+JKA289	2	02-999-03778691-3	3/3/2012	07:41	6/4/2022	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Campana	Se le aplica CADUCIDAD		
+NSA765	3	02-036-00022650-0	30/11/2015	12:29	14/12/2022	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Vicente Lopez	CADUCO		
+NSA764	4	02-036-00060974-5	25/10/2016	14:06	9/11/2022	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Almirante Brown	No caduca-tiene infracción en años subsiguientes		
+NSA764	5	02-016-00225875-7	29/3/2017	13:09	6/4/2022	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	San Isidro	No caduca-tiene infracción en años subsiguientes		
+BOG947	6	02-121-00231179-4	21/7/2017	12:40	6/4/2022	71.750,00	 Por no detenerse antes de la línea marcada o senda peatonal	San Isidro	Se le aplica CADUCIDAD		
+AC515JH	7	02-132-00143274-3	11/4/2018	12:14	23/2/2023	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Vicente Lopez	CADUCO		
+AA909VM	8	02-132-00165736-6	25/9/2018	12:06	6/4/2022	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Almirante Brown	APLICA		
+AC515JI	9	02-003-00151254-1	14/4/2019	12:20	23/2/2023	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	Almirante Brown	CADUCO		
+AC515JI	10	02-074-00471965-8	29/5/2019	08:35	23/2/2023	215.250,00	28 - Por no respetar los límites reglamentarios de velocidad previstos.	La Matanza	CADUCO		
+
+polizas
+
+PATENTE	AUTOMOVIL	AÑO	SUMA ASEGURADA	COSTO SEMESTRAL	COSTO MENSUAL	MONTO FRANQ.
+AF237KR	RENAULT SANDERO II LIFE PLUS 1.6	2022			$ 238.926,46	$ 420.000,00
+AF270OW	RENAULT SANDERO II LIFE PLUS 1.6	2022			$ 238.926,46	$ 420.000,00
+AF270OX	RENAULT SANDERO II LIFE PLUS 1.6	2022			$ 252.972,73	$ 420.000,00
+AF305MA	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2022			$ 316.857,55	$ 750.000,00
+AF305MB	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2022			$ 316.857,55	$ 750.000,00
+AF333BU	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2022			$ 354.143,15	$ 750.000,00
+AF333BV	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2022			$ 354.143,15	$ 750.000,00
+AF333BS	RENAULT ALASKAN 2.3 TDI CONFORT 4X4	2022			$ 316.857,55	$ 750.000,00
+
+reparaciones
+
+PATENTE	Nro.	FECHA	KILOMETRAJE	MOTIVO	LUGAR 	
+AF174KK		17/10/2025		Se le cambio Cardan del 4x4 	LAVALLOL	RETIRADA
+AF215FN		17/10/2025		Se le cambio la caja del 4x4 con los Semiejes	LAVALLOL	RETIRADA
+AF841PB		17/10/2025		CAMBIO POLEA DEL CIGÜEÑAL	RENAULT LOMAS DE ZAMORA	
+AF757AS		17/10/2025		CAMBIO POLEA DEL CIGÜEÑAL	RENAULT LOMAS DE ZAMORA	 
+AF571RW		2/10/2025		CAMBIO POLEA DEL CIGÜEÑAL	RENAULT LOMAS DE ZAMORA	RETIRADA
+AF333BW	1	24/9/2025		INSTALACION DE PARABRISAS	Parabrisas Vasquez	RETIRADA
+AG315HG	2	10/9/2025		INSTALACION DE PARABRISAS	Parabrisas Vasquez	RETIRADA
+AF333BS	3	15/7/2025		CAMBIO POLEA DEL CIGÜEÑAL	RENAULT LOMAS DE ZAMORA	RETIRADA
+AE870CQ	4	13/6/2025		CAMBIO DE RADIADOR DE AGUA	JAVIER ACUÑA	RETIRADA
+AB934RE	5	25/5/2025		REPARACION DEL ALTERNADOR	LAVALLOL	RETIRADA
+
+servicios_lavallol
+
+Patente	Nro	FECHA	Kms.	MOTIVO	DESCRIPCIÓN	OBSERVACIONES
+AF333BW	1		100.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 100.000 KM 	Se le hace cambio de Filtros y Aceite
+AF421HL	2		90.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 90.000 KM 	
+AF481OR	3		50.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 50.000 KM 	
+AF481OU	4		70.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 70.000 KM 	
+
+servicios_renault
+
+Patente	Nro	FECHA	Kms.	MOTIVO	DESCRIPCIÓN	LUGAR	FACTURA Nro.	FECHA DE PAGO	MONTO	OBSERVACIONES
+AG366YU		22/10/2025	120.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 120.000 KM 	RENAULT - LOMAS				
+AG445AJ		21/10/2025	80.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 80.000 KM 	RENAULT - LOMAS				
+AF571RX	1	16/10/2025	140.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 140.000 KM 	RENAULT - LOMAS	0045-00003034		$ 788.509,32	
+AG278OX	2	13/10/2025	140.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 140.000 KM 	RENAULT - LOMAS				
+AG445AI	3	2/10/2025	140.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 140.000 KM 	RENAULT - LOMAS	0045-00003017		$ 772.278,12	
+AG196ZS	4	2/10/2025	80.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 80.000 KM 	RENAULT - LOMAS	0045-00003018		$ 772.277,95	
+AG315HB	5	1/10/2025	140.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 140.000 KM 	RENAULT - LOMAS	0045-00003016		$ 772.278,01	
+AF174KK	6	30/9/2025	170.000	REPARACION	SE REALIZO REEMPLAZO DE CAJA TERMOSTATICA	RENAULT - LOMAS	0045-00002986			
+AF571RW	7	30/9/2025	180.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 180.000 KM 	RENAULT - LOMAS	0045-00002990			
+AG196ZR	8	29/9/2025	80.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 80.000 KM 	RENAULT - LOMAS	0045-00002999		$ 772.277,95	
+AG059DH	9	29/9/2025	140.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 140.000 KM 	RENAULT - LOMAS	0045-00002985		$ 772.277,95	
+AE667QX	10	24/9/2025	100.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 100.000 KM 	RENAULT - LOMAS	0045-00002978			
+AF333BW	11	23/9/2025	90.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 90.000 KM 	RENAULT - LOMAS	0045-00002977		$ 233.672,74	
+AG705QM	12	17/9/2025	20.000	SERVICIO	SE LE REALIZO EL SERVICIO DE MANTENIMIENTO DE 20.000 KM 	RENAULT - LOMAS	0045-00002970		$ 772.277,95	
+
+taller_2024
+
+PATENTE	MOVIL Nº	CHASIS Nº	FECHA	MOTIVO	QUIEN INTERVINO
+AF305MB	56	8A1D23008NL154716	2/1/2024	Se le cambio lámparas de alta y baja de ambos lados	JAVIER ACUÑA
+AC515JH	21	8A1FC1315JL121988	2/1/2024	Se le cambio lámpara de alta y baja lado derecho.	JAVIER ACUÑA
+AF757AU	76	8A1D23004PL388032	2/1/2024	Se le cambio la batería ya que la que tenía no servía má	JAVIER ACUÑA
+AF757AS	75	8A1D23004PL388029	2/1/2024	Se le cambio lámpara de alta y baja lado izquierdo.	JAVIER ACUÑA
+AG126UB	84	8A1D23003RL643370	5/1/2024	Se le colocó 2 cubiertas nuevas traseras a los KM 56003.	JAVIER ACUÑA
+AB027KF	18	93Y9SR5A6HJ522171	5/1/2024	Se le realizó limpieza del cuerpo aceleración, se le cambio una bobina de encendido ya que dicho móvil tenía fallas	JAVIER ACUÑA
+AE870CQ	35	93Y9SR5A3MJ771069	5/1/2024	Se le reparo el burro de arranque quedando operativo	JAVIER ACUÑA
+
+taller_2025
+
+PATENTE	MOVIL Nº	CHASIS Nº	FECHA	MOTIVO	QUIEN INTERVINO
+AG366YT	97	8A1D23000RL715206	2/1/2025	Se le cambio lámpara de alta y baja lado derecho.	JAVIER ACUÑA
+AF757AS	75	8A1D23004PL388029	4/1/2025	Se le cambio lámpara de alta y baja lado derecho.	JAVIER ACUÑA
+AG059DH	83	8A1D23000RL637820	4/1/2025	Se le cambio lámpara de alta y baja lado derecho.	JAVIER ACUÑA
+AF270OX	54	8A15SRYE5NL153755	10/1/2025	Se le realizó cambio de pastillas de frenos	JAVIER ACUÑA
+AF857HF	78	8A1D23000PL387802	14/1/2025	Se le cambio lámparas de alta y baja de ambos lados.	JAVIER ACUÑA
+AC515JH	21	8A1FC1315JL121988	14/1/2025	Se le realizó la reparación del alternador	JAVIER ACUÑA
+AF481OU	65	8A15SRYE5PL288906	14/1/2025	Se le realizó cambio de pastillas de frenos y cambio de batería	JAVIER ACUÑA
+
+vendidos_o_bajas
+
+PATENTES	DENUNCIA DE VENTA	TRANSFERENCIA 08	OTROS
+AE626OV	NO	SI EL 21/5/24	
+AB027KG			DESTRUCCION TOTAL
+AE730SI			DESTRUCCION TOTAL
+AF047UE			HDI
+
