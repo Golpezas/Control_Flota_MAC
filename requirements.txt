@@ -1,9 +1,9 @@
 fastapi
 uvicorn[standard]
-pydantic
 motor
 python-dotenv
+python-dateutil
+pydantic
 python-multipart
 bcrypt
 pyjwt
-python-dateutil 

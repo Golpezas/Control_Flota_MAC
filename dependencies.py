@@ -15,28 +15,25 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from typing import Optional
 
-# Cargar .env (útil en local, ignorado en Render)
 load_dotenv()
 
 # =================================================================
-# CONFIGURACIÓN MONGODB – 100% POR VARIABLES DE ENTORNO
+# CONFIGURACIÓN MONGODB – POR VARIABLES DE ENTORNO
 # =================================================================
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
 
 if not MONGO_URI:
-    raise RuntimeError("ERROR CRÍTICO: Falta la variable de entorno MONGO_URI")
+    raise RuntimeError("Falta MONGO_URI en las variables de entorno")
 
-# Cliente global asíncrono
+# Cliente global
 _client: Optional[AsyncIOMotorClient] = None
-_db = None
 
-def get_db_client() -> AsyncIOMotorClient:
-    """Devuelve el cliente Motor global (singleton)."""
+def connect_to_mongodb():
+    """Función que usa tu main.py en startup"""
     global _client
     if _client is None:
         _client = AsyncIOMotorClient(MONGO_URI)
-        # Ping opcional para validar conexión al arrancar
         try:
             _client.admin.command('ping')
             print("Conexión a MongoDB Atlas exitosa")
@@ -45,38 +42,27 @@ def get_db_client() -> AsyncIOMotorClient:
             raise
     return _client
 
-def get_database():
-    """Devuelve la base de datos (lazy)."""
-    global _db
-    if _db is None:
-        client = get_db_client()
-        _db = client[DB_NAME]
-    return _db
-
 def get_db_collection(collection_name: str):
-    """Función que usan todas las rutas."""
-    return get_database()[collection_name]
+    """Función que usan todos tus routers"""
+    if _client is None:
+        connect_to_mongodb()
+    db = _client[DB_NAME]
+    return db[collection_name]
 
 # =================================================================
-# MAPEO DE VENCIMIENTOS PARA ALERTAS
+# MODELOS Y MAPEO
 # =================================================================
+from pydantic import BaseModel
+class UpdateMonto(BaseModel):
+    monto: float
+    motivo: Optional[str] = None
+
+# Mapeo de vencimientos
 VENCIMIENTO_MAP = {
-    'Poliza_Detalle': {
-        'nombre_legible': 'Póliza de Seguro',
-        'dias_critico': 15,
-    },
-    'VTV': {
-        'nombre_legible': 'Verificación Técnica Vehicular (VTV)',
-        'dias_critico': 30,
-    },
-    'GAS': {
-        'nombre_legible': 'Oblea GNC',
-        'dias_critico': 30,
-    },
-    'TARJ YPF': {
-        'nombre_legible': 'Tarjeta YPF',
-        'dias_critico': 15,
-    }
+    'Poliza_Detalle': {'nombre_legible': 'Póliza de Seguro', 'dias_critico': 15},
+    'VTV': {'nombre_legible': 'Verificación Técnica Vehicular (VTV)', 'dias_critico': 30},
+    'GAS': {'nombre_legible': 'Oblea GNC', 'dias_critico': 30},
+    'TARJ YPF': {'nombre_legible': 'Tarjeta YPF', 'dias_critico': 15},
 }
 
 # Configuración de base para modelos con campos numéricos
