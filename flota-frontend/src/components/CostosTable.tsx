@@ -1,5 +1,5 @@
 // src/components/CostosTable.tsx
-
+import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
 import React, { useState } from 'react';
 import { deleteCostoItem } from '../api/vehiculos';
 
@@ -7,7 +7,7 @@ const formatCurrency = (amount: number): string =>
     `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 // Tipo completo y limpio (sin any!)
-export interface CostoItemExtended {
+/*export interface CostoItemExtended {
     id?: string;
     _id?: string;
     tipo: string;
@@ -16,7 +16,7 @@ export interface CostoItemExtended {
     importe: number;
     origen: 'Finanzas' | 'Mantenimiento';
     metadata_adicional?: Record<string, unknown> | null; // Reemplaza "any" por esto
-}
+}*/
 
 interface CostosTableProps {
     costos: CostoItemExtended[];

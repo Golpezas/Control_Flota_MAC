@@ -1,5 +1,5 @@
 // src/pages/VehiculoDetail.tsx (Código final y corregido)
-
+import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
 import React, { useEffect, useState, useMemo, useCallback } from 'react'; 
 import { useParams, Link } from 'react-router-dom';
 import type { 
@@ -7,7 +7,7 @@ import type {
     ReporteCostosResponse, 
     Alerta, 
     DocumentoDigital, 
-    CostoItem // Se sigue importando, pero se usará una versión extendida localmente
+    //CostoItem // Se sigue importando, pero se usará una versión extendida localmente
 } from '../api/models/vehiculos'; 
 import { 
     fetchVehiculoByPatente, 
@@ -23,13 +23,13 @@ const API_URL = 'http://localhost:8000';
 // CORRECCIONES DE TIPADO (Asume que el backend solo acepta estas 2)
 // =================================================================
 // 🔑 FIX 3a: Tipo de unión explícito para el origen del costo
-type CostoOrigen = 'Finanzas' | 'Mantenimiento';
+//type CostoOrigen = 'Finanzas' | 'Mantenimiento';
 
 // 🔑 FIX 3b & 5: Extensión de la interfaz CostoItem para incluir el _id 
-interface CostoItemExtended extends Omit<CostoItem, 'origen'> {
-    _id: string; // FIX: Propiedad _id necesaria para el mapeo y eliminación.
-    origen: CostoOrigen; // FIX: Aseguramos el tipo de origen para la API de eliminación.
-}
+//interface CostoItemExtended extends Omit<CostoItem, 'origen'> {
+//    _id: string; // FIX: Propiedad _id necesaria para el mapeo y eliminación.
+//    origen: CostoOrigen; // FIX: Aseguramos el tipo de origen para la API de eliminación.
+//}
 // Usaremos CostoItemExtended en CostosTableProps y en la lógica principal.
 
 // =================================================================
@@ -196,12 +196,17 @@ const VehiculoDetail: React.FC = () => {
                 fetchReporteVehiculo(patente, twelveMonthsAgo, endDate)
             ]);
             
-            // Forzamos el tipado de los detalles para que CostosTable los acepte
-            const detallesExtendido = reporteData.detalles.map(d => ({
-                ...d,
-                _id: (d as unknown as { _id: string })._id ?? '',  // FIX: Asegura _id string, default ''
-                origen: d.origen as CostoOrigen, 
-            })) as CostoItemExtended[];
+            // Mapeamos los costos del backend al formato que espera CostosTable
+            const detallesExtendido: CostoItemExtended[] = reporteData.detalles.map(d => ({
+                id: d._id,
+                _id: d._id,
+                tipo: d.tipo_costo || "Mantenimiento General", // ← renombramos aquí
+                fecha: d.fecha.split('T')[0] || d.fecha,
+                descripcion: d.descripcion || "Sin descripción",
+                importe: d.importe,
+                origen: d.origen as 'Finanzas' | 'Mantenimiento',
+                metadata_adicional: d.metadata_adicional ?? null,
+            }));
 
             setVehiculo(vehiculoData);
             setReporte({
