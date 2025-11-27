@@ -10,29 +10,69 @@ from fastapi import HTTPException
 from bson.objectid import ObjectId
 import re # Necesario para normalize_patente
 
-# =========================================================================
-# 1. CONFIGURACIÓN
-# =========================================================================
-DB_PASSWORD = "VhNG9h2rfXAy2xxv" 
-CONNECTION_STRING = f"mongodb+srv://antoniohernandezmm_db_user:{DB_PASSWORD}@flotacluster.yipfgjz.mongodb.net/?retryWrites=true&w=majority&appName=FlotaCluster"
-DB_NAME = 'MacSeguridadFlota'
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+from dotenv import load_dotenv
+from typing import Optional
 
-# Mapeo de DB a nombres legibles para alertas
+# Cargar .env (útil en local, ignorado en Render)
+load_dotenv()
+
+# =================================================================
+# CONFIGURACIÓN MONGODB – 100% POR VARIABLES DE ENTORNO
+# =================================================================
+MONGO_URI = os.getenv("MONGO_URI")
+DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
+
+if not MONGO_URI:
+    raise RuntimeError("ERROR CRÍTICO: Falta la variable de entorno MONGO_URI")
+
+# Cliente global asíncrono
+_client: Optional[AsyncIOMotorClient] = None
+_db = None
+
+def get_db_client() -> AsyncIOMotorClient:
+    """Devuelve el cliente Motor global (singleton)."""
+    global _client
+    if _client is None:
+        _client = AsyncIOMotorClient(MONGO_URI)
+        # Ping opcional para validar conexión al arrancar
+        try:
+            _client.admin.command('ping')
+            print("Conexión a MongoDB Atlas exitosa")
+        except Exception as e:
+            print(f"Error al conectar a MongoDB: {e}")
+            raise
+    return _client
+
+def get_database():
+    """Devuelve la base de datos (lazy)."""
+    global _db
+    if _db is None:
+        client = get_db_client()
+        _db = client[DB_NAME]
+    return _db
+
+def get_db_collection(collection_name: str):
+    """Función que usan todas las rutas."""
+    return get_database()[collection_name]
+
+# =================================================================
+# MAPEO DE VENCIMIENTOS PARA ALERTAS
+# =================================================================
 VENCIMIENTO_MAP = {
-    
-    # 🔑 CORRECCIÓN: Cambiar la clave 'Seguro' a 'Poliza_Detalle'
-    'Poliza_Detalle': { 
+    'Poliza_Detalle': {
         'nombre_legible': 'Póliza de Seguro',
-        'dias_critico': 15,    # Umbral de alerta crítica (ejemplo: 15 días antes)
+        'dias_critico': 15,
     },
     'VTV': {
         'nombre_legible': 'Verificación Técnica Vehicular (VTV)',
         'dias_critico': 30,
     },
     'GAS': {
-        'nombre_legible': 'Oblea GNC', 
+        'nombre_legible': 'Oblea GNC',
         'dias_critico': 30,
-    }, 
+    },
     'TARJ YPF': {
         'nombre_legible': 'Tarjeta YPF',
         'dias_critico': 15,
@@ -254,36 +294,36 @@ class Componente(BaseModel):
 # 3. CONEXIÓN A MONGODB
 # =========================================================================
 
-client: Optional[MongoClient] = None
+##client: Optional[MongoClient] = None
 
-def connect_to_mongodb():
-    """Función principal para establecer la conexión a MongoDB."""
-    global client
-    if client is None:
-        try:
-            client = MongoClient(CONNECTION_STRING)
-            client.admin.command('ping') 
-            print("✅ Conexión a MongoDB Atlas exitosa.")
-        except Exception as e:
-            print(f"❌ Error al conectar a MongoDB: {e}")
-            client = None
-            print("⚠️ ADVERTENCIA: La conexión a MongoDB falló durante el inicio.")
+##def connect_to_mongodb():
+ ##   """Función principal para establecer la conexión a MongoDB."""
+ ##   global client
+ ##   if client is None:
+ ##       try:
+  ##          client = MongoClient(CONNECTION_STRING)
+  ##          client.admin.command('ping') 
+  ##          print("✅ Conexión a MongoDB Atlas exitosa.")
+  ##      except Exception as e:
+  ##          print(f"❌ Error al conectar a MongoDB: {e}")
+  ##          client = None
+  ##          print("⚠️ ADVERTENCIA: La conexión a MongoDB falló durante el inicio.")
 
 
-def get_db_client():
-    """Retorna el cliente de MongoDB conectado, o lanza error si no se pudo conectar."""
-    if client is None:
-        raise HTTPException(status_code=500, detail="Error: Conexión a la base de datos no establecida.")
-    return client
+##def get_db_client():
+##    """Retorna el cliente de MongoDB conectado, o lanza error si no se pudo conectar."""
+##    if client is None:
+##        raise HTTPException(status_code=500, detail="Error: Conexión a la base de datos no establecida.")
+##    return client
 
-def get_db_collection(collection_name: str):
-    """Retorna una colección específica de la base de datos."""
-    try:
-        db = get_db_client()[DB_NAME]
-        return db[collection_name]
-    except Exception as e:
-        print(f"❌ Error al acceder a la base de datos/colección: {e}")
-        raise HTTPException(status_code=500, detail="Error al acceder a la base de datos o colección.")
+##def get_db_collection(collection_name: str):
+##    """Retorna una colección específica de la base de datos."""
+##    try:
+##        db = get_db_client()[DB_NAME]
+##        return db[collection_name]
+##    except Exception as e:
+##        print(f"❌ Error al acceder a la base de datos/colección: {e}")
+##        raise HTTPException(status_code=500, detail="Error al acceder a la base de datos o colección.")
 
 # =========================================================================
 # 4. FUNCIONES AUXILIARES DE LIMPIEZA Y FECHA
