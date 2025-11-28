@@ -26,6 +26,7 @@ DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
 if not MONGO_URI:
     raise RuntimeError("Falta MONGO_URI en las variables de entorno")
 
+# Cliente global
 _client: Optional[AsyncIOMotorClient] = None
 
 def connect_to_mongodb():
@@ -47,6 +48,7 @@ def connect_to_mongodb():
     return _client # Retorna el objeto cliente.
 
 def get_db_collection(collection_name: str):
+    """Función que usan todos tus routers"""
     if _client is None:
         connect_to_mongodb()
     db = _client[DB_NAME]
@@ -55,6 +57,7 @@ def get_db_collection(collection_name: str):
 # =================================================================
 # MODELOS Y MAPEO
 # =================================================================
+from pydantic import BaseModel
 class UpdateMonto(BaseModel):
     monto: float
     motivo: Optional[str] = None
@@ -70,6 +73,9 @@ VENCIMIENTO_MAP = {
 # Configuración de base para modelos con campos numéricos
 BASE_CONFIG_WITH_NUMERIC_FIX = ConfigDict(
     populate_by_name=True,
+    # SOLUCIÓN DEFINITIVA ANTI-NAN: 
+    # Mapea ObjectId a str para la respuesta JSON.
+    # Si encuentra un float('nan'), lo convierte a None (que es 'null' en JSON)
     json_encoders={
         ObjectId: str,
         float: lambda v: v if not math.isnan(v) else None
@@ -314,7 +320,7 @@ class Componente(BaseModel):
 ##        raise HTTPException(status_code=500, detail="Error al acceder a la base de datos o colección.")
 
 # =========================================================================
-# FUNCIONES AUXILIARES (mantengo igual)
+# 4. FUNCIONES AUXILIARES DE LIMPIEZA Y FECHA
 # =========================================================================
 
 def safe_mongo_date_to_datetime(date_raw: Any) -> Optional[datetime]:
