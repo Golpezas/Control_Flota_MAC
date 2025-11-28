@@ -1,5 +1,3 @@
-# main.py - VERSIÓN 100% FUNCIONAL EN RENDER + MOTOR ASYNC
-
 from fastapi import FastAPI, HTTPException, status, Query
 from dependencies import UpdateMonto, get_db_collection, connect_to_mongodb
 from bson.objectid import ObjectId
@@ -18,16 +16,21 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS: Permitir todo en producción temporalmente (luego ajustás)
+# 🔥 ORDEN CORRECTO: PRIMERO EL CORS, DESPUÉS LOS ROUTERS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Cambiar a tu dominio en producción
+    # 🔑 CORRECCIÓN: Añadir la URL de Vercel explícitamente para evitar problemas de CORS.
+    allow_origins=[
+        "http://localhost:5173", 
+        "https://control-flota-mac.vercel.app", # <-- ¡AÑADIDA!
+        "*" 
+    ], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Incluir routers
+# Ahora sí: incluir los routers DESPUÉS del middleware
 app.include_router(archivos_router)
 app.include_router(flota.router, prefix="")
 
@@ -36,21 +39,9 @@ app.include_router(flota.router, prefix="")
 # =========================================================================
 
 @app.on_event("startup")
-async def startup_db_client():  # MANTENER ASYNC
-    # 1. Llamamos a la función SIN 'await'. Retorna el objeto cliente.
-    client = connect_to_mongodb() 
-    
-    try:
-        # 2. USA 'await' en la operación de red (ping) para verificar la conexión
-        await client.admin.command('ping') 
-        print("CONEXIÓN A MONGODB ATLAS EXITOSA - API LISTA")
-    except Exception as e:
-        # Si la conexión falla, se levanta el error para que el servidor no inicie.
-        print(f"❌ Error al verificar conexión en startup: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
-            detail="Fallo al conectar con la base de datos MongoDB."
-        )
+async def startup_db_client(): 
+    await connect_to_mongodb()
+    print("CONEXIÓN A MONGODB ATLAS EXITOSA - API LISTA")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
