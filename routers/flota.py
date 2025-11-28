@@ -289,7 +289,7 @@ async def get_vehiculos(  # ← Renombrado a get_vehiculos (más simple y genér
                 "activo": doc.get("activo", False),
                 "anio": doc.get("ANIO"),
                 "color": doc.get("COLOR"),
-                "modelo": doc.get("MODELO"),
+                "modelo": doc.get("DESCRIPCION_MODELO"),  # ← compatibilidad con frontend viejo
                 "descripcion_modelo": doc.get("DESCRIPCION_MODELO"),
                 "nro_movil": doc.get("NRO_MOVIL"),
                 "tipo_combustible": doc.get("TIPO_COMBUSTIBLE"),
@@ -589,6 +589,20 @@ async def download_file(path_relativo: str = Query(..., description="Ruta relati
         media_type="application/octet-stream", 
         headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
     )
+
+# =========================================================================
+# NUEVO ENDPOINT: /alertas/criticas (para tu frontend/Dashboard)
+# =========================================================================
+@router.get("/alertas/criticas", response_model=List[Alerta], summary="Alertas críticas de vencimientos de documentación")
+async def alertas_criticas(
+    dias: int = Query(30, description="Días de tolerancia para considerar una alerta como crítica")
+):
+    """
+    Devuelve todas las alertas críticas activas.
+    Usado en el Dashboard y en el detalle de vehículo.
+    """
+    # Tu función ya existe y es síncrona → no necesita await
+    return get_vencimientos_criticos_alertas(dias_tolerancia=dias)
 
 # =========================================================================
 # 6. ENDPOINT: LIMPIEZA MASIVA DE COSTOS BASURA
