@@ -29,13 +29,16 @@ if not MONGO_URI:
 # Cliente global
 _client: Optional[AsyncIOMotorClient] = None
 
-def connect_to_mongodb():
+# 🔑 CORRECCIÓN 1: Cambiar 'def' a 'async def'
+async def connect_to_mongodb():
     """Función que usa tu main.py en startup"""
     global _client
     if _client is None:
+        # Se crea el cliente asíncrono
         _client = AsyncIOMotorClient(MONGO_URI)
         try:
-            _client.admin.command('ping')
+            # 🔑 CORRECCIÓN 2: Agregar 'await' a la operación de I/O de red
+            await _client.admin.command('ping')
             print("Conexión a MongoDB Atlas exitosa")
         except Exception as e:
             print(f"Error al conectar a MongoDB: {e}")
