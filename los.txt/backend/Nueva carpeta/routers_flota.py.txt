@@ -7,16 +7,18 @@ from bson.objectid import ObjectId
 import os
 import re
 
-# Importaciones de Pydantic
-from pydantic import BaseModel, Field, ConfigDict
+# Importaciones de Pydantic (Asumidas si se usan modelos de Input)
+from pydantic import BaseModel, Field, ConfigDict # 🔑 NECESARIO PARA VEHICULOCREATEINPUT
 
 # Importaciones desde el módulo de dependencias
 from dependencies import (
     get_db_collection, safe_mongo_date_to_datetime, VENCIMIENTO_MAP, 
     Alerta, Vehiculo, VehiculoUpdate, 
+    # NUEVAS DEPENDENCIAS PARA FINANZAS
     CostoItem, ReporteCostosResponse, normalize_patente, safe_sort_costos,
     CostoManualInput, 
     CostoManualDelete,
+    # NUEVOS MODELOS DE RESPUESTA AÑADIDOS
     DashboardResponse,
     ReportePeriodoResponse
 )
@@ -558,7 +560,7 @@ async def delete_costo_manual(
     
     # ANTES: solo borraba si tenía origen_manual: True
     # AHORA: BORRA TODO SIN PREGUNTAR → MODO LIMPIEZA TOTAL
-    delete_result = await collection.delete_one({"_id": obj_id})  # ← CAMBIO: await
+    delete_result = await collection.delete_one({"_id": obj_id})
     
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Registro no encontrado.")
@@ -626,10 +628,10 @@ async def limpiar_costos_basura(
         # filtro["tipo_registro"] = "SERVICIO_RENAULT"  # Ej: solo ciertos tipos
         
         if dry_run:
-            count = await collection.count_documents(filtro)  # ← CAMBIO: await
+            count = await collection.count_documents(filtro)
             detalles[col_name] = count
         else:
-            resultado = await collection.delete_many(filtro)  # ← CAMBIO: await
+            resultado = await collection.delete_many(filtro)
             eliminados = resultado.deleted_count
             detalles[col_name] = eliminados
             total_eliminados += eliminados

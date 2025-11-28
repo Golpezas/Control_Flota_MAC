@@ -18,57 +18,41 @@ from typing import Optional
 load_dotenv()
 
 # =================================================================
-# CONFIGURACIÓN MONGODB – VERSIÓN 100 % FUNCIONAL EN RENDER (2025)
+# CONFIGURACIÓN MONGODB – POR VARIABLES DE ENTORNO
 # =================================================================
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
 
 if not MONGO_URI:
-    raise RuntimeError("FATAL: Falta la variable MONGO_URI en Render")
+    raise RuntimeError("Falta MONGO_URI en las variables de entorno")
 
-# Cliente y base de datos globales (separados para evitar fallos silenciosos)
+# Cliente global
 _client: Optional[AsyncIOMotorClient] = None
-_db = None
 
-def connect_to_mongodb():
-    global _client, _db
+async def connect_to_mongodb():  # ← CAMBIO: async def
+    """Función que usa tu main.py en startup"""
+    global _client
     if _client is None:
-        print("Iniciando conexión a MongoDB Atlas...")
+        _client = AsyncIOMotorClient(MONGO_URI)
         try:
-            # Parámetros que SALVAN en Render
-            _client = AsyncIOMotorClient(
-                MONGO_URI,
-                serverSelectionTimeoutMS=10000,
-                connectTimeoutMS=10000,
-                socketTimeoutMS=10000,
-                tls=True,
-                retryWrites=True,
-                w="majority"
-            )
-            # Ping forzoso
-            _client.admin.command('ping')
-            _db = _client[DB_NAME]
-            print("CONEXIÓN A MONGODB 100 % EXITOSA - BASE DE DATOS LISTA")
-            print(f"→ Base de datos conectada: {DB_NAME}")
+            await _client.admin.command('ping')  # ← CAMBIO: await
+            print("Conexión a MongoDB Atlas exitosa")
         except Exception as e:
-            print(f"ERROR FATAL DE CONEXIÓN A MONGODB → {e}")
-            print("Deploy fallará hasta que esto se resuelva")
-            _client = None
-            _db = None
-            raise  # ← Esto hace que Render marque el deploy como FAILED si no conecta
+            print(f"Error al conectar a MongoDB: {e}")
+            raise
+    return _client
 
 def get_db_collection(collection_name: str):
-    """Función que usan todos tus routers – ahora 100 % segura"""
-    if _db is None:
-        connect_to_mongodb()  # ← Forzamos conexión si aún no existe
-    if _db is None:
-        raise RuntimeError(f"No se pudo obtener la colección '{collection_name}' – conexión fallida")
-    return _db[collection_name]
+    """Función que usan todos tus routers"""
+    if _client is None:
+        # Si es sync contexto, llama sync, pero en FastAPI es async, así que en main.py usa await connect_to_mongodb()
+        raise RuntimeError("MongoDB no conectado. Llama a connect_to_mongodb primero.")
+    db = _client[DB_NAME]
+    return db[collection_name]
 
 # =================================================================
 # MODELOS Y MAPEO
 # =================================================================
-from pydantic import BaseModel
 class UpdateMonto(BaseModel):
     monto: float
     motivo: Optional[str] = None
@@ -84,9 +68,6 @@ VENCIMIENTO_MAP = {
 # Configuración de base para modelos con campos numéricos
 BASE_CONFIG_WITH_NUMERIC_FIX = ConfigDict(
     populate_by_name=True,
-    # SOLUCIÓN DEFINITIVA ANTI-NAN: 
-    # Mapea ObjectId a str para la respuesta JSON.
-    # Si encuentra un float('nan'), lo convierte a None (que es 'null' en JSON)
     json_encoders={
         ObjectId: str,
         float: lambda v: v if not math.isnan(v) else None
@@ -331,7 +312,7 @@ class Componente(BaseModel):
 ##        raise HTTPException(status_code=500, detail="Error al acceder a la base de datos o colección.")
 
 # =========================================================================
-# 4. FUNCIONES AUXILIARES DE LIMPIEZA Y FECHA
+# FUNCIONES AUXILIARES (mantengo igual)
 # =========================================================================
 
 def safe_mongo_date_to_datetime(date_raw: Any) -> Optional[datetime]:

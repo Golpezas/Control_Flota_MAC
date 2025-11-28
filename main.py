@@ -1,69 +1,100 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-import os
+# main.py - VERSIÓN 100% FUNCIONAL EN RENDER + MOTOR ASYNC
 
-# Importamos después de crear la app para evitar import loops
-from dependencies import connect_to_mongodb, get_db_collection, UpdateMonto
+from fastapi import FastAPI, HTTPException, status, Query
+from dependencies import UpdateMonto, get_db_collection, connect_to_mongodb
+from bson.objectid import ObjectId
+from typing import List, Optional, Any
+from fastapi.middleware.cors import CORSMiddleware
 from routers import flota
 from routers.archivos import router as archivos_router
-from bson.objectid import ObjectId
+
+# =========================================================================
+# INSTANCIA DE FASTAPI
+# =========================================================================
 
 app = FastAPI(
-    title="Control de Flota - MAC Seguridad",
-    description="API producción - 100% funcional",
-    version="1.0.0"
+    title="Control de Flota - API",
+    description="API de gestión y monitoreo de flota vehicular. Base para una herramienta web/móvil.",
+    version="1.0.0",
 )
 
-# ==================== CORS - SOLUCIÓN DEFINITIVA ====================
+# CORS: Permitir todo en producción temporalmente (luego ajustás)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://control-flota-mac.vercel.app",   # Tu frontend en producción
-        "http://localhost:3000",                  # Desarrollo local
-        "http://localhost:5173",                  # Si usás Vite
-        "https://control-flota-mac.vercel.app",   # Repetilo si da problemas
-    ],
+    allow_origins=["*"],  # Cambiar a tu dominio en producción
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
-# =====================================================================
 
-# Routers
+# Incluir routers
 app.include_router(archivos_router)
-app.include_router(flota.router)
+app.include_router(flota.router, prefix="")
 
-# FORZAMOS LA CONEXIÓN AL INICIO Y PARAMOS TODO SI FALLA
+# =========================================================================
+# EVENTO DE INICIO: CONEXIÓN ASINCRÓNICA A MONGODB
+# =========================================================================
+
 @app.on_event("startup")
-async def startup_event():
-    print("Iniciando conexión a MongoDB Atlas...")
-    try:
-        connect_to_mongodb()
-        print("CONEXIÓN A MONGODB EXITOSA - API LISTA")
-    except Exception as e:
-        print(f"ERROR FATAL - NO SE PUDO CONECTAR A MONGODB: {e}")
-        print("Deploy fallará hasta que la conexión funcione")
-        raise  # Render marcará el deploy como FAILED (así sabemos que está mal)
+async def startup_db_client():  # ← AHORA ES ASYNC
+    await connect_to_mongodb()  # ← AHORA USA AWAIT
+    print("CONEXIÓN A MONGODB ATLAS EXITOSA - API LISTA")
 
-@app.get("/")
-async def root():
-    return {"status": "ONLINE", "message": "Backend Flota MAC Seguridad - 100% operativo"}
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    # Motor no necesita cerrar explícitamente, pero es buena práctica
+    from dependencies import _client
+    if _client is not None:
+        _client.close()
+        print("Conexión a MongoDB cerrada.")
 
-# Tu endpoint de actualizar monto
-@app.patch("/monto/{collection_name}/{doc_id}")
+# =========================================================================
+# ENDPOINTS GLOBALES
+# =========================================================================
+
+@app.get("/", tags=["General"])
+async def read_root():
+    return {"status": "ok", "message": "API Control de Flota funcionando correctamente"}
+
+# =========================================================================
+# PATCH: ACTUALIZAR MONTO (AHORA 100% ASYNC)
+# =========================================================================
+
+@app.patch(
+    "/monto/{collection_name}/{doc_id}",
+    response_model=dict,
+    summary="Actualizar monto y motivo de un registro",
+    tags=["Modificación de Datos"]
+)
 async def update_monto(collection_name: str, doc_id: str, data: UpdateMonto):
-    coll = get_db_collection("Finanzas" if "finanzas" in collection_name.lower() else "Mantenimiento")
+    collection_name = collection_name.lower()
+    
+    if collection_name not in ['finanzas', 'mantenimiento']:
+        raise HTTPException(status_code=400, detail="Colección no válida. Usa 'finanzas' o 'mantenimiento'.")
+
+    collection = get_db_collection("Finanzas" if collection_name == "finanzas" else "Mantenimiento")
+
     try:
-        result = coll.update_one(
-            {"_id": ObjectId(doc_id)},
-            {"$set": {
-                "MONTO" if "finanzas" in collection_name.lower() else "costo_monto": data.monto,
-                "motivo": data.motivo
-            }}
-        )
-        if result.matched_count == 0:
-            raise HTTPException(404, "Documento no encontrado")
-        return {"message": "Actualizado correctamente"}
-    except Exception as e:
-        raise HTTPException(400, f"Error: {str(e)}")
+        obj_id = ObjectId(doc_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="ID inválido. Debe ser un ObjectId válido.")
+
+    # Campo correcto según colección
+    monto_field = "MONTO" if collection_name == "finanzas" else "costo_monto"
+    update_data = {monto_field: data.monto}
+    if data.motivo is not None:
+        update_data["motivo"] = data.motivo
+
+    # ← AHORA USAMOS await + update_one ASINCRONO
+    result = await collection.update_one(
+        {"_id": obj_id},
+        {"$set": update_data}
+    )
+
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail=f"Documento no encontrado: {doc_id}")
+
+    return {
+        "message": f"Monto actualizado correctamente en {collection_name.capitalize()}",
+        "modified": result.modified_count > 0
+    }
