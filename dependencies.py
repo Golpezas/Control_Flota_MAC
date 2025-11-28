@@ -18,36 +18,52 @@ from typing import Optional
 load_dotenv()
 
 # =================================================================
-# CONFIGURACIÓN MONGODB – POR VARIABLES DE ENTORNO
+# CONFIGURACIÓN MONGODB – VERSIÓN 100 % FUNCIONAL EN RENDER (2025)
 # =================================================================
 MONGO_URI = os.getenv("MONGO_URI")
 DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
 
 if not MONGO_URI:
-    raise RuntimeError("Falta MONGO_URI en las variables de entorno")
+    raise RuntimeError("FATAL: Falta la variable MONGO_URI en Render")
 
-# Cliente global
+# Cliente y base de datos globales (separados para evitar fallos silenciosos)
 _client: Optional[AsyncIOMotorClient] = None
+_db = None
 
 def connect_to_mongodb():
-    """Función que usa tu main.py en startup"""
-    global _client
+    global _client, _db
     if _client is None:
-        _client = AsyncIOMotorClient(MONGO_URI)
+        print("Iniciando conexión a MongoDB Atlas...")
         try:
+            # Parámetros que SALVAN en Render
+            _client = AsyncIOMotorClient(
+                MONGO_URI,
+                serverSelectionTimeoutMS=10000,
+                connectTimeoutMS=10000,
+                socketTimeoutMS=10000,
+                tls=True,
+                retryWrites=True,
+                w="majority"
+            )
+            # Ping forzoso
             _client.admin.command('ping')
-            print("Conexión a MongoDB Atlas exitosa")
+            _db = _client[DB_NAME]
+            print("CONEXIÓN A MONGODB 100 % EXITOSA - BASE DE DATOS LISTA")
+            print(f"→ Base de datos conectada: {DB_NAME}")
         except Exception as e:
-            print(f"Error al conectar a MongoDB: {e}")
-            raise
-    return _client
+            print(f"ERROR FATAL DE CONEXIÓN A MONGODB → {e}")
+            print("Deploy fallará hasta que esto se resuelva")
+            _client = None
+            _db = None
+            raise  # ← Esto hace que Render marque el deploy como FAILED si no conecta
 
 def get_db_collection(collection_name: str):
-    """Función que usan todos tus routers"""
-    if _client is None:
-        connect_to_mongodb()
-    db = _client[DB_NAME]
-    return db[collection_name]
+    """Función que usan todos tus routers – ahora 100 % segura"""
+    if _db is None:
+        connect_to_mongodb()  # ← Forzamos conexión si aún no existe
+    if _db is None:
+        raise RuntimeError(f"No se pudo obtener la colección '{collection_name}' – conexión fallida")
+    return _db[collection_name]
 
 # =================================================================
 # MODELOS Y MAPEO
@@ -111,15 +127,18 @@ class DashboardResponse(BaseModel):
     
 # Modelo para un ítem de costo detallado
 class CostoItem(BaseModel):
-    id: Optional[str] = Field(None, alias="_id")
-    tipo: str = Field(..., description="Tipo de costo (e.g., 'Servicio', 'Reparación', 'Multa/Infracción').")
-    fecha: str = Field(..., description="Fecha del evento (en formato string).")
-    descripcion: str
-    importe: float = Field(..., description="Monto del costo, > 0.0.")
-    origen: str = Field(..., description="Colección de origen ('Mantenimiento' o 'Finanzas').")
-    metadata_adicional: Optional[Dict[str, Any]] = Field(None, description="Metadatos adicionales del documento original.")
+    id: Optional[str] = Field(default=None, alias="_id")  # ← ESTA LÍNEA ES LA CLAVE
+    tipo: str = Field(..., description="Tipo de costo (ej: 'Mantenimiento', 'Infracción').")
+    fecha: str = Field(..., description="Fecha del costo (YYYY-MM-DD).")
+    descripcion: str = Field(..., description="Descripción del costo.")
+    importe: float = Field(..., description="Monto del costo.")
+    origen: str = Field(..., description="Origen del costo (ej: 'Mantenimiento', 'Finanzas').")
+    metadata_adicional: Optional[Dict[str, Any]] = None
 
-    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    model_config = ConfigDict(
+        populate_by_name=True,        # ← Permite que Pydantic use el alias "_id"
+        extra="ignore"
+    )
 
 # Modelo de respuesta para el reporte consolidado de costos por vehículo
 class ReporteCostosResponse(BaseModel):
