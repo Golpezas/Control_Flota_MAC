@@ -54,7 +54,7 @@ const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => (
             🚨 {alerta.tipo_documento}
         </div>
         <div>
-            Móvil: **{alerta.movil_nro || 'N/A'}** ({alerta.descripcion_modelo || 'Vehículo'}) - Vence en **{alerta.dias_restantes}** días.
+            Móvil: **{alerta.patente || 'N/A'}** ({alerta.descripcion_modelo || 'Vehículo'}) - Vence en **{alerta.dias_restantes}** días.
         </div>
     </div>
 );
