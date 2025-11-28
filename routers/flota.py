@@ -379,39 +379,58 @@ async def get_reporte_vehiculo(
     total_mantenimiento = 0.0
     total_infracciones = 0.0
 
-    # === 4. MANTENIMIENTOS (CORREGIDO 100% PARA COSTOS MANUALES) ===
+    # === 4. MANTENIMIENTOS (síncrono) ===
     for doc in get_db_collection("Mantenimiento").find({
         "patente": patente_norm,
         "fecha": {"$gte": start_dt, "$lte": end_dt}
     }):
         monto = float(doc.get("costo_monto") or 0)
-        if monto <= 0:
-            continue
-
-        # TIPO REAL
-        tipo_real = "Mantenimiento General"
-        if doc.get("origen_manual"):
-            tipo_real = doc.get("motivo", "Reparación/Mantenimiento")
-        else:
-            tipo_real = doc.get("DESCRIPCION", "Mantenimiento General")
-
-        # FECHA SEGURA
-        fecha_raw = doc.get("fecha") or doc.get("dia")
-        if isinstance(fecha_raw, datetime):
-            fecha_iso = fecha_raw.strftime("%Y-%m-%d")
-        else:
-            fecha_iso = str(fecha_raw)[:10] if fecha_raw else "1900-01-01"
-
+        def parse_fecha_segura(doc):
+            """Maneja cualquier formato de fecha que tengas en la base"""
+            candidatos = [
+                doc.get("fecha"),
+                doc.get("dia"), 
+                doc.get("fecha_infraccion"),
+                doc.get("FECHA_INFRACCIN")
+            ]
+            
+            for valor in candidatos:
+                if not valor or valor in ["N/A", "null", ""]: 
+                    continue
+                    
+                if isinstance(valor, datetime):
+                    return valor.isoformat()[:10]
+                    
+                if isinstance(valor, str):
+                    valor = valor.strip()
+                    # Formato DD/M/YYYY o DD/MM/YYYY
+                    match = re.match(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", valor)
+                    if match:
+                        d, m, a = match.groups()
+                        try:
+                            return f"{a}-{int(m):02d}-{int(d):02d}"
+                        except:
+                            pass
+                    # ISO normal
+                    if "T" in valor:
+                        return valor[:10]
+                    # YYYY-MM-DD
+                    if re.match(r"\d{4}-\d{2}-\d{2}", valor):
+                        return valor[:10]
+            
+            return "1900-01-01"  # fallback
+        
+        fecha_iso = parse_fecha_segura(doc)
+        
         total_mantenimiento += monto
-
         costos_list.append(CostoItem(
-            id=str(doc["_id"]),                    # ← AHORA SÍ APARECE EN EL JSON
-            tipo=tipo_real.strip(),
-            fecha=fecha_iso,
-            descripcion=doc.get("descripcion", doc.get("DESCRIPCION", "Sin descripción")),
-            importe=monto,
-            origen="Mantenimiento"
-        ))
+        _id=str(doc["_id"]),
+        tipo=TIPO_POR_ORIGEN["Mantenimiento"],  # siempre correcto
+        fecha=fecha_iso,
+        descripcion=doc.get("DESCRIPCIÓN", "Servicio técnico"),
+        importe=monto,
+        origen="Mantenimiento"
+    ))
 
     # === 5. FINANZAS (infracciones + gastos manuales) ===
     for doc in get_db_collection("Finanzas").find({"patente": patente_norm}):
@@ -437,19 +456,21 @@ async def get_reporte_vehiculo(
             # --- Monto ---
             monto = float(doc.get("MONTO") or doc.get("monto") or 0)
 
-            # --- TIPO CORREGIDO: si manual, usar motivo o tipo_costo ---
-            tipo_final = "Otros"
-            if doc.get("origen_manual"):
-                tipo_final = doc.get("motivo") or doc.get("tipo_costo", "Gasto Manual")
+            # --- Tipo usando la constante centralizada ---
+            tipo_registro = doc.get("tipo_registro", "").upper()
+            if tipo_registro == "INFRACCION":
+                total_infracciones += monto
+                tipo_final = "Infracción"  # ← agregalo al mapa si querés
             else:
-                tipo_registro = doc.get("tipo_registro", "").upper()
-                if tipo_registro == "INFRACCION":
-                    tipo_final = "Infracción"
-                    total_infracciones += monto
+                # Si es gasto manual, usamos el tipo_costo que venga, o fallback
+                tipo_final = doc.get("tipo_costo", "Otros")
+
+            # Si querés ser 100% consistente, agregá esto arriba del archivo:
+            # TIPO_POR_ORIGEN["Infracción"] = "Infracción"
 
             costos_list.append(CostoItem(
-                id=str(doc["_id"]),  # ← FIX: _id para el frontend (botón Borrar)
-                tipo=tipo_final,  # ← FIX: Tipo real
+                _id=str(doc["_id"]),
+                tipo=TIPO_POR_ORIGEN.get(tipo_final, tipo_final),  # ← LA FORMA MÁS PRO
                 fecha=fecha_dt.strftime("%Y-%m-%d"),
                 descripcion=(doc.get("motivo") or doc.get("ACTA") or "Sin descripción")[:100],
                 importe=monto,

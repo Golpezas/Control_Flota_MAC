@@ -1,139 +1,174 @@
 // src/components/CostosTable.tsx
-import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
+
 import React, { useState } from 'react';
-import { deleteCostoItem } from '../api/vehiculos';
+import type { CostoItem } from '../api/models/vehiculos';
+import { deleteCostoItem } from '../api/vehiculos'; // ← IMPORT CLAVE
+
+// =================================================================
+// 1. TIPOS AUXILIARES
+// =================================================================
+
+type CostoOrigen = 'Finanzas' | 'Mantenimiento';
+
+export interface CostoItemExtended extends Omit<CostoItem, 'origen'> {
+    _id: string;
+    origen: string; // Permite cualquier origen (ETL o manual)
+}
+
+// =================================================================
+// 2. UTILIDADES
+// =================================================================
 
 const formatCurrency = (amount: number): string =>
     `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
+// =================================================================
+// 3. PROPS DEL COMPONENTE
+// =================================================================
+
 interface CostosTableProps {
     costos: CostoItemExtended[];
     onRefresh: () => void;
+    // Ya no usamos onDelete como prop → lo hacemos directo con deleteCostoItem
 }
+
+// =================================================================
+// 4. COMPONENTE PRINCIPAL
+// =================================================================
 
 const CostosTable: React.FC<CostosTableProps> = ({ costos, onRefresh }) => {
     const [isProcessing, setIsProcessing] = useState(false);
 
-    const handleDeleteClick = async (id: string, origen: 'Finanzas' | 'Mantenimiento') => {
+    const handleDeleteClick = async (id: string, origen: string) => {
+        // VALIDACIÓN CLAVE
         if (!id || id.trim() === '' || id === 'undefined') {
-            alert('Error: ID del costo inválido.');
+            alert('Error: ID del costo inválido. No se puede eliminar.');
+            console.error('ID inválido:', id);
             return;
         }
 
-        if (!window.confirm(`¿Eliminar permanentemente este costo?\n"${origen}" del ${id.slice(-8)}`)) {
+        if (!['Finanzas', 'Mantenimiento'].includes(origen)) {
+            alert('Este costo no se puede eliminar (no es manual).');
+            return;
+        }
+
+        const origenValido = origen as CostoOrigen;
+
+        if (!window.confirm(`¿Estás seguro de eliminar este costo?\nID: ${id.slice(-8)}\nOrigen: ${origen}`)) {
             return;
         }
 
         setIsProcessing(true);
         try {
-            await deleteCostoItem(id, origen);
+            // Llamada directa al API con orden correcto: ID primero, origen después
+            await deleteCostoItem(id, origenValido);
+
             alert('Costo eliminado correctamente');
-            onRefresh();
+            onRefresh(); // Recarga el reporte
         } catch (error) {
-            // Aquí usamos el error (para que no salte el warning)
-            console.error('Error al eliminar costo:', error);
-            alert('No se pudo eliminar. Puede que no sea un costo manual o ya no exista.');
+            // Manejo limpio sin 'any'
+            const mensaje = error instanceof Error 
+                ? error.message 
+                : 'Error desconocido al eliminar el costo';
+
+            console.error('Error al eliminar:', error);
+            alert(mensaje.includes('manual') 
+                ? 'Solo se pueden eliminar costos creados manualmente.' 
+                : mensaje
+            );
         } finally {
             setIsProcessing(false);
         }
     };
 
-    if (costos.length === 0) {
-        return (
-            <div style={{ padding: '30px', textAlign: 'center', color: '#666', fontSize: '1.1em' }}>
-                No se encontraron costos en este período.
-            </div>
-        );
-    }
-
     return (
         <div style={{ marginTop: '30px', overflowX: 'auto' }}>
-            <h2 style={{ color: '#1D3557', borderBottom: '2px solid #A8DADC', paddingBottom: '8px', marginBottom: '20px' }}>
+            <h2 style={{ 
+                borderBottom: '1px solid #ccc', 
+                paddingBottom: '10px', 
+                marginBottom: '20px', 
+                color: '#1D3557' 
+            }}>
                 Historial de Costos ({costos.length})
             </h2>
 
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
                 <thead>
                     <tr style={{ background: '#A8DADC', color: '#1D3557' }}>
-                        <th style={{ padding: '14px', textAlign: 'left' }}>Fecha</th>
-                        <th style={{ padding: '14px', textAlign: 'left' }}>Tipo</th>
-                        <th style={{ padding: '14px', textAlign: 'right' }}>Importe</th>
-                        <th style={{ padding: '14px', textAlign: 'center' }}>Origen</th>
-                        <th style={{ padding: '14px', textAlign: 'center' }}>Acciones</th>
+                        <th style={{ padding: '10px', textAlign: 'left' }}>Fecha</th>
+                        <th style={{ padding: '10px', textAlign: 'left' }}>Tipo</th>
+                        <th style={{ padding: '10px', textAlign: 'right' }}>Importe</th>
+                        <th style={{ padding: '10px', textAlign: 'center' }}>Origen</th>
+                        <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {costos
+                    {[...costos]
                         .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-                        .map((costo, i) => {
-                            const costoId = costo.id || costo._id;
+                        .map((costo, index) => {
+                            const safeKey = costo._id || `costo-${costo.fecha}-${costo.importe}-${index}`;
 
                             return (
-                                <React.Fragment key={costoId || i}>
-                                    <tr style={{ background: i % 2 === 0 ? '#F8F9FA' : 'white', borderBottom: '1px solid #eee' }}>
-                                        <td style={{ padding: '14px' }}>
-                                            {costo.fecha.split('T')[0]}
-                                        </td>
-                                        <td style={{ padding: '14px', fontWeight: 'bold', color: '#1D3557' }}>
-                                            {costo.tipo}
-                                        </td>
-                                        <td style={{ padding: '14px', textAlign: 'right', fontWeight: 'bold', color: '#E63946' }}>
-                                            {formatCurrency(costo.importe)}
-                                        </td>
-                                        <td style={{ padding: '14px', textAlign: 'center', fontSize: '0.9em', color: '#457B9D' }}>
-                                            {costo.origen}
-                                        </td>
-                                        <td style={{ padding: '14px', textAlign: 'center' }}>
-                                            <button
-                                                onClick={() => {
-                                                    if (costoId && window.confirm(
-                                                        `¿Eliminar "${costo.tipo}" del ${costo.fecha.split('T')[0]}?\n\nEste cambio es permanente.`
-                                                    )) {
-                                                        handleDeleteClick(costoId, costo.origen);
-                                                    }
-                                                }}
-                                                disabled={isProcessing || !costoId}
-                                                style={{
-                                                    padding: '10px 18px',
-                                                    background: isProcessing || !costoId ? '#999' : '#E63946',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '8px',
-                                                    cursor: isProcessing || !costoId ? 'not-allowed' : 'pointer',
-                                                    fontWeight: 'bold',
-                                                    fontSize: '0.9em',
-                                                    opacity: isProcessing || !costoId ? 0.6 : 1,
-                                                    transition: 'all 0.2s'
-                                                }}
-                                                onMouseOver={(e) => {
-                                                    if (!isProcessing && costoId) {
-                                                        e.currentTarget.style.background = '#d62839';
-                                                    }
-                                                }}
-                                                onMouseOut={(e) => {
-                                                    if (!isProcessing && costoId) {
-                                                        e.currentTarget.style.background = '#E63946';
-                                                    }
-                                                }}
-                                            >
-                                                {isProcessing ? 'Eliminando...' : 'Borrar'}
-                                            </button>
-                                        </td>
-                                    </tr>
-
-                                    {/* Fila de descripción */}
-                                    {costo.descripcion && (
-                                        <tr style={{ background: i % 2 === 0 ? '#F8F9FA' : 'white' }}>
-                                            <td colSpan={5} style={{ padding: '8px 14px 16px 50px', color: '#457B9D', fontStyle: 'italic', fontSize: '0.95em' }}>
-                                                {costo.descripcion}
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
+                                <tr
+                                    key={safeKey}
+                                    style={{
+                                        borderBottom: '1px solid #eee',
+                                        backgroundColor: index % 2 === 0 ? '#F8F9FA' : 'white'
+                                    }}
+                                >
+                                    <td style={{ padding: '10px' }}>
+                                        {costo.fecha ? costo.fecha.split('T')[0] : 'N/A'}
+                                    </td>
+                                    <td style={{ padding: '10px' }}>
+                                        {costo.descripcion || 'Sin Descripción'}
+                                    </td>
+                                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>
+                                        {formatCurrency(costo.importe)}
+                                    </td>
+                                    <td style={{ padding: '10px', textAlign: 'center', fontSize: '0.85em' }}>
+                                        {costo.origen}
+                                    </td>
+                                    <td style={{ padding: '10px', textAlign: 'center' }}>
+                                        <button
+                                            onClick={() => {
+                                                console.log('BORRANDO →', costo._id, costo.origen);
+                                                if (costo._id && window.confirm(`¿Seguro que querés BORRAR este costo?\nFecha: ${costo.fecha}\nOrigen: ${costo.origen}`)) {
+                                                    handleDeleteClick(costo._id, costo.origen);
+                                                }
+                                            }}
+                                            disabled={isProcessing || !costo._id}
+                                            style={{
+                                                padding: '6px 12px',
+                                                cursor: (isProcessing || !costo._id) ? 'not-allowed' : 'pointer',
+                                                background: (isProcessing || !costo._id) ? '#999' : '#E63946',
+                                                color: 'white',
+                                                border: 'none',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8em',
+                                                opacity: (isProcessing || !costo._id) ? 0.5 : 1,
+                                            }}
+                                        >
+                                            {isProcessing ? 'Borrando...' : 'Borrar'}
+                                        </button>
+                                    </td>
+                                </tr>
                             );
                         })}
                 </tbody>
             </table>
+
+            {costos.length === 0 && (
+                <div style={{
+                    padding: '20px',
+                    textAlign: 'center',
+                    color: '#457B9D',
+                    background: '#f8f9fa',
+                    borderRadius: '8px',
+                    marginTop: '10px'
+                }}>
+                    No se encontraron costos para este vehículo en el período seleccionado.
+                </div>
+            )}
         </div>
     );
 };

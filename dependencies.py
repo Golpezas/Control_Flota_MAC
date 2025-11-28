@@ -9,7 +9,7 @@ from dateutil.parser import parse, ParserError
 from fastapi import HTTPException
 from bson.objectid import ObjectId
 import re # Necesario para normalize_patente
-import certifi
+
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -30,22 +30,17 @@ if not MONGO_URI:
 _client: Optional[AsyncIOMotorClient] = None
 
 def connect_to_mongodb():
-    """Inicializa el cliente Motor de forma síncrona y retorna el cliente."""
+    """Función que usa tu main.py en startup"""
     global _client
     if _client is None:
-        print("Intentando conectar a MongoDB con Certifi...")
-        
-        # CLAVE: Usa tlsCAFile=certifi.where() para la conexión en Render
-        _client = AsyncIOMotorClient(
-            MONGO_URI,
-            tlsCAFile=certifi.where() 
-        )
-        
-        # IMPORTANTE: Eliminamos el _client.admin.command('ping') de aquí.
-        # Esa verificación se hace ahora de forma ASÍNCRONA en main.py (Paso 1).
-        print("Cliente Motor inicializado.")
-        
-    return _client # Retorna el objeto cliente.
+        _client = AsyncIOMotorClient(MONGO_URI)
+        try:
+            _client.admin.command('ping')
+            print("Conexión a MongoDB Atlas exitosa")
+        except Exception as e:
+            print(f"Error al conectar a MongoDB: {e}")
+            raise
+    return _client
 
 def get_db_collection(collection_name: str):
     """Función que usan todos tus routers"""
@@ -116,18 +111,15 @@ class DashboardResponse(BaseModel):
     
 # Modelo para un ítem de costo detallado
 class CostoItem(BaseModel):
-    id: Optional[str] = Field(default=None, alias="_id")  # ← ESTA LÍNEA ES LA CLAVE
-    tipo: str = Field(..., description="Tipo de costo (ej: 'Mantenimiento', 'Infracción').")
-    fecha: str = Field(..., description="Fecha del costo (YYYY-MM-DD).")
-    descripcion: str = Field(..., description="Descripción del costo.")
-    importe: float = Field(..., description="Monto del costo.")
-    origen: str = Field(..., description="Origen del costo (ej: 'Mantenimiento', 'Finanzas').")
-    metadata_adicional: Optional[Dict[str, Any]] = None
+    id: Optional[str] = Field(None, alias="_id")
+    tipo: str = Field(..., description="Tipo de costo (e.g., 'Servicio', 'Reparación', 'Multa/Infracción').")
+    fecha: str = Field(..., description="Fecha del evento (en formato string).")
+    descripcion: str
+    importe: float = Field(..., description="Monto del costo, > 0.0.")
+    origen: str = Field(..., description="Colección de origen ('Mantenimiento' o 'Finanzas').")
+    metadata_adicional: Optional[Dict[str, Any]] = Field(None, description="Metadatos adicionales del documento original.")
 
-    model_config = ConfigDict(
-        populate_by_name=True,        # ← Permite que Pydantic use el alias "_id"
-        extra="ignore"
-    )
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
 # Modelo de respuesta para el reporte consolidado de costos por vehículo
 class ReporteCostosResponse(BaseModel):
@@ -301,7 +293,7 @@ class Componente(BaseModel):
   ##      except Exception as e:
   ##          print(f"❌ Error al conectar a MongoDB: {e}")
   ##          client = None
-  ##          print("⚠️ ADVERTENCIA: La conexión a MongoDB falló durante el inicio.")
+  ##          print(⚠️ ADVERTENCIA: La conexión a MongoDB falló durante el inicio.")
 
 
 ##def get_db_client():
