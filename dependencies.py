@@ -29,30 +29,26 @@ if not MONGO_URI:
 _client: Optional[AsyncIOMotorClient] = None
 
 def connect_to_mongodb():
+    """Inicializa el cliente Motor de forma síncrona y retorna el cliente."""
     global _client
     if _client is None:
-        # 2. IMPORTANTE: Agregar tlsCAFile=certifi.where()
         print("Intentando conectar a MongoDB con Certifi...")
+        
+        # CLAVE: Usa tlsCAFile=certifi.where() para la conexión en Render
         _client = AsyncIOMotorClient(
             MONGO_URI,
             tlsCAFile=certifi.where() 
         )
-        try:
-            # Nota: Motor es asíncrono, el 'ping' aquí es síncrono si usas el driver standard,
-            # pero como _client es AsyncIOMotorClient, el comando debería ser awaitable 
-            # DENTRO de un contexto async. 
-            # Sin embargo, Motor conecta "lazy". El error real salta al intentar usarla.
-            print("Cliente Motor inicializado.")
-        except Exception as e:
-            print(f"Error al inicializar cliente: {e}")
-            raise
-    return _client
+        
+        # IMPORTANTE: Eliminamos el _client.admin.command('ping') de aquí.
+        # Esa verificación se hace ahora de forma ASÍNCRONA en main.py (Paso 1).
+        print("Cliente Motor inicializado.")
+        
+    return _client # Retorna el objeto cliente.
 
 def get_db_collection(collection_name: str):
-    """Función que usan todos tus routers"""
     if _client is None:
-        # Si es sync contexto, llama sync, pero en FastAPI es async, así que en main.py usa await connect_to_mongodb()
-        raise RuntimeError("MongoDB no conectado. Llama a connect_to_mongodb primero.")
+        connect_to_mongodb()
     db = _client[DB_NAME]
     return db[collection_name]
 

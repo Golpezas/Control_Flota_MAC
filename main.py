@@ -36,9 +36,21 @@ app.include_router(flota.router, prefix="")
 # =========================================================================
 
 @app.on_event("startup")
-async def startup_db_client():  # ← AHORA ES ASYNC
-    await connect_to_mongodb()  # ← AHORA USA AWAIT
-    print("CONEXIÓN A MONGODB ATLAS EXITOSA - API LISTA")
+async def startup_db_client():  # MANTENER ASYNC
+    # 1. Llamamos a la función SIN 'await'. Retorna el objeto cliente.
+    client = connect_to_mongodb() 
+    
+    try:
+        # 2. USA 'await' en la operación de red (ping) para verificar la conexión
+        await client.admin.command('ping') 
+        print("CONEXIÓN A MONGODB ATLAS EXITOSA - API LISTA")
+    except Exception as e:
+        # Si la conexión falla, se levanta el error para que el servidor no inicie.
+        print(f"❌ Error al verificar conexión en startup: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, 
+            detail="Fallo al conectar con la base de datos MongoDB."
+        )
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
