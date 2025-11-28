@@ -59,7 +59,6 @@ const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => (
     </div>
 );
 
-
 // =================================================================
 // COMPONENTE PRINCIPAL: DashboardPage
 // =================================================================
