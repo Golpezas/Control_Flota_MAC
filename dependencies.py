@@ -9,7 +9,7 @@ from dateutil.parser import parse, ParserError
 from fastapi import HTTPException
 from bson.objectid import ObjectId
 import re # Necesario para normalize_patente
-
+import certifi
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -26,19 +26,25 @@ DB_NAME = os.getenv("DB_NAME", "MacSeguridadFlota")
 if not MONGO_URI:
     raise RuntimeError("Falta MONGO_URI en las variables de entorno")
 
-# Cliente global
 _client: Optional[AsyncIOMotorClient] = None
 
-async def connect_to_mongodb():  # ← CAMBIO: async def
-    """Función que usa tu main.py en startup"""
+def connect_to_mongodb():
     global _client
     if _client is None:
-        _client = AsyncIOMotorClient(MONGO_URI)
+        # 2. IMPORTANTE: Agregar tlsCAFile=certifi.where()
+        print("Intentando conectar a MongoDB con Certifi...")
+        _client = AsyncIOMotorClient(
+            MONGO_URI,
+            tlsCAFile=certifi.where() 
+        )
         try:
-            await _client.admin.command('ping')  # ← CAMBIO: await
-            print("Conexión a MongoDB Atlas exitosa")
+            # Nota: Motor es asíncrono, el 'ping' aquí es síncrono si usas el driver standard,
+            # pero como _client es AsyncIOMotorClient, el comando debería ser awaitable 
+            # DENTRO de un contexto async. 
+            # Sin embargo, Motor conecta "lazy". El error real salta al intentar usarla.
+            print("Cliente Motor inicializado.")
         except Exception as e:
-            print(f"Error al conectar a MongoDB: {e}")
+            print(f"Error al inicializar cliente: {e}")
             raise
     return _client
 
