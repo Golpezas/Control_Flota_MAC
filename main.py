@@ -14,14 +14,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS TOTALMENTE ABIERTO (solo 24-48 hs, luego lo cerramos)
+# ==================== CORS - SOLUCIÓN DEFINITIVA ====================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://control-flota-mac.vercel.app",   # Tu frontend en producción
+        "http://localhost:3000",                  # Desarrollo local
+        "http://localhost:5173",                  # Si usás Vite
+        "https://control-flota-mac.vercel.app",   # Repetilo si da problemas
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+# =====================================================================
 
 # Routers
 app.include_router(archivos_router)
