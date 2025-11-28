@@ -51,7 +51,7 @@ MEDIA_ROOT = "C:/Users/Antonio/Documents/Projects/Control_Flota"
 # 1. LÓGICA CORE: OBTENER VENCIMIENTOS CRÍTICOS (ACTUALIZADA Y CORREGIDA)
 # =========================================================================
 
-def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
+async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
     """
     Consulta la colección Documentacion y genera alertas para documentos
     cuyo vencimiento está dentro de 'dias_tolerancia' o ya expiró.
@@ -61,22 +61,24 @@ def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
     alertas: List[Alerta] = []
 
     # 1. Obtener la metadata de todos los vehículos (para modelo, nro_movil)
-    vehiculos_metadata = {
-        doc['_id']: doc for doc in db_vehiculos.find({}, 
-        {'_id': 1, 'descripcion_modelo': 1, 'nro_movil': 1})
-    }
+    vehiculos_cursor = db_vehiculos.find(
+        {}, 
+        {'_id': 1, 'descripcion_modelo': 1, 'nro_movil': 1}
+    )
+    vehiculos_list = await vehiculos_cursor.to_list(length=None)
+    vehiculos_metadata = {doc['_id']: doc for doc in vehiculos_list}
     
     # 2. Iterar por cada tipo de documento de vencimiento configurado
     for doc_type, config in VENCIMIENTO_MAP.items():
     
         # 3. Consulta MongoDB para documentos de este tipo con fecha de vencimiento NO nula
-        documentos = db_documentacion.find({
+        documentos_cursor = db_documentacion.find({
             "tipo_documento": doc_type,
             "fecha_vencimiento": {"$ne": None} 
         })
         
         # 🔑 FIX: Convertir el cursor a lista para poder contar y usar la data
-        documentos_list = list(documentos) 
+        documentos_list = await documentos_cursor.to_list(length=None)
 
         # 4. Procesar documentos y generar alertas
         for doc in documentos_list: # ⬅️ Usamos la lista, no el cursor original
@@ -100,7 +102,7 @@ def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
             dias_critico = config.get("dias_critico", dias_tolerancia)
                         
             if diff_days <= dias_critico:
-                prioridad: Alerta.Prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
+                prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
                 print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days}")
                 mensaje = f"EXPIRADO" if diff_days <= 0 else f"Vence en {diff_days} días"
             else:
@@ -151,7 +153,7 @@ async def create_vehiculo(data: VehiculoCreateInput):
     db_vehiculos = get_db_collection("Vehiculos")
     patente_normalizada = normalize_patente(data.patente)
     
-    if db_vehiculos.find_one({"_id": patente_normalizada}):
+    if await db_vehiculos.find_one({"_id": patente_normalizada}):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Ya existe un vehículo con la patente {data.patente.upper()}."
@@ -173,12 +175,12 @@ async def create_vehiculo(data: VehiculoCreateInput):
     }
     
     try:
-        db_vehiculos.insert_one(vehiculo_doc)
+        await db_vehiculos.insert_one(vehiculo_doc)
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al insertar: {str(e)}")
     
     # Mapeo de vuelta para la respuesta Pydantic (snake_case)
-    new_vehiculo = db_vehiculos.find_one({"_id": patente_normalizada})
+    new_vehiculo = await db_vehiculos.find_one({"_id": patente_normalizada})
     vehiculo_data = {
         # Usamos "patente" para mapear al _id (esto asume que el alias en dependencies.py está correcto)
         "patente": new_vehiculo.get("_id"), 
@@ -222,13 +224,13 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
             
     if not update_doc['$set']:
          # No hay cambios, devolver el vehículo actual
-         updated_doc = db_vehiculos.find_one({"_id": patente_normalizada})
+         updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada})
          if not updated_doc:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con patente {patente} no encontrado.")
          
     else:
         # 2. Ejecutar la actualización en MongoDB
-        update_result = db_vehiculos.update_one(
+        update_result = await db_vehiculos.update_one(
             {"_id": patente_normalizada},
             update_doc
         )
@@ -237,7 +239,7 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con patente {patente} no encontrado.")
             
         # 3. Devolver el documento actualizado
-        updated_doc = db_vehiculos.find_one({"_id": patente_normalizada})
+        updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada})
 
     # Mapeo de vuelta para Pydantic
     vehiculo_data = {
@@ -276,145 +278,95 @@ async def get_vehiculos(  # ← Renombrado a get_vehiculos (más simple y genér
                 {"NRO_MOVIL": regex_query},
                 {"DESCRIPCION_MODELO": regex_query}
             ]
-
-        cursor = db_vehiculos.find(query).skip(skip).limit(limit)
         
-        vehiculos_list = []
-        for doc in cursor:
-            nro_movil = doc.get("NRO_MOVIL") or doc.get("nro_movil", "N/A")
-            descripcion_modelo = doc.get("DESCRIPCION_MODELO") or doc.get("descripcion_modelo", "Sin Modelo")
-            anio = doc.get("ANIO") or doc.get("anio", 0)
-            color = doc.get("COLOR") or doc.get("color", "N/A")
-            
+        cursor = db_vehiculos.find(query).skip(skip).limit(limit)
+        vehiculos_list = await cursor.to_list(length=limit)
+        
+        # Procesar cada documento para mapear a Vehiculo (snake_case)
+        vehiculos_response = []
+        for doc in vehiculos_list:
             vehiculo_data = {
-                "patente": doc.get("_id"), 
-                "patente_original": doc.get("patente_original", "N/A"),
-                "activo": doc.get("activo", False), 
-                "anio": anio,
-                "color": color, 
-                "modelo": doc.get("MODELO", "Sin Modelo"), 
-                "descripcion_modelo": descripcion_modelo,
-                "nro_movil": str(nro_movil), 
-                "tipo_combustible": doc.get("TIPO_COMBUSTIBLE", "N/A"),
+                "patente": doc.get("_id"),
+                "patente_original": doc.get("patente_original"),
+                "activo": doc.get("activo", False),
+                "anio": doc.get("ANIO"),
+                "color": doc.get("COLOR"),
+                "modelo": doc.get("MODELO"),
+                "descripcion_modelo": doc.get("DESCRIPCION_MODELO"),
+                "nro_movil": doc.get("NRO_MOVIL"),
+                "tipo_combustible": doc.get("TIPO_COMBUSTIBLE"),
                 "documentos_digitales": doc.get("documentos_digitales", []),
             }
-            #print(f"BACKEND MAPEO: Patente={vehiculo_data['patente']}, Movil={vehiculo_data['nro_movil']}, Modelo={vehiculo_data['descripcion_modelo']}, Año={vehiculo_data['anio']}")
-            
-            vehiculos_list.append(Vehiculo(**vehiculo_data))
+            vehiculos_response.append(Vehiculo(**vehiculo_data))
         
-        if vehiculos_list is None:
-            vehiculos_list = []  # Ensure list if None
-        
-        #print(f"DEBUG: vehiculos_list length = {len(vehiculos_list)}") 
-        return vehiculos_list
+        return vehiculos_response
     except Exception as e:
-        print(f"ERROR EN LIST_VEHICULOS: {str(e)}") 
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
-
-@router.get("/vehiculos/{patente}", response_model=Vehiculo, summary="Obtiene un vehículo por patente.")
-async def get_vehiculo_by_patente(patente: str):
-    """Obtiene los detalles de un vehículo usando su patente."""
-    patente_norm = normalize_patente(patente)
-    db_vehiculos = get_db_collection("Vehiculos")
-    vehiculo = db_vehiculos.find_one({"_id": patente_norm})
-    if not vehiculo:
-        raise HTTPException(status_code=404, detail=f"Vehículo con patente {patente} no encontrado.")
-    return vehiculo
-
-@router.delete("/vehiculos/{patente}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina un vehículo y sus registros asociados.")
-async def delete_vehiculo(patente: str):
-    """
-    Elimina un vehículo de la colección 'Vehiculos' y todos sus registros
-    asociados en Documentacion, Mantenimiento, Finanzas, Componentes y Flota_Estado.
-    """
-    patente_norm = normalize_patente(patente)
-    db_vehiculos = get_db_collection("Vehiculos")
-
-    # 1. Eliminar de la colección principal
-    delete_result = db_vehiculos.delete_one({"_id": patente_norm})
-    
-    if delete_result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail=f"Vehículo con patente {patente} no encontrado.")
-
-    # 2. Eliminar registros asociados en otras colecciones
-    for collection_name in ["Documentacion", "Mantenimiento", "Finanzas", "Componentes", "Flota_Estado"]:
-        collection = get_db_collection(collection_name)
-        # Se asume que todas las colecciones tienen el campo 'patente'
-        collection.delete_many({"patente": patente_norm}) 
-
-    # No retorna contenido
-    return Response(status_code=status.HTTP_204_NO_CONTENT) 
+        raise HTTPException(status_code=500, detail=f"Error al listar vehículos: {str(e)}")
 
 # =========================================================================
-# 3. ENDPOINTS: REPORTES DE VEHÍCULO Y COSTOS
+# 3. ENDPOINTS: REPORTES
 # =========================================================================
 
-@router.get("/alertas/criticas", response_model=List[Alerta], summary="Obtiene todas las alertas críticas (expiradas o próximas a vencer).")
-async def get_alertas_criticas(dias_tolerancia: int = Query(30, description="Días máximos de antelación para considerar una alerta 'ALTA'")):
-    return get_vencimientos_criticos_alertas(dias_tolerancia)
-
-@router.get("/vehiculos/{patente}/reporte", response_model=ReporteCostosResponse)
+# -------------------------------------------------------------------------
+# 3.1. GET /reportes/vehiculo/{patente} (Reporte por Vehículo)
+# -------------------------------------------------------------------------
+@router.get("/reportes/vehiculo/{patente}", response_model=ReporteCostosResponse, summary="Obtiene el reporte consolidado de costos para un vehículo específico.")
 async def get_reporte_vehiculo(
     patente: str,
-    start_date: str = Query(..., description="Fecha inicio YYYY-MM-DD"),
-    end_date: str = Query(..., description="Fecha fin YYYY-MM-DD")
+    fecha_inicio: Optional[str] = Query(None, description="Fecha de inicio del periodo (YYYY-MM-DD)."),
+    fecha_fin: Optional[str] = Query(None, description="Fecha de fin del periodo (YYYY-MM-DD).")
 ):
     patente_norm = normalize_patente(patente)
-    
-    # === 1. Validar vehículo ===
     db_vehiculos = get_db_collection("Vehiculos")
-    vehiculo = db_vehiculos.find_one({"_id": patente_norm})  # SIN await
-    if not vehiculo:
-        raise HTTPException(status_code=404, detail=f"Vehículo {patente_norm} no encontrado")
+    db_mant = get_db_collection("Mantenimiento")
+    db_finanzas = get_db_collection("Finanzas")
 
-    # === 2. Parsear fechas ===
-    try:
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Formato de fecha inválido. Usa YYYY-MM-DD")
+    # Validar patente
+    if not await db_vehiculos.find_one({"_id": patente_norm}):
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado.")
 
-    # === 3. Variables de totales ===
-    costos_list: List[CostoItem] = []
+    # Fechas default: últimos 365 días
+    end_dt = datetime.now()
+    start_dt = end_dt - timedelta(days=365) if not fecha_inicio else datetime.fromisoformat(fecha_inicio)
+    if fecha_fin:
+        end_dt = datetime.fromisoformat(fecha_fin)
+
     total_mantenimiento = 0.0
     total_infracciones = 0.0
+    costos_list: List[CostoItem] = []
 
-    # === 4. MANTENIMIENTOS (CORREGIDO 100% PARA COSTOS MANUALES) ===
-    for doc in get_db_collection("Mantenimiento").find({
-        "patente": patente_norm,
-        "fecha": {"$gte": start_dt, "$lte": end_dt}
-    }):
-        monto = float(doc.get("costo_monto") or 0)
-        if monto <= 0:
+    # === 4. MANTENIMIENTO ===
+    mant_cursor = db_mant.find({"patente": patente_norm})
+    mant_list = await mant_cursor.to_list(length=None)
+    for doc in mant_list:
+        fecha_raw = doc.get("fecha")
+        if not fecha_raw:
             continue
-
-        # TIPO REAL
-        tipo_real = "Mantenimiento General"
-        if doc.get("origen_manual"):
-            tipo_real = doc.get("motivo", "Reparación/Mantenimiento")
-        else:
-            tipo_real = doc.get("DESCRIPCION", "Mantenimiento General")
-
-        # FECHA SEGURA
-        fecha_raw = doc.get("fecha") or doc.get("dia")
-        if isinstance(fecha_raw, datetime):
-            fecha_iso = fecha_raw.strftime("%Y-%m-%d")
-        else:
-            fecha_iso = str(fecha_raw)[:10] if fecha_raw else "1900-01-01"
-
+        
+        fecha_dt = safe_mongo_date_to_datetime(fecha_raw)
+        if not fecha_dt or not (start_dt <= fecha_dt <= end_dt):
+            continue
+        
+        monto = doc.get("costo_monto", 0)
+        if math.isnan(monto):
+            monto = 0
+        
+        fecha_iso = fecha_dt.strftime("%Y-%m-%d") if fecha_dt else "N/A"
+        
         total_mantenimiento += monto
-
         costos_list.append(CostoItem(
-            id=str(doc["_id"]),                    # ← AHORA SÍ APARECE EN EL JSON
-            tipo=tipo_real.strip(),
+            _id=str(doc["_id"]),
+            tipo=TIPO_POR_ORIGEN["Mantenimiento"],
             fecha=fecha_iso,
-            descripcion=doc.get("descripcion", doc.get("DESCRIPCION", "Sin descripción")),
+            descripcion=doc.get("DESCRIPCION", "Servicio técnico"),
             importe=monto,
             origen="Mantenimiento"
         ))
 
     # === 5. FINANZAS (infracciones + gastos manuales) ===
-    for doc in get_db_collection("Finanzas").find({"patente": patente_norm}):
+    finanzas_cursor = db_finanzas.find({"patente": patente_norm})
+    finanzas_list = await finanzas_cursor.to_list(length=None)
+    for doc in finanzas_list:
         try:
             # --- Parseo seguro de fecha ---
             fecha_raw = doc.get("dia") or doc.get("fecha")
@@ -437,19 +389,21 @@ async def get_reporte_vehiculo(
             # --- Monto ---
             monto = float(doc.get("MONTO") or doc.get("monto") or 0)
 
-            # --- TIPO CORREGIDO: si manual, usar motivo o tipo_costo ---
-            tipo_final = "Otros"
-            if doc.get("origen_manual"):
-                tipo_final = doc.get("motivo") or doc.get("tipo_costo", "Gasto Manual")
+            # --- Tipo usando la constante centralizada ---
+            tipo_registro = doc.get("tipo_registro", "").upper()
+            if tipo_registro == "INFRACCION":
+                total_infracciones += monto
+                tipo_final = "Infracción"  # ← agregalo al mapa si querés
             else:
-                tipo_registro = doc.get("tipo_registro", "").upper()
-                if tipo_registro == "INFRACCION":
-                    tipo_final = "Infracción"
-                    total_infracciones += monto
+                # Si es gasto manual, usamos el tipo_costo que venga, o fallback
+                tipo_final = doc.get("tipo_costo", "Otros")
+
+            # Si querés ser 100% consistente, agregá esto arriba del archivo:
+            # TIPO_POR_ORIGEN["Infracción"] = "Infracción"
 
             costos_list.append(CostoItem(
-                id=str(doc["_id"]),  # ← FIX: _id para el frontend (botón Borrar)
-                tipo=tipo_final,  # ← FIX: Tipo real
+                _id=str(doc["_id"]),
+                tipo=TIPO_POR_ORIGEN.get(tipo_final, tipo_final),  # ← LA FORMA MÁS PRO
                 fecha=fecha_dt.strftime("%Y-%m-%d"),
                 descripcion=(doc.get("motivo") or doc.get("ACTA") or "Sin descripción")[:100],
                 importe=monto,
@@ -464,7 +418,7 @@ async def get_reporte_vehiculo(
     costos_list.sort(key=lambda x: x.fecha or "1900-01-01", reverse=True)
 
     # === 7. Alertas (síncrono) ===
-    todas_alertas = get_vencimientos_criticos_alertas(60)
+    todas_alertas = await get_vencimientos_criticos_alertas(60)
     alertas = [a for a in todas_alertas if a.patente == patente_norm]
 
     return ReporteCostosResponse(
@@ -480,7 +434,7 @@ async def get_reporte_vehiculo(
 # 3.2. GET /dashboard (Resumen de la Flota) - FALTANTE
 # -------------------------------------------------------------------------
 # Función auxiliar (se define fuera del endpoint)
-def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]:
+async def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]:
     db_mant = get_db_collection("Mantenimiento")
     db_finanzas = get_db_collection("Finanzas")
 
@@ -494,7 +448,8 @@ def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]:
         { "$match": { "fecha": { "$gte": start_date, "$lte": end_date } } },
         { "$group": { "_id": None, "total": { "$sum": "$costo_monto" } } }
     ]
-    resumen_mant_result = list(db_mant.aggregate(pipeline_mant))
+    mant_agg_cursor = db_mant.aggregate(pipeline_mant)
+    resumen_mant_result = await mant_agg_cursor.to_list(length=None)
     total_mantenimiento = resumen_mant_result[0]["total"] if resumen_mant_result and resumen_mant_result[0].get("total") is not None else 0.0
 
     # Total Infracciones (campo 'dia' string/date)
@@ -507,7 +462,8 @@ def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]:
         },
         { "$group": { "_id": None, "total": { "$sum": "$MONTO" } } }
     ]
-    resumen_infr_result = list(db_finanzas.aggregate(pipeline_infracciones))
+    infr_agg_cursor = db_finanzas.aggregate(pipeline_infracciones)
+    resumen_infr_result = await infr_agg_cursor.to_list(length=None)
     total_infracciones = resumen_infr_result[0]["total"] if resumen_infr_result and resumen_infr_result[0].get("total") is not None else 0.0
     
     return {
@@ -519,10 +475,10 @@ def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]:
 async def get_dashboard_data():
     db_vehiculos = get_db_collection("Vehiculos")
 
-    total_vehiculos = db_vehiculos.count_documents({})
-    vehiculos_activos = db_vehiculos.count_documents({"activo": True})
-    resumen_costos = get_resumen_costos_dashboard(dias_historia=365)
-    alertas_criticas = get_vencimientos_criticos_alertas(dias_tolerancia=30)
+    total_vehiculos = await db_vehiculos.count_documents({})
+    vehiculos_activos = await db_vehiculos.count_documents({"activo": True})
+    resumen_costos = await get_resumen_costos_dashboard(dias_historia=365)
+    alertas_criticas = await get_vencimientos_criticos_alertas(dias_tolerancia=30)
     total_general = resumen_costos["total_mantenimiento"] + resumen_costos["total_infracciones"]
     
     return DashboardResponse(
@@ -573,7 +529,7 @@ async def create_costo_manual(costo: CostoManualInput):
         raise HTTPException(status_code=400, detail="Origen de costo no válido.")
 
     try:
-        insert_result = collection.insert_one(doc_data)
+        await collection.insert_one(doc_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al insertar el costo manual: {str(e)}")
 
@@ -604,7 +560,7 @@ async def delete_costo_manual(
     
     # ANTES: solo borraba si tenía origen_manual: True
     # AHORA: BORRA TODO SIN PREGUNTAR → MODO LIMPIEZA TOTAL
-    delete_result = collection.delete_one({"_id": obj_id})
+    delete_result = await collection.delete_one({"_id": obj_id})
     
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Registro no encontrado.")
@@ -672,10 +628,10 @@ async def limpiar_costos_basura(
         # filtro["tipo_registro"] = "SERVICIO_RENAULT"  # Ej: solo ciertos tipos
         
         if dry_run:
-            count = collection.count_documents(filtro)
+            count = await collection.count_documents(filtro)
             detalles[col_name] = count
         else:
-            resultado = collection.delete_many(filtro)
+            resultado = await collection.delete_many(filtro)
             eliminados = resultado.deleted_count
             detalles[col_name] = eliminados
             total_eliminados += eliminados
