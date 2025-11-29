@@ -1,5 +1,5 @@
 // src/pages/VehiculoDetail.tsx (Código final y corregido)
-import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
+//import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
 import React, { useEffect, useState, useMemo, useCallback } from 'react'; 
 import { useParams, Link } from 'react-router-dom';
 import type { 
@@ -15,6 +15,25 @@ import {
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
 import CostosTable from '../components/CostosTable'; 
+
+// =================================================================
+// Definimos el tipo de origen usado en el mapeo
+type CostoOrigen = 'Finanzas' | 'Mantenimiento';
+
+// Definición local de CostoItemExtended para incluir 'tipo_costo'
+// (Esta definición se alinea con lo que CostosTable requiere y lo que el backend envía)
+export interface CostoItemExtended {
+    _id: string; 
+    id: string;
+    tipo: string; 
+    tipo_costo: string; 
+    fecha: string;
+    descripcion: string;
+    importe: number;
+    origen: CostoOrigen;
+    // 🎯 FIX CRÍTICO: Se cambia '| null' a '| undefined' para alinearse con CostosTable
+    metadata_adicional: Record<string, unknown> | undefined; 
+}
 
 // Definimos la URL de la API (asumimos que está en localhost:8000)
 const API_URL = 'http://localhost:8000'; 
@@ -187,12 +206,14 @@ const VehiculoDetail: React.FC = () => {
             const detallesExtendido: CostoItemExtended[] = reporteData.detalles.map(d => ({
                 id: d._id,
                 _id: d._id,
-                tipo: d.tipo_costo || "Mantenimiento General", // ← renombramos aquí
+                tipo: d.tipo_costo || "Mantenimiento General",
+                tipo_costo: d.tipo_costo || "Mantenimiento General", 
                 fecha: d.fecha.split('T')[0] || d.fecha,
                 descripcion: d.descripcion || "Sin descripción",
                 importe: d.importe,
-                origen: d.origen as 'Finanzas' | 'Mantenimiento',
-                metadata_adicional: d.metadata_adicional ?? null,
+                origen: d.origen as CostoOrigen,
+                // 🎯 FIX CRÍTICO: Se usa '?? undefined' para cumplir con el tipo de la interfaz
+                metadata_adicional: d.metadata_adicional ?? undefined, 
             }));
 
             setVehiculo(vehiculoData);
