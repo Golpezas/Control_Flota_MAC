@@ -41,23 +41,29 @@ interface AlertaItemProps {
     alerta: Alerta;
 }
 
-const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => (
-    <div style={{ 
-        padding: '15px', 
-        borderBottom: '1px solid #eee', 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        background: 'white' 
-    }}>
-        <div style={{ fontWeight: 'bold', color: alerta.prioridad === 'CRÍTICA' ? '#E63946' : '#F4A261' }}>
-            🚨 {alerta.tipo_documento}
+const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
+    // 🚨 LOG DE DEPURACIÓN 2: Muestra el valor de 'patente' justo antes de renderizar
+    console.log(`DEBUG ALERTA ITEM - Patente recibida para renderizar: ${alerta.patente}, Descripción: ${alerta.descripcion_modelo}`);
+
+    return (
+        <div style={{ 
+            padding: '15px', 
+            borderBottom: '1px solid #eee', 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center', 
+            background: 'white' 
+        }}>
+            <div style={{ fontWeight: 'bold', color: alerta.prioridad === 'CRÍTICA' ? '#E63946' : '#F4A261' 
+}}>
+                🚨 {alerta.tipo_documento}
+            </div>
+            <div>
+                Móvil: **{alerta.patente || 'N/A'}** ({alerta.descripcion_modelo || 'Vehículo'}) - Vence en **{alerta.dias_restantes}** días.
+            </div>
         </div>
-        <div>
-            Móvil: **{alerta.patente || 'N/A'}** ({alerta.descripcion_modelo || 'Vehículo'}) - Vence en **{alerta.dias_restantes}** días.
-        </div>
-    </div>
-);
+    );
+};
 
 // =================================================================
 // COMPONENTE PRINCIPAL: DashboardPage
@@ -95,8 +101,13 @@ const DashboardPage: React.FC = () => {
         setAlertsError(null);
         try {
             const data = await fetchGlobalAlertas();
-
-            //console.log("DEBUG FRONTEND COMPONENT: Alertas procesadas para el componente:", data);
+            
+            // 🚨 LOG DE DEPURACIÓN 1: Muestra los datos de la primera alerta
+            if (data.length > 0) {
+                 console.log("DEBUG API RESPONSE - Primer Objeto Alerta:", data[0]);
+            } else {
+                 console.log("DEBUG API RESPONSE - No hay alertas");
+            }
 
             setAlertasCriticas(data);
         } catch (e: unknown) {
