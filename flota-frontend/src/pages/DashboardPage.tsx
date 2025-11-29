@@ -59,7 +59,7 @@ const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
                 🚨 {alerta.tipo_documento}
             </div>
             <div>
-                Patente: **{alerta.patente || 'N/A'}** (Móvil: {alerta.movil_nro || 'N/A'}, {alerta.descripcion_modelo || 'Vehículo'})
+                Patente: **{alerta.patente || 'N/A'}** (Movil: {alerta.movil_nro || 'N/A'}, {alerta.descripcion_modelo || 'Vehículo'})
             </div>
         </div>
     );
