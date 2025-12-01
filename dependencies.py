@@ -137,11 +137,16 @@ class ReporteCostosResponse(BaseModel):
     model_config = BASE_CONFIG_WITH_NUMERIC_FIX
 
 class DocumentoDigital(BaseModel):
-    tipo: Optional[str] = None
-    nombre_archivo: Optional[str] = Field(None, alias="nombre_archivo")
-    path_esperado: Optional[str] = Field(None, alias="path_esperado")
-    nombre_archivo_patron: Optional[str] = Field(None, alias="nombre_archivo_patron")
-    path_patron_ejemplo: Optional[str] = Field(None, alias="path_patron_ejemplo")
+    tipo: str
+    nombre_archivo: Optional[str] = None
+    path_esperado: Optional[str] = None
+    nombre_archivo_patron: Optional[str] = None
+    path_patron_ejemplo: Optional[str] = None
+    existe_fisicamente: Optional[bool] = False
+    file_id: Optional[str] = None   # ← ESTA LÍNEA ES LA QUE FALTABA
+
+    class Config:
+        extra = "allow"  # Permite campos extras si vienen de Mongo
 
 class Alerta(BaseModel):
     patente: str
