@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+motor
+python-dotenv
+python-dateutil
+pydantic
+python-multipart
+bcrypt
+pyjwt
+certifi

@@ -13,24 +13,6 @@ const VehiculoTableRow: React.FC<{
 }> = ({ v, index, handleDelete }) => {
   const canPerformAction = !!v._id;
 
-  /* //LOG 1: Detección temprana de filas problemáticas (lo primero que se ejecuta)
-  if (!v._id || v._id.trim() === '') {
-    console.error(
-      `🚨 [VehiculoTableRow] FILA SIN _id → índice: ${index} | nro_movil: "${v.nro_movil}" | modelo: "${v.descripcion_modelo}" | año: ${v.anio}`
-    );
-  } else {
-    console.log(
-      `✅ [VehiculoTableRow] Fila OK → índice: ${index} | _id: ${v._id} | móvil: ${v.nro_movil || 'N/A'} | año: ${v.anio || 'N/A'}`
-    );
-  }
-
-  // LOG 2: Debug específico cuando nro_movil está vacío pero hay _id
-  if (v._id && !v.nro_movil) {
-    console.warn(
-      `⚡ [VehiculoTableRow] Móvil vacío con patente válida → _id: ${v._id} | descripción_modelo: "${v.descripcion_modelo}"`
-    );
-  } */
-
   return (
     <tr
       style={{

@@ -12,10 +12,10 @@ import type {
 import type { Alerta } from './models/vehiculos';
 
 // 🔑 CORRECCIÓN: Asegura que API_URL es exportada
-export const API_URL = 'http://localhost:8000'; // ⬅️ DEBE tener 'export'
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'; // ⬅️ DEBE tener 'export'
 
 const apiClient = axios.create({
-    baseURL: API_URL,
+    baseURL: API_BASE,
     headers: {
         'Content-Type': 'application/json',
     },

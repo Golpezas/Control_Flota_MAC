@@ -2,12 +2,12 @@
 //import type { CostoItemExtended } from '../types/costos';  // ← agregá "type"
 import React, { useEffect, useState, useMemo, useCallback } from 'react'; 
 import { useParams, Link } from 'react-router-dom';
+import Modal from 'react-modal';  // Nueva import para modal
 import type { 
     Vehiculo, 
     ReporteCostosResponse, 
     Alerta, 
     DocumentoDigital, 
-    //CostoItem // Se sigue importando, pero se usará una versión extendida localmente
 } from '../api/models/vehiculos'; 
 import { 
     fetchVehiculoByPatente, 
@@ -36,7 +36,7 @@ export interface CostoItemExtended {
 }
 
 // Definimos la URL de la API (asumimos que está en localhost:8000)
-const API_URL = 'http://localhost:8000'; 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // =================================================================
 // UTILITY FUNCTION
@@ -65,6 +65,7 @@ const DetailItem: React.FC<DetailItemProps> = ({ label, value }) => (
     </div>
 );
 
+/*
 // 2. Componente DocumentItem 
 interface DocumentItemProps {
     documento: DocumentoDigital;
@@ -107,6 +108,8 @@ const DocumentItem: React.FC<DocumentItemProps> = ({ documento, onRefresh }) => 
         </div>
     );
 };
+
+*/
 
 // 3. Componente CostosSummary
 interface CostosSummaryProps {
@@ -181,6 +184,13 @@ const VehiculoDetail: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // Nuevos estados para gestión de documentos digitales (modal y preview)
+    // JSDoc: Estados normalizados para modal condicional, con validación nullish
+    const [modalIsOpen, setModalIsOpen] = useState(false);
+    const [docSeleccionado, setDocSeleccionado] = useState<DocumentoDigital | null>(null);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
+
     // Obtener la fecha de inicio del período de 12 meses
     const twelveMonthsAgo = useMemo(() => {
         const d = new Date();
@@ -232,6 +242,113 @@ const VehiculoDetail: React.FC = () => {
         
     }, [patente, twelveMonthsAgo]); 
 
+    // Función para abrir modal y cargar preview (condicional basado en file_id)
+    // JSDoc: Handler async con validación de existencia y error handling
+    const abrirModalDocumento = async (doc: DocumentoDigital) => {
+        setDocSeleccionado(doc);
+        setArchivoNuevo(null);
+        setPreviewUrl(null);  // Limpia preview anterior para evitar leaks
+
+        if (doc.file_id) {
+            try {
+                const res = await fetch(`${API_URL}/api/archivos/descargar/${doc.file_id}`);
+                if (!res.ok) {
+                    throw new Error(`Error HTTP: ${res.status}`);
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                setPreviewUrl(url);
+            } catch (err) {
+                console.error("Error cargando vista previa:", err);
+                alert("No se pudo cargar la vista previa del documento.");
+            }
+        }
+
+        setModalIsOpen(true);
+    };
+
+    // Handler para cambio de archivo nuevo
+    // JSDoc: Validación client-side para tipos/tamaños (mejora UX)
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            const file = e.target.files[0];
+            if (file.size > 50 * 1024 * 1024) {  // 50MB max (normativa: evita overload)
+                alert("Archivo demasiado grande (máx. 50MB).");
+                return;
+            }
+            setArchivoNuevo(file);
+        }
+    };
+
+    // Función para subir/reemplazar documento
+    // JSDoc: Async POST con FormData, actualización local y refetch
+    const subirDocumento = async () => {
+        if (!archivoNuevo || !docSeleccionado || !vehiculo?._id) {
+            alert("Selecciona un archivo y asegúrate de que el vehículo esté cargado.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append("patente", vehiculo._id);
+        formData.append("file", archivoNuevo);
+
+        try {
+            const res = await fetch(`${API_URL}/api/archivos/subir-documento`, {
+                method: "POST",
+                body: formData,
+            });
+
+            if (!res.ok) {
+                throw new Error(`Error HTTP: ${res.status}`);
+            }
+
+            const data = await res.json();
+            const { file_id } = data;  // Usa file_id del response (normalizado)
+
+            // Actualiza array documentos_digitales localmente (optimismo UI)
+            const nuevosDocs = (vehiculo.documentos_digitales || []).map(d =>
+                d.tipo === docSeleccionado.tipo 
+                    ? { ...d, file_id, nombre_archivo: archivoNuevo.name, existe_fisicamente: true } 
+                    : d
+            );
+
+            // Actualiza estado del vehículo
+            setVehiculo(prev => prev ? { ...prev, documentos_digitales: nuevosDocs } : null);
+
+            setModalIsOpen(false);
+            handleRefreshData();  // Refetch para sincronizar con DB (asumiendo existe)
+        } catch (err) {
+            console.error("Error en subida:", err);
+            alert("Error al subir el documento. Intenta nuevamente.");
+        } finally {
+            // Limpieza: Revoca URL para evitar memory leaks (mejor práctica)
+            if (previewUrl) URL.revokeObjectURL(previewUrl);
+        }
+    };
+
+    // Handler para descarga (actualizado para file_id)
+    const handleDownload = async (fileId: string) => {
+        if (!fileId) {
+            alert("No hay documento para descargar.");
+            return;
+        }
+        try {
+            const res = await fetch(`${API_URL}/api/archivos/descargar/${fileId}`);
+            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = docSeleccionado?.nombre_archivo || 'documento';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Error en descarga:", err);
+            alert("No se pudo descargar el documento.");
+        }
+    };
 
     // useEffect de Carga Inicial
     useEffect(() => {
@@ -285,26 +402,176 @@ const VehiculoDetail: React.FC = () => {
                         <DetailItem label="Estado" value={vehiculo.activo ? 'Activo ✅' : 'Inactivo 🛑'} />
                     </div>
                         
-                    <h2 style={{ borderBottom: '1px solid #ccc', paddingBottom: '10px', margin: '30px 0 20px 0', color: '#1D3557' }}>
-                        📂 Documentación Digital
-                    </h2>
-                    {/* CORRECCIÓN: Agregar comprobación de length y cambiar la clave en el map */}
-                    {vehiculo.documentos_digitales && vehiculo.documentos_digitales.length > 0 ? (
-                        <div style={{ background: '#F8F9FA', padding: '15px', borderRadius: '4px' }}>
-                            {vehiculo.documentos_digitales.map((doc, index) => (
-                                <DocumentItem 
-                                    key={`${doc.tipo}-${index}`} // FIX: Clave única combinando tipo e índice
-                                    documento={doc} 
-                                    onRefresh={handleRefreshData} 
+                    {/* ========================================= */}
+                    {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS)    */}
+                    {/* ========================================= */}
+                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#f8fffe' }}>
+                        <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>Documentos Digitales</h2>
+
+                        {vehiculo.documentos_digitales?.length === 0 ? (
+                            <p style={{ color: '#666', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
+                        ) : (
+                            vehiculo.documentos_digitales?.map((doc, index) => {
+                                const tieneArchivo = !!doc.file_id;
+                                return (
+                                    <div key={index} style={{ 
+                                        display: 'flex', 
+                                        justifyContent: 'space-between', 
+                                        alignItems: 'center',
+                                        padding: '10px 0',
+                                        borderBottom: index < (vehiculo.documentos_digitales?.length || 0) - 1 ? '1px dotted #ccc' : 'none'
+                                    }}>
+                                        <strong>{doc.tipo.replace(/_/g, ' ')}:</strong>
+                                        
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                            <span style={{ 
+                                                color: tieneArchivo ? '#2A9D8F' : '#E63946',
+                                                fontWeight: 'bold',
+                                                fontSize: '1.1em'
+                                            }}>
+                                                {tieneArchivo ? 'Subido' : 'Falta'}
+                                            </span>
+
+                                            {tieneArchivo && doc.nombre_archivo && (
+                                                <button
+                                                    onClick={() => handleDownload(doc.file_id!)}
+                                                    style={{
+                                                        padding: '6px 12px',
+                                                        backgroundColor: '#457B9D',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.85em'
+                                                    }}
+                                                >
+                                                    Descargar ({doc.nombre_archivo})
+                                                </button>
+                                            )}
+
+                                            <button
+                                                onClick={() => abrirModalDocumento(doc)}
+                                                style={{
+                                                    padding: '6px 12px',
+                                                    backgroundColor: tieneArchivo ? '#E9C46A' : '#E63946',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '4px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.85em'
+                                                }}
+                                            >
+                                                {tieneArchivo ? 'Revisar / Reemplazar' : 'Subir'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
+                    {/* ========================================= */}
+                    {/* MODAL PARA SUBIR / REVISAR DOCUMENTO      */}
+                    {/* ========================================= */}
+                    <Modal
+                        isOpen={modalIsOpen}
+                        onRequestClose={() => {
+                            setModalIsOpen(false);
+                            if (previewUrl) URL.revokeObjectURL(previewUrl);
+                        }}
+                        style={{
+                            content: {
+                                top: '50%',
+                                left: '50%',
+                                right: 'auto',
+                                bottom: 'auto',
+                                marginRight: '-50%',
+                                transform: 'translate(-50%, -50%)',
+                                padding: '30px',
+                                borderRadius: '12px',
+                                maxWidth: '700px',
+                                width: '90%',
+                                maxHeight: '90vh',
+                                overflow: 'auto'
+                            },
+                            overlay: { backgroundColor: 'rgba(0,0,0,0.7)' }
+                        }}
+                        ariaHideApp={false}
+                    >
+                        <h2 style={{ margin: '0 0 20px 0', color: '#1D3557' }}>
+                            {docSeleccionado?.tipo.replace(/_/g, ' ') || 'Documento'}
+                        </h2>
+
+                        {previewUrl ? (
+                            docSeleccionado?.nombre_archivo?.toLowerCase().endsWith('.pdf') ? (
+                                <iframe 
+                                    src={previewUrl} 
+                                    width="100%" 
+                                    height="500px" 
+                                    title="Vista previa PDF"
+                                    style={{ border: '1px solid #ccc', borderRadius: '8px' }}
                                 />
-                            ))}
+                            ) : (
+                                <img 
+                                    src={previewUrl} 
+                                    alt="Vista previa" 
+                                    style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid #ccc' }}
+                                />
+                            )
+                        ) : (
+                            <p style={{ color: '#E63946', fontStyle: 'italic' }}>
+                                No hay documento actual. Sube uno nuevo.
+                            </p>
+                        )}
+
+                        <div style={{ marginTop: '20px' }}>
+                            <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                onChange={handleFileChange}
+                                style={{
+                                    padding: '10px',
+                                    border: '2px dashed #ccc',
+                                    borderRadius: '8px',
+                                    width: '100%'
+                                }}
+                            />
                         </div>
-                    ) : (
-                        <div style={{ background: '#F8F9FA', padding: '15px', borderRadius: '4px', color: '#457B9D', textAlign: 'center' }}>
-                            No hay documentos digitales registrados para este vehículo.
+
+                        <div style={{ marginTop: '25px', textAlign: 'right' }}>
+                            <button
+                                onClick={() => {
+                                    setModalIsOpen(false);
+                                    if (previewUrl) URL.revokeObjectURL(previewUrl);
+                                }}
+                                style={{
+                                    padding: '10px 20px',
+                                    marginRight: '10px',
+                                    background: '#6c757d',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={subirDocumento}
+                                disabled={!archivoNuevo}
+                                style={{
+                                    padding: '10px 25px',
+                                    background: archivoNuevo ? '#2A9D8F' : '#ccc',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: archivoNuevo ? 'pointer' : 'not-allowed'
+                                }}
+                            >
+                                {docSeleccionado?.file_id ? 'Reemplazar Documento' : 'Subir Documento'}
+                            </button>
                         </div>
-                    )}
-                    {/* FIN DE LA SECCIÓN DE DOCUMENTACIÓN DIGITAL MODIFICADA */}
+                    </Modal>
                     
                     {/* Alertas */}
                     <h2 style={{ borderBottom: '1px solid #ccc', paddingBottom: '10px', margin: '30px 0 20px 0', color: alertasCriticasVehiculo.length > 0 ? '#E63946' : '#1D3557' }}>
