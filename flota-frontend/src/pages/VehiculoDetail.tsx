@@ -408,23 +408,29 @@ const VehiculoDetail: React.FC = () => {
                     <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#f8fffe' }}>
                         <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>Documentos Digitales</h2>
 
-                        {vehiculo.documentos_digitales?.length === 0 ? (
+                        {/* Protección total contra null/undefined */}
+                        {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
                             <p style={{ color: '#666', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
                         ) : (
-                            vehiculo.documentos_digitales?.map((doc, index) => {
+                            // Aquí le decimos a TypeScript que estamos 100% seguros de que existe
+                            (vehiculo.documentos_digitales as DocumentoDigital[]).map((doc, index) => {
                                 const tieneArchivo = !!doc.file_id;
+
                                 return (
-                                    <div key={index} style={{ 
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center',
-                                        padding: '10px 0',
-                                        borderBottom: index < (vehiculo.documentos_digitales?.length || 0) - 1 ? '1px dotted #ccc' : 'none'
-                                    }}>
+                                    <div 
+                                        key={index} 
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '12px 0',
+                                            borderBottom: index < vehiculo.documentos_digitales!.length - 1 ? '1px dotted #ccc' : 'none'
+                                        }}
+                                    >
                                         <strong>{doc.tipo.replace(/_/g, ' ')}:</strong>
-                                        
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                            <span style={{ 
+
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <span style={{
                                                 color: tieneArchivo ? '#2A9D8F' : '#E63946',
                                                 fontWeight: 'bold',
                                                 fontSize: '1.1em'
@@ -432,33 +438,33 @@ const VehiculoDetail: React.FC = () => {
                                                 {tieneArchivo ? 'Subido' : 'Falta'}
                                             </span>
 
-                                            {tieneArchivo && doc.nombre_archivo && (
+                                            {tieneArchivo && (
                                                 <button
                                                     onClick={() => handleDownload(doc.file_id!)}
                                                     style={{
-                                                        padding: '6px 12px',
+                                                        padding: '7px 14px',
                                                         backgroundColor: '#457B9D',
                                                         color: 'white',
                                                         border: 'none',
-                                                        borderRadius: '4px',
+                                                        borderRadius: '6px',
                                                         cursor: 'pointer',
-                                                        fontSize: '0.85em'
+                                                        fontSize: '0.9em'
                                                     }}
                                                 >
-                                                    Descargar ({doc.nombre_archivo})
+                                                    Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ''}
                                                 </button>
                                             )}
 
                                             <button
                                                 onClick={() => abrirModalDocumento(doc)}
                                                 style={{
-                                                    padding: '6px 12px',
+                                                    padding: '7px 14px',
                                                     backgroundColor: tieneArchivo ? '#E9C46A' : '#E63946',
                                                     color: 'white',
                                                     border: 'none',
-                                                    borderRadius: '4px',
+                                                    borderRadius: '6px',
                                                     cursor: 'pointer',
-                                                    fontSize: '0.85em'
+                                                    fontSize: '0.9em'
                                                 }}
                                             >
                                                 {tieneArchivo ? 'Revisar / Reemplazar' : 'Subir'}
