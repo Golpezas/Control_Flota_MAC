@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/vehiculos/:patente",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/vehiculos/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/index.html"
+    }
+  ]
+}
