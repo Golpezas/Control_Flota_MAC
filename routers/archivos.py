@@ -57,7 +57,7 @@ async def descargar_archivo(
     preview: bool = Query(False, description="True = vista previa inline, False = descarga con nombre")
 ):
     try:
-        grid_out = fs.get(ObjectId(file_id))  # ← Usamos la instancia global fs
+        grid_out = await fs.get(ObjectId(file_id))  # ← Usamos la instancia global fs
         content = await grid_out.read()
         filename = grid_out.filename or "documento"
 
