@@ -2,88 +2,71 @@
 import os
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
+from fastapi.concurrency import run_in_threadpool   # ← NUEVO IMPORT
 from pymongo import MongoClient
 from bson import ObjectId
-import gridfs
 from bson.errors import InvalidId
+import gridfs
 from io import BytesIO
-from dependencies import normalize_patente  # ← Asegúrate de que exista
+from dependencies import normalize_patente
 
 router = APIRouter(prefix="/api/archivos", tags=["Archivos Digitales"])
 
-# -------------------------------------------------------------
-# CONEXIÓN A MONGODB Y GRIDFS (una sola vez, reutilizable)
-# -------------------------------------------------------------
 client = MongoClient(os.getenv("MONGO_URI"))
-db = client["MacSeguridadFlota"]           # ← Cambia si tu DB tiene otro nombre
-fs = gridfs.GridFS(db)  # ← Instancia global (mejor rendimiento que crearla en cada request)
+db = client["MacSeguridadFlota"]
+fs = gridfs.GridFS(db)  # Instancia global
 
 
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
 async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)):
     normalized_patente = normalize_patente(patente)
-
-    # Validaciones de seguridad
     allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
     if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Solo se permiten PDF, JPG o PNG")
+        raise HTTPException(400, "Solo PDF, JPG o PNG")
+    if file.size and file.size > 50 * 1024 * 1024:
+        raise HTTPException(413, "Archivo muy grande")
 
-    if file.size and file.size > 50 * 1024 * 1024:  # 50 MB
-        raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 50 MB)")
-
-    try:
-        file_id = fs.put(
-            await file.read(),
-            filename=file.filename,
-            content_type=file.content_type,
-            metadata={"patente": normalized_patente, "uploaded_by": "web"}
-        )
-        return {
-            "message": "Archivo subido con éxito",
-            "file_id": str(file_id),
-            "filename": file.filename,
-            "patente": normalized_patente
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al guardar: {str(e)}")
+    file_id = fs.put(
+        await file.read(),
+        filename=file.filename,
+        content_type=file.content_type,
+        metadata={"patente": normalized_patente}
+    )
+    return {"message": "OK", "file_id": str(file_id), "filename": file.filename}
 
 
-# -------------------------------------------------------------
-# DESCARGA / VISTA PREVIA (FUNCIONANDO 100%)
-# -------------------------------------------------------------
 @router.get("/descargar/{file_id}")
 async def descargar_archivo(
     file_id: str,
-    preview: bool = Query(False, description="True = vista previa inline, False = descarga con nombre")
+    preview: bool = Query(False, description="True = vista previa, False = descarga")
 ):
     try:
-        grid_out = await fs.get(ObjectId(file_id))  # ← Usamos la instancia global fs
-        content = await grid_out.read()
+        grid_out = await run_in_threadpool(fs.get, ObjectId(file_id))
+        content = await run_in_threadpool(grid_out.read)
+        
         filename = grid_out.filename or "documento"
-
         disposition = "inline" if preview else "attachment"
+        
         headers = {
             "Content-Disposition": f'{disposition}; filename="{filename}"',
             "Content-Type": grid_out.content_type or "application/octet-stream",
-            "Cache-Control": "no-cache",
         }
 
         return StreamingResponse(BytesIO(content), headers=headers, media_type=grid_out.content_type)
 
     except gridfs.errors.NoFile:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado en GridFS")
+        raise HTTPException(404, "Archivo no encontrado")
     except InvalidId:
-        raise HTTPException(status_code=400, detail="ID de archivo inválido")
+        raise HTTPException(400, "ID inválido")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        print(f"ERROR DESCARGA: {e}")
+        raise HTTPException(500, "Error al leer archivo")
 
 
 @router.delete("/eliminar/{file_id}")
 async def eliminar_archivo(file_id: str):
     try:
-        fs.delete(ObjectId(file_id))
-        return {"message": "Archivo eliminado correctamente"}
-    except gridfs.errors.NoFile:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al eliminar: {str(e)}")
+        await run_in_threadpool(fs.delete, ObjectId(file_id))
+        return {"message": "Eliminado"}
+    except:
+        raise HTTPException(404, "No encontrado")
