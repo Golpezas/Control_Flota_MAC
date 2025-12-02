@@ -243,29 +243,30 @@ const VehiculoDetail: React.FC = () => {
     }, [patente, twelveMonthsAgo]); 
 
     // Función para abrir modal y cargar preview (condicional basado en file_id)
-// JSDoc: Handler async con validación de existencia y error handling
-const abrirModalDocumento = async (doc: DocumentoDigital) => {
-    setDocSeleccionado(doc);
-    setArchivoNuevo(null);
-    setPreviewUrl(null);  // Limpia preview anterior
+    // JSDoc: Handler async con validación de existencia y error handling
+    const abrirModalDocumento = async (doc: DocumentoDigital) => {
+        setDocSeleccionado(doc);
+        setArchivoNuevo(null);
+        setPreviewUrl(null);
 
-    if (doc.file_id) {
-        try {
-            const res = await fetch(`${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true`);
-            if (!res.ok) {
-                throw new Error(`Error HTTP: ${res.status}`);
+        if (doc.file_id) {
+            try {
+                // Agregamos timestamp para evitar caché del blob
+                const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${Date.now()}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("Error al cargar");
+
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                setPreviewUrl(blobUrl);
+            } catch (err) {
+                console.error(err);
+                alert("No se pudo cargar la vista previa del documento.");
             }
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            setPreviewUrl(url);
-        } catch (err) {
-            console.error("Error cargando vista previa:", err);
-            alert("No se pudo cargar la vista previa del documento.");
         }
-    }
 
-    setModalIsOpen(true);
-};
+        setModalIsOpen(true);
+    };
 
     // Handler para cambio de archivo nuevo
     // JSDoc: Validación client-side para tipos/tamaños (mejora UX)
@@ -328,23 +329,24 @@ const abrirModalDocumento = async (doc: DocumentoDigital) => {
 
     // Handler para descarga (actualizado para file_id)
     const handleDownload = async (fileId: string) => {
-        if (!fileId) {
+    if (!fileId || !docSeleccionado) {
             alert("No hay documento para descargar.");
             return;
         }
         try {
-            const res = await fetch(`${API_URL}/api/archivos/descargar/${fileId}`);
-            if (!res.ok) throw new Error(`Error HTTP: ${res.status}`);
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = docSeleccionado?.nombre_archivo || 'documento';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        } catch (err) {
+        const response = await fetch(`${API_URL}/api/archivos/descargar/${fileId}`);
+        if (!response.ok) throw new Error("Error descarga");
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = docSeleccionado.nombre_archivo || 'documento'; // ← NOMBRE CORRECTO
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    } catch (err) {
             console.error("Error en descarga:", err);
             alert("No se pudo descargar el documento.");
         }
@@ -509,8 +511,9 @@ const abrirModalDocumento = async (doc: DocumentoDigital) => {
                         </h2>
 
                         {previewUrl ? (
-                            docSeleccionado?.nombre_archivo?.toLowerCase().endsWith('.pdf') ? (
+                            docSeleccionado?.nombre_archivo?.toLowerCase().includes('.pdf') ? (
                                 <iframe 
+                                    key={previewUrl}  // ← Fuerza reload
                                     src={previewUrl} 
                                     width="100%" 
                                     height="500px" 
@@ -519,13 +522,14 @@ const abrirModalDocumento = async (doc: DocumentoDigital) => {
                                 />
                             ) : (
                                 <img 
+                                    key={previewUrl}  // ← Fuerza reload
                                     src={previewUrl} 
                                     alt="Vista previa" 
                                     style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid #ccc' }}
                                 />
                             )
                         ) : (
-                            <p style={{ color: '#E63946', fontStyle: 'italic', textAlign: 'center', padding: '40px 0' }}>
+                            <p style={{ color: '#E63946', textAlign: 'center', padding: '40px' }}>
                                 {docSeleccionado?.file_id 
                                     ? "Error al cargar la vista previa. Intenta descargar el archivo."
                                     : "No hay documento actual. Sube uno nuevo."}
