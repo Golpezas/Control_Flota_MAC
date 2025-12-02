@@ -242,27 +242,43 @@ const VehiculoDetail: React.FC = () => {
         
     }, [patente, twelveMonthsAgo]); 
 
+    const [loadingPreview, setLoadingPreview] = useState(false);
+
     // Función para abrir modal y cargar preview (condicional basado en file_id)
     // JSDoc: Handler async con validación de existencia y error handling
     const abrirModalDocumento = async (doc: DocumentoDigital) => {
         setDocSeleccionado(doc);
-        setArchivoNuevo(null);
         setPreviewUrl(null);
+        setLoadingPreview(true);        // ← Activar spinner
+        setArchivoNuevo(null);          // ← Limpia input file
 
-        if (doc.file_id) {
-            try {
-                // Agregamos timestamp para evitar caché del blob
-                const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${Date.now()}`;
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("Error al cargar");
+        if (!doc.file_id) {
+            setLoadingPreview(false);
+            setModalIsOpen(true);
+            return;
+        }
 
-                const blob = await res.blob();
-                const blobUrl = URL.createObjectURL(blob);
-                setPreviewUrl(blobUrl);
-            } catch (err) {
-                console.error(err);
-                alert("No se pudo cargar la vista previa del documento.");
+        try {
+            const timestamp = Date.now();
+            const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
+            
+            const response = await fetch(url, { 
+                cache: "no-store" 
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
             }
+
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            setPreviewUrl(blobUrl);
+        } catch (err) {
+            console.error("Error cargando documento:", err);
+            // Mensaje amigable para el usuario
+            alert("El documento tardó en cargar (Render está despertando).\nIntentá de nuevo en 10 segundos.");
+        } finally {
+            setLoadingPreview(false);
         }
 
         setModalIsOpen(true);
@@ -486,101 +502,91 @@ const VehiculoDetail: React.FC = () => {
                         onRequestClose={() => {
                             setModalIsOpen(false);
                             if (previewUrl) URL.revokeObjectURL(previewUrl);
+                            setPreviewUrl(null);
                         }}
-                        style={{
-                            content: {
-                                top: '50%',
-                                left: '50%',
-                                right: 'auto',
-                                bottom: 'auto',
-                                marginRight: '-50%',
-                                transform: 'translate(-50%, -50%)',
-                                padding: '30px',
-                                borderRadius: '12px',
-                                maxWidth: '700px',
-                                width: '90%',
-                                maxHeight: '90vh',
-                                overflow: 'auto'
-                            },
-                            overlay: { backgroundColor: 'rgba(0,0,0,0.7)' }
-                        }}
+                        className="max-w-2xl w-[90%] mx-auto bg-white rounded-2xl shadow-2xl p-8 outline-none"
+                        overlayClassName="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
                         ariaHideApp={false}
                     >
-                        <h2 style={{ margin: '0 0 20px 0', color: '#1D3557' }}>
-                            {docSeleccionado?.tipo.replace(/_/g, ' ') || 'Documento'}
+                        <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
+                            {docSeleccionado?.tipo.replace(/_/g, " ") || "Documento"}
                         </h2>
 
-                        {previewUrl ? (
-                            docSeleccionado?.nombre_archivo?.toLowerCase().includes('.pdf') ? (
-                                <iframe 
-                                    key={previewUrl}  // ← Fuerza reload
-                                    src={previewUrl} 
-                                    width="100%" 
-                                    height="500px" 
+                        {/* ESTADO DE CARGA */}
+                        {loadingPreview ? (
+                            <div className="text-center py-16">
+                                <div className="spinner-documento"></div>
+                                <p className="text-slate-600 text-lg">Cargando documento...</p>
+                                <p className="text-slate-500 text-sm mt-2">
+                                    Puede tardar unos segundos (Render Free)
+                                </p>
+                            </div>
+                        ) : previewUrl ? (
+                            /* VISTA PREVIA */
+                            docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
+                                <iframe
+                                    key={previewUrl}
+                                    src={previewUrl}
+                                    className="w-full h-96 md:h-[600px] border border-slate-300 rounded-lg"
                                     title="Vista previa PDF"
-                                    style={{ border: '1px solid #ccc', borderRadius: '8px' }}
                                 />
                             ) : (
-                                <img 
-                                    key={previewUrl}  // ← Fuerza reload
-                                    src={previewUrl} 
-                                    alt="Vista previa" 
-                                    style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid #ccc' }}
+                                <img
+                                    key={previewUrl}
+                                    src={previewUrl}
+                                    alt="Vista previa"
+                                    className="max-w-full h-auto rounded-lg border border-slate-300 shadow-md"
                                 />
                             )
                         ) : (
-                            <p style={{ color: '#E63946', textAlign: 'center', padding: '40px' }}>
-                                {docSeleccionado?.file_id 
-                                    ? "Error al cargar la vista previa. Intenta descargar el archivo."
-                                    : "No hay documento actual. Sube uno nuevo."}
-                            </p>
+                            /* ERROR DE CARGA */
+                            <div className="text-center py-16">
+                                <p className="text-red-600 text-lg">No se pudo cargar el documento</p>
+                                <p className="text-slate-600 mt-2">
+                                    Intentá de nuevo en 10 segundos
+                                </p>
+                            </div>
                         )}
 
-                        <div style={{ marginTop: '20px' }}>
+                        {/* INPUT FILE */}
+                        <div className="mt-8">
                             <input
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 onChange={handleFileChange}
-                                style={{
-                                    padding: '10px',
-                                    border: '2px dashed #ccc',
-                                    borderRadius: '8px',
-                                    width: '100%'
-                                }}
+                                className="block w-full text-sm text-slate-600
+                                        file:mr-4 file:py-3 file:px-6
+                                        file:rounded-lg file:border-0
+                                        file:text-sm file:font-semibold
+                                        file:bg-emerald-600 file:text-white
+                                        hover:file:bg-emerald-700
+                                        cursor-pointer"
                             />
                         </div>
 
-                        <div style={{ marginTop: '25px', textAlign: 'right' }}>
+                        {/* BOTONES */}
+                        <div className="flex justify-end gap-4 mt-8">
                             <button
                                 onClick={() => {
                                     setModalIsOpen(false);
                                     if (previewUrl) URL.revokeObjectURL(previewUrl);
+                                    setPreviewUrl(null);
                                 }}
-                                style={{
-                                    padding: '10px 20px',
-                                    marginRight: '10px',
-                                    background: '#6c757d',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: 'pointer'
-                                }}
+                                className="px-6 py-3 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition"
                             >
                                 Cancelar
                             </button>
+
                             <button
                                 onClick={subirDocumento}
                                 disabled={!archivoNuevo}
-                                style={{
-                                    padding: '10px 25px',
-                                    background: archivoNuevo ? '#2A9D8F' : '#ccc',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    cursor: archivoNuevo ? 'pointer' : 'not-allowed'
-                                }}
+                                className={`px-8 py-3 rounded-lg font-medium transition ${
+                                    archivoNuevo
+                                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                                }`}
                             >
-                                {docSeleccionado?.file_id ? 'Reemplazar Documento' : 'Subir Documento'}
+                                {docSeleccionado?.file_id ? "Reemplazar Documento" : "Subir Documento"}
                             </button>
                         </div>
                     </Modal>
