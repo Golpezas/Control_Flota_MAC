@@ -93,18 +93,3 @@ button:focus-visible {
   }
 }
 
-/* SPINNER PERSONALIZADO - Documentos Digitales */
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-.spinner-documento {
-    border: 6px solid #e2e8f0;
-    border-top: 6px solid #2A9D8F;
-    border-radius: 50%;
-    width: 56px;
-    height: 56px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 20px;
-}

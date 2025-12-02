@@ -242,41 +242,27 @@ const VehiculoDetail: React.FC = () => {
         
     }, [patente, twelveMonthsAgo]); 
 
-    const [loadingPreview, setLoadingPreview] = useState(false);
-
     // Función para abrir modal y cargar preview (condicional basado en file_id)
     // JSDoc: Handler async con validación de existencia y error handling
     const abrirModalDocumento = async (doc: DocumentoDigital) => {
         setDocSeleccionado(doc);
-        setPreviewUrl(null);
-        setLoadingPreview(true);
         setArchivoNuevo(null);
+        setPreviewUrl(null);
 
-        if (!doc.file_id) {
-            setLoadingPreview(false);
-            setModalIsOpen(true);
-            return;
-        }
+        if (doc.file_id) {
+            try {
+                // Agregamos timestamp para evitar caché del blob
+                const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${Date.now()}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error("Error al cargar");
 
-        try {
-            const timestamp = Date.now();
-            const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
-
-            if (doc.nombre_archivo?.toLowerCase().includes(".pdf")) {
-                // PDF: usamos URL directa → evita Chrome Partitioned Blob URL
-                setPreviewUrl(url);
-            } else {
-                // Imágenes: blob para mejor calidad
-                const response = await fetch(url, { cache: "no-store" });
-                if (!response.ok) throw new Error("Error al cargar");
-                const blob = await response.blob();
-                setPreviewUrl(URL.createObjectURL(blob));
+                const blob = await res.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                setPreviewUrl(blobUrl);
+            } catch (err) {
+                console.error(err);
+                alert("No se pudo cargar la vista previa del documento.");
             }
-        } catch (err) {
-            console.error("Error cargando documento:", err);
-            alert("El documento tardó en cargar. Intentá de nuevo en 10 segundos.");
-        } finally {
-            setLoadingPreview(false);
         }
 
         setModalIsOpen(true);
@@ -392,6 +378,7 @@ const VehiculoDetail: React.FC = () => {
     
     const alertasCriticasVehiculo = (reporte?.alertas || []).filter(a => a.prioridad === 'CRÍTICA' || a.prioridad === 'ALTA');
 
+
     return (
         <div style={{ padding: '30px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
@@ -420,51 +407,69 @@ const VehiculoDetail: React.FC = () => {
                     {/* ========================================= */}
                     {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS)    */}
                     {/* ========================================= */}
-                    <div className="mt-8 border border-slate-300 rounded-xl bg-emerald-50/30 p-6">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-5">Documentos Digitales</h2>
+                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#f8fffe' }}>
+                        <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>Documentos Digitales</h2>
 
+                        {/* Protección total contra null/undefined */}
                         {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
-                            <p className="text-slate-600 italic">No hay documentos configurados para este vehículo.</p>
+                            <p style={{ color: '#666', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
                         ) : (
+                            // Aquí le decimos a TypeScript que estamos 100% seguros de que existe
                             (vehiculo.documentos_digitales as DocumentoDigital[]).map((doc, index) => {
                                 const tieneArchivo = !!doc.file_id;
 
                                 return (
-                                    <div
-                                        key={index}
-                                        className="flex justify-between items-center py-4 border-b border-slate-200 last:border-0"
+                                    <div 
+                                        key={index} 
+                                        style={{
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                            padding: '12px 0',
+                                            borderBottom: index < vehiculo.documentos_digitales!.length - 1 ? '1px dotted #ccc' : 'none'
+                                        }}
                                     >
-                                        <strong className="text-slate-700">{doc.tipo.replace(/_/g, " ")}:</strong>
+                                        <strong>{doc.tipo.replace(/_/g, ' ')}:</strong>
 
-                                        <div className="flex items-center gap-3">
-                                            <span
-                                                className={`font-bold text-sm px-3 py-1 rounded-full ${
-                                                    tieneArchivo
-                                                        ? "bg-emerald-100 text-emerald-800"
-                                                        : "bg-red-100 text-red-800"
-                                                }`}
-                                            >
-                                                {tieneArchivo ? "Subido" : "Falta"}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                            <span style={{
+                                                color: tieneArchivo ? '#2A9D8F' : '#E63946',
+                                                fontWeight: 'bold',
+                                                fontSize: '1.1em'
+                                            }}>
+                                                {tieneArchivo ? 'Subido' : 'Falta'}
                                             </span>
 
                                             {tieneArchivo && (
                                                 <button
                                                     onClick={() => handleDownload(doc.file_id!)}
-                                                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                                                    style={{
+                                                        padding: '7px 14px',
+                                                        backgroundColor: '#457B9D',
+                                                        color: 'white',
+                                                        border: 'none',
+                                                        borderRadius: '6px',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.9em'
+                                                    }}
                                                 >
-                                                    Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ""}
+                                                    Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ''}
                                                 </button>
                                             )}
 
                                             <button
                                                 onClick={() => abrirModalDocumento(doc)}
-                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
-                                                    tieneArchivo
-                                                        ? "bg-amber-600 hover:bg-amber-700 text-white"
-                                                        : "bg-red-600 hover:bg-red-700 text-white"
-                                                }`}
+                                                style={{
+                                                    padding: '7px 14px',
+                                                    backgroundColor: tieneArchivo ? '#E9C46A' : '#E63946',
+                                                    color: 'white',
+                                                    border: 'none',
+                                                    borderRadius: '6px',
+                                                    cursor: 'pointer',
+                                                    fontSize: '0.9em'
+                                                }}
                                             >
-                                                {tieneArchivo ? "Revisar / Reemplazar" : "Subir"}
+                                                {tieneArchivo ? 'Revisar / Reemplazar' : 'Subir'}
                                             </button>
                                         </div>
                                     </div>
@@ -480,88 +485,102 @@ const VehiculoDetail: React.FC = () => {
                         isOpen={modalIsOpen}
                         onRequestClose={() => {
                             setModalIsOpen(false);
-                            if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-                            setPreviewUrl(null);
+                            if (previewUrl) URL.revokeObjectURL(previewUrl);
                         }}
-                        className="max-w-3xl w-[92%] bg-white rounded-2xl shadow-2xl p-8 outline-none"
-                        overlayClassName="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+                        style={{
+                            content: {
+                                top: '50%',
+                                left: '50%',
+                                right: 'auto',
+                                bottom: 'auto',
+                                marginRight: '-50%',
+                                transform: 'translate(-50%, -50%)',
+                                padding: '30px',
+                                borderRadius: '12px',
+                                maxWidth: '700px',
+                                width: '90%',
+                                maxHeight: '90vh',
+                                overflow: 'auto'
+                            },
+                            overlay: { backgroundColor: 'rgba(0,0,0,0.7)' }
+                        }}
                         ariaHideApp={false}
                     >
-                        <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
-                            {docSeleccionado?.tipo.replace(/_/g, " ") || "Documento"}
+                        <h2 style={{ margin: '0 0 20px 0', color: '#1D3557' }}>
+                            {docSeleccionado?.tipo.replace(/_/g, ' ') || 'Documento'}
                         </h2>
 
-                        {/* ESTADO DE CARGA */}
-                        {loadingPreview ? (
-                            <div className="text-center py-20">
-                                <div className="spinner-documento"></div>
-                                <p className="text-slate-600 text-lg mt-4">Cargando documento...</p>
-                                <p className="text-slate-500 text-sm">Puede tardar unos segundos (Render Free)</p>
-                            </div>
-                        ) : previewUrl ? (
-                            // VISTA PREVIA
-                            docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
-                                <iframe
-                                    key={previewUrl}
-                                    src={previewUrl}
-                                    className="w-full h-96 md:h-[650px] border border-slate-300 rounded-xl shadow-inner"
+                        {previewUrl ? (
+                            docSeleccionado?.nombre_archivo?.toLowerCase().includes('.pdf') ? (
+                                <iframe 
+                                    key={previewUrl}  // ← Fuerza reload
+                                    src={previewUrl} 
+                                    width="100%" 
+                                    height="500px" 
                                     title="Vista previa PDF"
-                                    sandbox="allow-same-origin allow-scripts allow-popups"
+                                    style={{ border: '1px solid #ccc', borderRadius: '8px' }}
                                 />
                             ) : (
-                                <img
-                                    key={previewUrl}
-                                    src={previewUrl}
-                                    alt="Vista previa"
-                                    className="max-w-full h-auto rounded-xl border border-slate-300 shadow-lg mx-auto"
+                                <img 
+                                    key={previewUrl}  // ← Fuerza reload
+                                    src={previewUrl} 
+                                    alt="Vista previa" 
+                                    style={{ maxWidth: '100%', borderRadius: '8px', border: '1px solid #ccc' }}
                                 />
                             )
                         ) : (
-                            <div className="text-center py-20">
-                                <p className="text-red-600 text-lg font-medium">No se pudo cargar el documento</p>
-                                <p className="text-slate-600 mt-3">Intentá de nuevo en 10 segundos</p>
-                            </div>
+                            <p style={{ color: '#E63946', textAlign: 'center', padding: '40px' }}>
+                                {docSeleccionado?.file_id 
+                                    ? "Error al cargar la vista previa. Intenta descargar el archivo."
+                                    : "No hay documento actual. Sube uno nuevo."}
+                            </p>
                         )}
 
-                        {/* INPUT FILE */}
-                        <div className="mt-8">
+                        <div style={{ marginTop: '20px' }}>
                             <input
                                 type="file"
                                 accept=".pdf,.jpg,.jpeg,.png"
                                 onChange={handleFileChange}
-                                className="block w-full text-sm text-slate-600
-                                        file:mr-4 file:py-3 file:px-6
-                                        file:rounded-xl file:border-0
-                                        file:text-sm file:font-bold
-                                        file:bg-emerald-600 file:text-white
-                                        hover:file:bg-emerald-700
-                                        cursor-pointer"
+                                style={{
+                                    padding: '10px',
+                                    border: '2px dashed #ccc',
+                                    borderRadius: '8px',
+                                    width: '100%'
+                                }}
                             />
                         </div>
 
-                        {/* BOTONES */}
-                        <div className="flex justify-end gap-4 mt-10">
+                        <div style={{ marginTop: '25px', textAlign: 'right' }}>
                             <button
                                 onClick={() => {
                                     setModalIsOpen(false);
-                                    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-                                    setPreviewUrl(null);
+                                    if (previewUrl) URL.revokeObjectURL(previewUrl);
                                 }}
-                                className="px-6 py-3 bg-slate-500 text-white rounded-xl hover:bg-slate-600 transition"
+                                style={{
+                                    padding: '10px 20px',
+                                    marginRight: '10px',
+                                    background: '#6c757d',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: 'pointer'
+                                }}
                             >
                                 Cancelar
                             </button>
-
                             <button
                                 onClick={subirDocumento}
                                 disabled={!archivoNuevo}
-                                className={`px-8 py-3 rounded-xl font-bold transition ${
-                                    archivoNuevo
-                                        ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg"
-                                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                                }`}
+                                style={{
+                                    padding: '10px 25px',
+                                    background: archivoNuevo ? '#2A9D8F' : '#ccc',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    cursor: archivoNuevo ? 'pointer' : 'not-allowed'
+                                }}
                             >
-                                {docSeleccionado?.file_id ? "Reemplazar Documento" : "Subir Documento"}
+                                {docSeleccionado?.file_id ? 'Reemplazar Documento' : 'Subir Documento'}
                             </button>
                         </div>
                     </Modal>
