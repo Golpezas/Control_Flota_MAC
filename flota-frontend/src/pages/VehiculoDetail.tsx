@@ -249,8 +249,8 @@ const VehiculoDetail: React.FC = () => {
     const abrirModalDocumento = async (doc: DocumentoDigital) => {
         setDocSeleccionado(doc);
         setPreviewUrl(null);
-        setLoadingPreview(true);        // ← Activar spinner
-        setArchivoNuevo(null);          // ← Limpia input file
+        setLoadingPreview(true);
+        setArchivoNuevo(null);
 
         if (!doc.file_id) {
             setLoadingPreview(false);
@@ -261,22 +261,20 @@ const VehiculoDetail: React.FC = () => {
         try {
             const timestamp = Date.now();
             const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
-            
-            const response = await fetch(url, { 
-                cache: "no-store" 
-            });
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+            if (doc.nombre_archivo?.toLowerCase().includes(".pdf")) {
+                // PDF: usamos URL directa → evita Chrome Partitioned Blob URL
+                setPreviewUrl(url);
+            } else {
+                // Imágenes: blob para mejor calidad
+                const response = await fetch(url, { cache: "no-store" });
+                if (!response.ok) throw new Error("Error al cargar");
+                const blob = await response.blob();
+                setPreviewUrl(URL.createObjectURL(blob));
             }
-
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            setPreviewUrl(blobUrl);
         } catch (err) {
             console.error("Error cargando documento:", err);
-            // Mensaje amigable para el usuario
-            alert("El documento tardó en cargar (Render está despertando).\nIntentá de nuevo en 10 segundos.");
+            alert("El documento tardó en cargar. Intentá de nuevo en 10 segundos.");
         } finally {
             setLoadingPreview(false);
         }
@@ -394,7 +392,6 @@ const VehiculoDetail: React.FC = () => {
     
     const alertasCriticasVehiculo = (reporte?.alertas || []).filter(a => a.prioridad === 'CRÍTICA' || a.prioridad === 'ALTA');
 
-
     return (
         <div style={{ padding: '30px', maxWidth: '1200px', margin: '0 auto' }}>
             <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
@@ -423,69 +420,51 @@ const VehiculoDetail: React.FC = () => {
                     {/* ========================================= */}
                     {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS)    */}
                     {/* ========================================= */}
-                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#f8fffe' }}>
-                        <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>Documentos Digitales</h2>
+                    <div className="mt-8 border border-slate-300 rounded-xl bg-emerald-50/30 p-6">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-5">Documentos Digitales</h2>
 
-                        {/* Protección total contra null/undefined */}
                         {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
-                            <p style={{ color: '#666', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
+                            <p className="text-slate-600 italic">No hay documentos configurados para este vehículo.</p>
                         ) : (
-                            // Aquí le decimos a TypeScript que estamos 100% seguros de que existe
                             (vehiculo.documentos_digitales as DocumentoDigital[]).map((doc, index) => {
                                 const tieneArchivo = !!doc.file_id;
 
                                 return (
-                                    <div 
-                                        key={index} 
-                                        style={{
-                                            display: 'flex',
-                                            justifyContent: 'space-between',
-                                            alignItems: 'center',
-                                            padding: '12px 0',
-                                            borderBottom: index < vehiculo.documentos_digitales!.length - 1 ? '1px dotted #ccc' : 'none'
-                                        }}
+                                    <div
+                                        key={index}
+                                        className="flex justify-between items-center py-4 border-b border-slate-200 last:border-0"
                                     >
-                                        <strong>{doc.tipo.replace(/_/g, ' ')}:</strong>
+                                        <strong className="text-slate-700">{doc.tipo.replace(/_/g, " ")}:</strong>
 
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                            <span style={{
-                                                color: tieneArchivo ? '#2A9D8F' : '#E63946',
-                                                fontWeight: 'bold',
-                                                fontSize: '1.1em'
-                                            }}>
-                                                {tieneArchivo ? 'Subido' : 'Falta'}
+                                        <div className="flex items-center gap-3">
+                                            <span
+                                                className={`font-bold text-sm px-3 py-1 rounded-full ${
+                                                    tieneArchivo
+                                                        ? "bg-emerald-100 text-emerald-800"
+                                                        : "bg-red-100 text-red-800"
+                                                }`}
+                                            >
+                                                {tieneArchivo ? "Subido" : "Falta"}
                                             </span>
 
                                             {tieneArchivo && (
                                                 <button
                                                     onClick={() => handleDownload(doc.file_id!)}
-                                                    style={{
-                                                        padding: '7px 14px',
-                                                        backgroundColor: '#457B9D',
-                                                        color: 'white',
-                                                        border: 'none',
-                                                        borderRadius: '6px',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.9em'
-                                                    }}
+                                                    className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
                                                 >
-                                                    Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ''}
+                                                    Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ""}
                                                 </button>
                                             )}
 
                                             <button
                                                 onClick={() => abrirModalDocumento(doc)}
-                                                style={{
-                                                    padding: '7px 14px',
-                                                    backgroundColor: tieneArchivo ? '#E9C46A' : '#E63946',
-                                                    color: 'white',
-                                                    border: 'none',
-                                                    borderRadius: '6px',
-                                                    cursor: 'pointer',
-                                                    fontSize: '0.9em'
-                                                }}
+                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                                                    tieneArchivo
+                                                        ? "bg-amber-600 hover:bg-amber-700 text-white"
+                                                        : "bg-red-600 hover:bg-red-700 text-white"
+                                                }`}
                                             >
-                                                {tieneArchivo ? 'Revisar / Reemplazar' : 'Subir'}
+                                                {tieneArchivo ? "Revisar / Reemplazar" : "Subir"}
                                             </button>
                                         </div>
                                     </div>
@@ -501,11 +480,11 @@ const VehiculoDetail: React.FC = () => {
                         isOpen={modalIsOpen}
                         onRequestClose={() => {
                             setModalIsOpen(false);
-                            if (previewUrl) URL.revokeObjectURL(previewUrl);
+                            if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
                             setPreviewUrl(null);
                         }}
-                        className="max-w-2xl w-[90%] mx-auto bg-white rounded-2xl shadow-2xl p-8 outline-none"
-                        overlayClassName="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50"
+                        className="max-w-3xl w-[92%] bg-white rounded-2xl shadow-2xl p-8 outline-none"
+                        overlayClassName="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
                         ariaHideApp={false}
                     >
                         <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
@@ -514,37 +493,33 @@ const VehiculoDetail: React.FC = () => {
 
                         {/* ESTADO DE CARGA */}
                         {loadingPreview ? (
-                            <div className="text-center py-16">
+                            <div className="text-center py-20">
                                 <div className="spinner-documento"></div>
-                                <p className="text-slate-600 text-lg">Cargando documento...</p>
-                                <p className="text-slate-500 text-sm mt-2">
-                                    Puede tardar unos segundos (Render Free)
-                                </p>
+                                <p className="text-slate-600 text-lg mt-4">Cargando documento...</p>
+                                <p className="text-slate-500 text-sm">Puede tardar unos segundos (Render Free)</p>
                             </div>
                         ) : previewUrl ? (
-                            /* VISTA PREVIA */
+                            // VISTA PREVIA
                             docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
                                 <iframe
                                     key={previewUrl}
                                     src={previewUrl}
-                                    className="w-full h-96 md:h-[600px] border border-slate-300 rounded-lg"
+                                    className="w-full h-96 md:h-[650px] border border-slate-300 rounded-xl shadow-inner"
                                     title="Vista previa PDF"
+                                    sandbox="allow-same-origin allow-scripts allow-popups"
                                 />
                             ) : (
                                 <img
                                     key={previewUrl}
                                     src={previewUrl}
                                     alt="Vista previa"
-                                    className="max-w-full h-auto rounded-lg border border-slate-300 shadow-md"
+                                    className="max-w-full h-auto rounded-xl border border-slate-300 shadow-lg mx-auto"
                                 />
                             )
                         ) : (
-                            /* ERROR DE CARGA */
-                            <div className="text-center py-16">
-                                <p className="text-red-600 text-lg">No se pudo cargar el documento</p>
-                                <p className="text-slate-600 mt-2">
-                                    Intentá de nuevo en 10 segundos
-                                </p>
+                            <div className="text-center py-20">
+                                <p className="text-red-600 text-lg font-medium">No se pudo cargar el documento</p>
+                                <p className="text-slate-600 mt-3">Intentá de nuevo en 10 segundos</p>
                             </div>
                         )}
 
@@ -556,8 +531,8 @@ const VehiculoDetail: React.FC = () => {
                                 onChange={handleFileChange}
                                 className="block w-full text-sm text-slate-600
                                         file:mr-4 file:py-3 file:px-6
-                                        file:rounded-lg file:border-0
-                                        file:text-sm file:font-semibold
+                                        file:rounded-xl file:border-0
+                                        file:text-sm file:font-bold
                                         file:bg-emerald-600 file:text-white
                                         hover:file:bg-emerald-700
                                         cursor-pointer"
@@ -565,14 +540,14 @@ const VehiculoDetail: React.FC = () => {
                         </div>
 
                         {/* BOTONES */}
-                        <div className="flex justify-end gap-4 mt-8">
+                        <div className="flex justify-end gap-4 mt-10">
                             <button
                                 onClick={() => {
                                     setModalIsOpen(false);
-                                    if (previewUrl) URL.revokeObjectURL(previewUrl);
+                                    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
                                     setPreviewUrl(null);
                                 }}
-                                className="px-6 py-3 bg-slate-500 text-white rounded-lg hover:bg-slate-600 transition"
+                                className="px-6 py-3 bg-slate-500 text-white rounded-xl hover:bg-slate-600 transition"
                             >
                                 Cancelar
                             </button>
@@ -580,9 +555,9 @@ const VehiculoDetail: React.FC = () => {
                             <button
                                 onClick={subirDocumento}
                                 disabled={!archivoNuevo}
-                                className={`px-8 py-3 rounded-lg font-medium transition ${
+                                className={`px-8 py-3 rounded-xl font-bold transition ${
                                     archivoNuevo
-                                        ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                                        ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg"
                                         : "bg-gray-300 text-gray-500 cursor-not-allowed"
                                 }`}
                             >
