@@ -10,6 +10,7 @@ import gridfs
 import gridfs.errors
 from io import BytesIO
 from dependencies import normalize_patente
+from datetime import datetime
 
 router = APIRouter(prefix="/api/archivos", tags=["Archivos Digitales"])
 
@@ -21,19 +22,35 @@ fs = gridfs.GridFS(db)  # Instancia global
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
 async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)):
     normalized_patente = normalize_patente(patente)
-    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/jpg"}
+
+    # Validaciones
+    allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
     if file.content_type not in allowed_types:
         raise HTTPException(400, "Solo PDF, JPG o PNG")
-    if file.size and file.size > 50 * 1024 * 1024:
+
+    if file.size > 50 * 1024 * 1024:
         raise HTTPException(413, "Archivo muy grande")
 
-    file_id = fs.put(
-        await file.read(),
-        filename=file.filename,
-        content_type=file.content_type,
-        metadata={"patente": normalized_patente}
-    )
-    return {"message": "OK", "file_id": str(file_id), "filename": file.filename}
+    try:
+        # LEE EL ARCHIVO COMPLETO
+        content = await file.read()
+        
+        # GUARDA CON CONTENT_TYPE CORRECTO
+        file_id = fs.put(
+            content,
+            filename=file.filename,
+            content_type=file.content_type,      # ← ESTO ES CRÍTICO
+            metadata={"patente": normalized_patente, "uploaded_at": datetime.utcnow()}
+        )
+
+        return {
+            "message": "Archivo subido correctamente",
+            "file_id": str(file_id),
+            "filename": file.filename,
+            "content_type": file.content_type   # ← Para debug
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Error: {str(e)}")
 
 
 @router.get("/descargar/{file_id}")
