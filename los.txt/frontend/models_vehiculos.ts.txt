@@ -3,13 +3,13 @@
 // =================================================================
 // ESTRUCTURAS DE VEHÍCULO
 // =================================================================
-
 export interface DocumentoDigital {
     tipo: string; // Ej: 'Cedula', 'Seguro', 'VTV'
-    path_esperado?: string | null; // Ruta relativa del archivo si existe
+    path_esperado?: string | null; // Ruta relativa del archivo si existe (LEGACY)
     nombre_archivo?: string | null; // Nombre real del archivo
     nombre_archivo_patron?: string | null; // Nombre esperado del archivo/tipo de documento
-    existe_fisicamente?: boolean; // Indica si el archivo existe en el sistema de archivos
+    existe_fisicamente?: boolean; // Indica si el archivo existe en el sistema de archivos (LEGACY)
+    file_id?: string | null;      // NUEVO: ID de GridFS (MongoDB)
 }
 
 // =================================================================

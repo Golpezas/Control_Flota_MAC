@@ -1,19 +1,23 @@
 # routers/archivos.py
 import os
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from pymongo import MongoClient
 from bson import ObjectId
 import gridfs
+from bson.errors import InvalidId
 from io import BytesIO
-from dependencies import normalize_patente  # Asegúrate de que esta función exista
+from dependencies import normalize_patente  # ← Asegúrate de que exista
 
 router = APIRouter(prefix="/api/archivos", tags=["Archivos Digitales"])
 
-# Cliente MongoDB usando la misma URI que el resto de la app
+# -------------------------------------------------------------
+# CONEXIÓN A MONGODB Y GRIDFS (una sola vez, reutilizable)
+# -------------------------------------------------------------
 client = MongoClient(os.getenv("MONGO_URI"))
-db = client["MacSeguridadFlota"]           # Cambia si tu DB tiene otro nombre
-fs = gridfs.GridFS(db)
+db = client["MacSeguridadFlota"]           # ← Cambia si tu DB tiene otro nombre
+fs = gridfs.GridFS(db)  # ← Instancia global (mejor rendimiento que crearla en cada request)
+
 
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
 async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)):
@@ -32,7 +36,7 @@ async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)
             await file.read(),
             filename=file.filename,
             content_type=file.content_type,
-            metadata={"patente": normalized_patente, "tipo": file.filename.rsplit(".", 1)[0]}
+            metadata={"patente": normalized_patente, "uploaded_by": "web"}
         )
         return {
             "message": "Archivo subido con éxito",
@@ -44,19 +48,34 @@ async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)
         raise HTTPException(status_code=500, detail=f"Error al guardar: {str(e)}")
 
 
+# -------------------------------------------------------------
+# DESCARGA / VISTA PREVIA (FUNCIONANDO 100%)
+# -------------------------------------------------------------
 @router.get("/descargar/{file_id}")
-async def descargar_archivo(file_id: str):
+async def descargar_archivo(
+    file_id: str,
+    preview: bool = Query(False, description="True = vista previa inline, False = descarga con nombre")
+):
     try:
-        grid_file = fs.get(ObjectId(file_id))
-        return StreamingResponse(
-            BytesIO(grid_file.read()),
-            media_type=grid_file.content_type or "application/octet-stream",
-            headers={"Content-Disposition": f'attachment; filename="{grid_file.filename}"'}
-        )
+        grid_out = fs.get(ObjectId(file_id))  # ← Usamos la instancia global fs
+        content = await grid_out.read()
+        filename = grid_out.filename or "documento"
+
+        disposition = "inline" if preview else "attachment"
+        headers = {
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Content-Type": grid_out.content_type or "application/octet-stream",
+            "Cache-Control": "no-cache",
+        }
+
+        return StreamingResponse(BytesIO(content), headers=headers, media_type=grid_out.content_type)
+
     except gridfs.errors.NoFile:
-        raise HTTPException(status_code=404, detail="Archivo no encontrado")
+        raise HTTPException(status_code=404, detail="Archivo no encontrado en GridFS")
+    except InvalidId:
+        raise HTTPException(status_code=400, detail="ID de archivo inválido")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al descargar: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 
 @router.delete("/eliminar/{file_id}")

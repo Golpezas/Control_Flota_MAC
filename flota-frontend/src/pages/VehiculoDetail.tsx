@@ -243,29 +243,29 @@ const VehiculoDetail: React.FC = () => {
     }, [patente, twelveMonthsAgo]); 
 
     // Función para abrir modal y cargar preview (condicional basado en file_id)
-    // JSDoc: Handler async con validación de existencia y error handling
-    const abrirModalDocumento = async (doc: DocumentoDigital) => {
-        setDocSeleccionado(doc);
-        setArchivoNuevo(null);
-        setPreviewUrl(null);  // Limpia preview anterior para evitar leaks
+// JSDoc: Handler async con validación de existencia y error handling
+const abrirModalDocumento = async (doc: DocumentoDigital) => {
+    setDocSeleccionado(doc);
+    setArchivoNuevo(null);
+    setPreviewUrl(null);  // Limpia preview anterior
 
-        if (doc.file_id) {
-            try {
-                const res = await fetch(`${API_URL}/api/archivos/descargar/${doc.file_id}`);
-                if (!res.ok) {
-                    throw new Error(`Error HTTP: ${res.status}`);
-                }
-                const blob = await res.blob();
-                const url = URL.createObjectURL(blob);
-                setPreviewUrl(url);
-            } catch (err) {
-                console.error("Error cargando vista previa:", err);
-                alert("No se pudo cargar la vista previa del documento.");
+    if (doc.file_id) {
+        try {
+            const res = await fetch(`${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true`);
+            if (!res.ok) {
+                throw new Error(`Error HTTP: ${res.status}`);
             }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            setPreviewUrl(url);
+        } catch (err) {
+            console.error("Error cargando vista previa:", err);
+            alert("No se pudo cargar la vista previa del documento.");
         }
+    }
 
-        setModalIsOpen(true);
-    };
+    setModalIsOpen(true);
+};
 
     // Handler para cambio de archivo nuevo
     // JSDoc: Validación client-side para tipos/tamaños (mejora UX)
@@ -525,8 +525,10 @@ const VehiculoDetail: React.FC = () => {
                                 />
                             )
                         ) : (
-                            <p style={{ color: '#E63946', fontStyle: 'italic' }}>
-                                No hay documento actual. Sube uno nuevo.
+                            <p style={{ color: '#E63946', fontStyle: 'italic', textAlign: 'center', padding: '40px 0' }}>
+                                {docSeleccionado?.file_id 
+                                    ? "Error al cargar la vista previa. Intenta descargar el archivo."
+                                    : "No hay documento actual. Sube uno nuevo."}
                             </p>
                         )}
 
