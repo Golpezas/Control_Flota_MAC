@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: flota-backend-mac
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      MONGO_URI:
+        fromDatabase:
+          name: tu-base-de-datos  # o ponlo directamente si preferís
+          property: connectionString
+    pythonVersion: "3.12"   # ← ESTA LÍNEA ES LA QUE LO ARREGLA
