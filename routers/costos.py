@@ -5,7 +5,7 @@ from datetime import datetime
 # IMPORTS CORRECTOS PARA TU PROYECTO REAL
 # =================================================================
 from fastapi import APIRouter
-from main import database  # ← CORRECTO: main.py está en la raíz
+from dependencies import database
 
 # normalize_patente NO existe en Python → la definimos aquí mismo
 def normalize_patente(patente: str) -> str:
