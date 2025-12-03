@@ -14,7 +14,16 @@ import {
     fetchReporteVehiculo, 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
-import CostosTable from '../components/CostosTable'; 
+interface GastoUnificado {
+    id: string;
+    fecha: string;
+    tipo: string;
+    monto: number;
+    descripcion: string;
+    comprobante_file_id?: string;
+    origen: string;
+}
+//import CostosTable from '../components/CostosTable'; 
 
 // =================================================================
 // Definimos el tipo de origen usado en el mapeo
@@ -38,6 +47,7 @@ export interface CostoItemExtended {
 // Definimos la URL de la API (asumimos que está en localhost:8000)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+/*
 // =================================================================
 // UTILITY FUNCTION
 // =================================================================
@@ -47,7 +57,7 @@ const formatCurrency = (amount: number | null): string => {
         return '$ 0.00';
     }
     return `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-};
+};*/
 
 // =================================================================
 // COMPONENTES AUXILIARES
@@ -111,25 +121,28 @@ const DocumentItem: React.FC<DocumentItemProps> = ({ documento, onRefresh }) => 
 
 */
 
+/*
 // 3. Componente CostosSummary
 interface CostosSummaryProps {
     total_general: number | null;
     total_mantenimiento: number | null;
     total_infracciones: number | null;
 }
+
 const SummaryBox: React.FC<{ label: string; value: number | null; color: string }> = ({ label, value, color }) => (
     <div style={{ padding: '15px', background: color, color: 'white', borderRadius: '4px', textAlign: 'center' }}>
         <div style={{ fontSize: '0.9em' }}>{label}</div>
         <div style={{ fontSize: '1.5em', fontWeight: 'bold' }}>{formatCurrency(value)}</div>
     </div>
 );
+
 const CostosSummary: React.FC<CostosSummaryProps> = ({ total_general, total_mantenimiento, total_infracciones }) => (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '30px' }}>
         <SummaryBox label="Total General" value={total_general} color="#E63946" />
         <SummaryBox label="Mantenimiento" value={total_mantenimiento} color="#457B9D" />
         <SummaryBox label="Infracciones" value={total_infracciones} color="#F4A261" />
     </div>
-);
+)*/
 
 // 4. Componente AlertaItem
 interface AlertaItemProps {
@@ -191,6 +204,14 @@ const VehiculoDetail: React.FC = () => {
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
 
+    // =================================================================
+    // ESTADOS PARA GASTOS UNIFICADOS
+    // =================================================================
+    const [gastosUnificados, setGastosUnificados] = useState<GastoUnificado[]>([]);
+    const [totalGeneral, setTotalGeneral] = useState(0);
+    const [totalMantenimiento, setTotalMantenimiento] = useState(0);
+    const [totalMultas, setTotalMultas] = useState(0);
+
     // Obtener la fecha de inicio del período de 12 meses
     const twelveMonthsAgo = useMemo(() => {
         const d = new Date();
@@ -202,17 +223,19 @@ const VehiculoDetail: React.FC = () => {
         if (!patente) return;
         
         setError(null);
+        setIsLoading(true);
         const endDate = new Date().toISOString().split('T')[0];
 
         try {
-            console.log("⚙️ FETCHING: Solicitando datos de Vehículo y Reporte para:", patente);
+            console.log("FETCHING: Solicitando datos de Vehículo y Reporte para:", patente);
             
-            const [vehiculoData, reporteData] = await Promise.all([
+            const [vehiculoData, reporteData, gastosUnificadosRes] = await Promise.all([
                 fetchVehiculoByPatente(patente),
-                fetchReporteVehiculo(patente, twelveMonthsAgo, endDate)
+                fetchReporteVehiculo(patente, twelveMonthsAgo, endDate),
+                fetch(`${API_URL}/costos/unificado/${patente}`).then(r => r.json()).catch(() => ({ gastos: [], total_general: 0, total_mantenimiento: 0, total_multas: 0 }))
             ]);
-            
-            // Mapeamos los costos del backend al formato que espera CostosTable
+
+            // === TU LÓGICA ORIGINAL (COSTOS) - SIN CAMBIOS ===
             const detallesExtendido: CostoItemExtended[] = reporteData.detalles.map(d => ({
                 id: d._id,
                 _id: d._id,
@@ -222,24 +245,29 @@ const VehiculoDetail: React.FC = () => {
                 descripcion: d.descripcion || "Sin descripción",
                 importe: d.importe,
                 origen: d.origen as CostoOrigen,
-                // 🎯 FIX CRÍTICO: Se usa '?? undefined' para cumplir con el tipo de la interfaz
                 metadata_adicional: d.metadata_adicional ?? undefined, 
             }));
 
+            // === NUEVO: GASTOS UNIFICADOS (para historial completo) ===
+            setGastosUnificados(gastosUnificadosRes.gastos || []);
+            setTotalGeneral(gastosUnificadosRes.total_general || 0);
+            setTotalMantenimiento(gastosUnificadosRes.total_mantenimiento || 0);
+            setTotalMultas(gastosUnificadosRes.total_multas || 0);
+
+            // === TU LÓGICA ORIGINAL SIGUE FUNCIONANDO ===
             setVehiculo(vehiculoData);
             setReporte({
                 ...reporteData,
-                detalles: detallesExtendido // Asignamos la lista con el tipado corregido
+                detalles: detallesExtendido
             });
             
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : 'Error desconocido al cargar el detalle.';
-            console.error("❌ ERROR DETALLE:", message);
+            console.error("ERROR DETALLE:", message);
             setError(message);
         } finally {
             setIsLoading(false);
         }
-        
     }, [patente, twelveMonthsAgo]); 
 
     // Función para abrir modal y cargar preview (condicional basado en file_id)
@@ -607,20 +635,38 @@ const VehiculoDetail: React.FC = () => {
                 {/* COLUMNA 2: COSTOS Y REPORTE */}
                 {/* ------------------------------------- */}
                 <div>
-                    <h2 style={{ borderBottom: '1px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
-                        📊 Reporte de Costos (Últimos 12 meses)
-                    </h2>
+                    {/* TOTALES MODERNOS Y UNIFICADOS (incluye multas + descripción) */}
+                    <div className="mt-10 p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 shadow-lg">
+                        <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
+                            Reporte de Costos (Últimos 12 meses)
+                        </h2>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {/* Total General */}
+                            <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                                <p className="text-lg opacity-90">Total General</p>
+                                <p className="text-4xl font-bold mt-2">
+                                    ${totalGeneral.toLocaleString('es-AR')}
+                                </p>
+                            </div>
 
-                    {/* Resumen de Costos */}
-                    {reporte ? (
-                        <CostosSummary 
-                            total_general={reporte.total_general} 
-                            total_mantenimiento={reporte.total_mantenimiento} 
-                            total_infracciones={reporte.total_infracciones} 
-                        />
-                    ) : (
-                        <div style={{ color: '#457B9D', textAlign: 'center' }}>Cargando reporte de costos... ⏳</div>
-                    )}
+                            {/* Mantenimiento */}
+                            <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                                <p className="text-lg opacity-90">Mantenimiento</p>
+                                <p className="text-4xl font-bold mt-2">
+                                    ${totalMantenimiento.toLocaleString('es-AR')}
+                                </p>
+                            </div>
+
+                            {/* Multas */}
+                            <div className="bg-gradient-to-br from-red-600 to-pink-700 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                                <p className="text-lg opacity-90">Infracciones</p>
+                                <p className="text-4xl font-bold mt-2">
+                                    ${totalMultas.toLocaleString('es-AR')}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                     
                     {/* INTEGRACIÓN DEL FORMULARIO DE COSTOS MANUALES */}
                     <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', background: '#F1FAEE' }}>
@@ -633,25 +679,67 @@ const VehiculoDetail: React.FC = () => {
                         />
                     </div>
 
-                    {/* Tabla de Costos */}
-                    {reporte && reporte.detalles && reporte.detalles.length > 0 ? (
-                        <CostosTable 
-                            costos={reporte.detalles} 
-                            onRefresh={handleRefreshData} 
-                        />
-                    ) : (
-                        <div style={{ 
-                            marginTop: '30px', 
-                            padding: '20px', 
-                            textAlign: 'center', 
-                            color: '#457B9D', 
-                            background: '#f8f9fa', 
-                            borderRadius: '8px', 
-                            fontSize: '1.1em'
-                        }}>
-                            No se encontraron costos para este vehículo en el período seleccionado.
-                        </div>
-                    )}
+                    {/* Tabla de Costos UNIFICADA (mantenimientos + multas + descripción) */}
+                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#ffffff' }}>
+                        <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>
+                            Historial de Costos ({gastosUnificados.length})
+                        </h2>
+
+                        {gastosUnificados.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '40px', color: '#666', background: '#f8f9fa', borderRadius: '8px' }}>
+                                No se encontraron gastos en el período seleccionado.
+                            </div>
+                        ) : (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95em' }}>
+                                    <thead>
+                                        <tr style={{ backgroundColor: '#1D3557', color: 'white' }}>
+                                            <th style={{ padding: '14px', textAlign: 'left' }}>Fecha</th>
+                                            <th style={{ padding: '14px', textAlign: 'left' }}>Tipo</th>
+                                            <th style={{ padding: '14px', textAlign: 'left' }}>Descripción</th>
+                                            <th style={{ padding: '14px', textAlign: 'right' }}>Importe</th>
+                                            <th style={{ padding: '14px', textAlign: 'center' }}>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {gastosUnificados.map((gasto) => (
+                                            <tr key={gasto.id} style={{ borderBottom: '1px solid #eee', backgroundColor: gasto.tipo === "Multa" ? '#fef2f2' : '#f8fffe' }}>
+                                                <td style={{ padding: '14px' }}>
+                                                    {new Date(gasto.fecha).toLocaleDateString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '14px' }}>
+                                                    <span style={{
+                                                        padding: '6px 12px',
+                                                        borderRadius: '20px',
+                                                        fontSize: '0.85em',
+                                                        fontWeight: 'bold',
+                                                        backgroundColor: gasto.tipo === "Multa" ? '#FCA5A5' : '#A7F3D0',
+                                                        color: gasto.tipo === "Multa" ? '#991B1B' : '#065F46'
+                                                    }}>
+                                                        {gasto.tipo}
+                                                    </span>
+                                                </td>
+                                                <td style={{ padding: '14px', color: '#4B5563', maxWidth: '300px' }}>
+                                                    {gasto.descripcion || "Sin descripción"}
+                                                </td>
+                                                <td style={{ padding: '14px', textAlign: 'right', fontWeight: 'bold', color: '#1f2937' }}>
+                                                    ${gasto.monto.toLocaleString('es-AR')}
+                                                </td>
+                                                <td style={{ padding: '14px', textAlign: 'center' }}>
+                                                    <button 
+                                                        onClick={() => alert("Borrar gasto: " + gasto.id)} 
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.3em' }}
+                                                    >
+                                                        Borrar
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
                     {/* FIN DE LA SECCIÓN DE COSTOS TABLE */}
                     
                 </div>
