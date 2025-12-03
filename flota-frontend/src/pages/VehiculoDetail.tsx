@@ -636,33 +636,34 @@ const VehiculoDetail: React.FC = () => {
                 {/* ------------------------------------- */}
                 <div>
                     {/* TOTALES MODERNOS Y UNIFICADOS (incluye multas + descripción) */}
-                    <div className="mt-10 p-6 bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl border border-emerald-200 shadow-lg">
-                        <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
+                    {/* TOTALES EXACTAMENTE COMO LA CAPTURA QUE TE GUSTÓ */}
+                    <div className="mt-8 p-6 bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-2xl">
+                        <h2 className="text-2xl font-bold text-white mb-8 text-center">
                             Reporte de Costos (Últimos 12 meses)
                         </h2>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {/* Total General */}
-                            <div className="bg-gradient-to-br from-amber-500 to-orange-600 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                            <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
                                 <p className="text-lg opacity-90">Total General</p>
                                 <p className="text-4xl font-bold mt-2">
-                                    ${totalGeneral.toLocaleString('es-AR')}
+                                    ${totalGeneral.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
 
                             {/* Mantenimiento */}
-                            <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                            <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
                                 <p className="text-lg opacity-90">Mantenimiento</p>
                                 <p className="text-4xl font-bold mt-2">
-                                    ${totalMantenimiento.toLocaleString('es-AR')}
+                                    ${totalMantenimiento.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
 
-                            {/* Multas */}
-                            <div className="bg-gradient-to-br from-red-600 to-pink-700 text-white p-6 rounded-xl shadow-md text-center transform hover:scale-105 transition">
+                            {/* Infracciones */}
+                            <div className="bg-orange-500 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
                                 <p className="text-lg opacity-90">Infracciones</p>
                                 <p className="text-4xl font-bold mt-2">
-                                    ${totalMultas.toLocaleString('es-AR')}
+                                    ${totalMultas.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
                         </div>
