@@ -556,27 +556,26 @@ const VehiculoDetail: React.FC = () => {
                 {/* COLUMNA 2: COSTOS Y REPORTE */}
                 {/* ------------------------------------- */}
                 <div>
-                    {/* TOTALES MODERNOS Y UNIFICADOS (incluye multas + descripción) */}
-                    {/* TOTALES CON COLORES ROJO / AZUL / NARANJA - EXACTO COMO TU CAPTURA FAVORITA */}
-                    <div className="mt-10 p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 rounded-3xl shadow-2xl">
-                        <h2 className="text-3xl font-bold text-white mb-8 text-center">
+                    {/* TOTALES PREMIUM */}
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-3xl p-10 shadow-2xl">
+                        <h2 className="text-3xl font-bold text-white text-center mb-10">
                             Reporte de Costos (Últimos 12 meses)
                         </h2>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <div className="bg-gradient-to-br from-red-600 to-red-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                            <div className="bg-gradient-to-br from-red-600 to-red-700 p-8 rounded-2xl text-white text-center shadow-xl hover:shadow-2xl transition">
                                 <p className="text-xl opacity-90">Total General</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalGeneral.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
-                            <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                            <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-8 rounded-2xl text-white text-center shadow-xl hover:shadow-2xl transition">
                                 <p className="text-xl opacity-90">Mantenimiento</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalMantenimiento.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
-                            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                            <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-8 rounded-2xl text-white text-center shadow-xl hover:shadow-2xl transition">
                                 <p className="text-xl opacity-90">Infracciones</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalMultas.toLocaleString('es-AR')}.00
@@ -596,66 +595,65 @@ const VehiculoDetail: React.FC = () => {
                         />
                     </div>
 
-                    {/* Tabla de Costos UNIFICADA (mantenimientos + multas + descripción) */}
-                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', backgroundColor: '#ffffff' }}>
-                        <h2 style={{ color: '#1D3557', marginBottom: '15px' }}>
-                            Historial de Costos ({gastosUnificados.length})
-                        </h2>
+                    {/* HISTORIAL CON BOTÓN BORRAR ROJO Y GRANDE */}
+                    <div className="bg-white rounded-3xl shadow-2xl border border-slate-200">
+                        <div className="bg-gradient-to-r from-slate-800 to-slate-900 text-white p-6 rounded-t-3xl">
+                            <h2 className="text-2xl font-bold text-center">
+                                Historial de Costos ({gastosUnificados.length})
+                            </h2>
+                        </div>
 
-                        {gastosUnificados.length === 0 ? (
-                            <div style={{ textAlign: 'center', padding: '40px', color: '#666', background: '#f8f9fa', borderRadius: '8px' }}>
-                                No se encontraron gastos en el período seleccionado.
-                            </div>
-                        ) : (
-                            <div style={{ overflowX: 'auto' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95em' }}>
-                                    <thead>
-                                        <tr style={{ backgroundColor: '#1D3557', color: 'white' }}>
-                                            <th style={{ padding: '14px', textAlign: 'left' }}>Fecha</th>
-                                            <th style={{ padding: '14px', textAlign: 'left' }}>Tipo</th>
-                                            <th style={{ padding: '14px', textAlign: 'left' }}>Descripción</th>
-                                            <th style={{ padding: '14px', textAlign: 'right' }}>Importe</th>
-                                            <th style={{ padding: '14px', textAlign: 'center' }}>Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {gastosUnificados.map((gasto) => (
-                                            <tr key={gasto.id} style={{ borderBottom: '1px solid #eee', backgroundColor: gasto.tipo === "Multa" ? '#fef2f2' : '#f8fffe' }}>
-                                                <td style={{ padding: '14px' }}>
-                                                    {new Date(gasto.fecha).toLocaleDateString('es-AR')}
-                                                </td>
-                                                <td style={{ padding: '14px' }}>
-                                                    <span style={{
-                                                        padding: '6px 12px',
-                                                        borderRadius: '20px',
-                                                        fontSize: '0.85em',
-                                                        fontWeight: 'bold',
-                                                        backgroundColor: gasto.tipo === "Multa" ? '#FCA5A5' : '#A7F3D0',
-                                                        color: gasto.tipo === "Multa" ? '#991B1B' : '#065F46'
-                                                    }}>
-                                                        {gasto.tipo}
-                                                    </span>
-                                                </td>
-                                                <td style={{ padding: '14px', color: '#4B5563', maxWidth: '300px' }}>
-                                                    {gasto.descripcion || "Sin descripción"}
-                                                </td>
-                                                <td style={{ padding: '14px', textAlign: 'right', fontWeight: 'bold', color: '#1f2937' }}>
-                                                    ${gasto.monto.toLocaleString('es-AR')}
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    <button
-                                                        onClick={() => borrarGastoUniversal(gasto.id, gasto.origen === "mantenimiento" ? "costos" : "finanzas")}
-                                                        className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition shadow-md hover:shadow-lg"
-                                                    >
-                                                        Borrar
-                                                    </button>
-                                                </td>
+                        <div className="p-6">
+                            {gastosUnificados.length === 0 ? (
+                                <p className="text-center text-slate-500 py-12">No se encontraron gastos</p>
+                            ) : (
+                                <div className="overflow-x-auto">
+                                    <table className="w-full">
+                                        <thead>
+                                            <tr className="bg-slate-100 text-slate-700 text-left text-sm font-bold">
+                                                <th className="px-6 py-4">Fecha</th>
+                                                <th className="px-6 py-4">Tipo</th>
+                                                <th className="px-6 py-4">Descripción</th>
+                                                <th className="px-6 py-4 text-right">Importe</th>
+                                                <th className="px-6 py-4 text-center">Acciones</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
+                                        </thead>
+                                        <tbody>
+                                            {gastosUnificados.map((gasto) => (
+                                                <tr key={gasto.id} className="border-b hover:bg-slate-50">
+                                                    <td className="px-6 py-4 text-slate-600">
+                                                        {new Date(gasto.fecha).toLocaleDateString('es-AR')}
+                                                    </td>
+                                                    <td className="px-6 py-4">
+                                                        <span className={`inline-flex items-center px-4 py-2 rounded-full text-xs font-bold ${
+                                                            gasto.tipo === "Multa" 
+                                                                ? "bg-red-100 text-red-800" 
+                                                                : "bg-emerald-100 text-emerald-800"
+                                                        }`}>
+                                                            {gasto.tipo}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-slate-700">
+                                                        {gasto.descripcion || "Sin descripción"}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right font-bold text-right text-slate-800">
+                                                        ${gasto.monto.toLocaleString('es-AR')}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <button
+                                                            onClick={() => borrarGastoUniversal(gasto.id, gasto.origen === "mantenimiento" ? "costos" : "finanzas")}
+                                                            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md hover:shadow-lg transition"
+                                                        >
+                                                            Borrar
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
                     </div>
                     {/* FIN DE LA SECCIÓN DE COSTOS TABLE */}
                     
