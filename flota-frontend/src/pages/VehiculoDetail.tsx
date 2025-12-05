@@ -306,6 +306,7 @@ const VehiculoDetail: React.FC = () => {
         if (patente) {
             setIsLoading(true); 
             handleRefreshData();
+            
         } else {
             setError('Patente no especificada.');
             setIsLoading(false);
@@ -585,8 +586,8 @@ const VehiculoDetail: React.FC = () => {
                     </div>
                     
                     {/* INTEGRACIÓN DEL FORMULARIO DE COSTOS MANUALES */}
-                    <div style={{ marginTop: '30px', border: '1px solid #ccc', padding: '20px', borderRadius: '8px', background: '#F1FAEE' }}>
-                        <h2 style={{ borderBottom: '1px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
+                    <div className="mt-10 p-8 bg-emerald-50 border border-emerald-200 rounded-2xl shadow-lg">
+                        <h2 className="text-2xl font-bold text-slate-800 pb-4 border-b border-slate-300 mb-6">
                             ➕ Registrar Nuevo Gasto
                         </h2>
                         <CostoForm 
@@ -642,7 +643,7 @@ const VehiculoDetail: React.FC = () => {
                                                     <td className="px-6 py-4 text-center">
                                                         <button
                                                             onClick={() => borrarGastoUniversal(gasto.id, gasto.origen === "mantenimiento" ? "costos" : "finanzas")}
-                                                            className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg shadow-md hover:shadow-lg transition"
+                                                            className="bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
                                                         >
                                                             Borrar
                                                         </button>
