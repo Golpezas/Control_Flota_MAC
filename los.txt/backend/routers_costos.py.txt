@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Query, HTTPException
 from bson import ObjectId
 from datetime import datetime
 # =================================================================
@@ -63,3 +63,22 @@ async def get_gastos_unificados(patente: str):
         "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
         "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
     }
+
+@router.delete("/universal/{gasto_id}")
+async def borrar_gasto_universal(
+    gasto_id: str,
+    origen: str = Query(..., description="Colección: 'costos' (mantenimientos) o 'finanzas' (multas)")
+):
+    try:
+        obj_id = ObjectId(gasto_id)
+    except:
+        raise HTTPException(400, "ID inválido")
+
+    collection_name = "costos" if origen.lower() == "costos" else "finanzas"
+    collection = get_db_collection("Mantenimiento" if collection_name == "costos" else "Finanzas")
+
+    result = await collection.delete_one({"_id": obj_id})
+    if result.deleted_count == 0:
+        raise HTTPException(404, "Gasto no encontrado")
+
+    return {"message": "Gasto eliminado correctamente"}

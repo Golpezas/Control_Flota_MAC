@@ -558,31 +558,26 @@ const VehiculoDetail: React.FC = () => {
                 <div>
                     {/* TOTALES MODERNOS Y UNIFICADOS (incluye multas + descripción) */}
                     {/* TOTALES CON COLORES ROJO / AZUL / NARANJA - EXACTO COMO TU CAPTURA FAVORITA */}
-                    <div className="mt-10 p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 rounded-3xl shadow-2xl border border-slate-700">
-                        <h2 className="text-3xl font-bold text-white mb-8 text-center tracking-tight">
+                    <div className="mt-10 p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 rounded-3xl shadow-2xl">
+                        <h2 className="text-3xl font-bold text-white mb-8 text-center">
                             Reporte de Costos (Últimos 12 meses)
                         </h2>
                         
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            {/* Total General - ROJO */}
-                            <div className="bg-gradient-to-br from-red-600 to-red-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
-                                <p className="text-xl opacity-90 font-medium">Total General</p>
+                            <div className="bg-gradient-to-br from-red-600 to-red-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                                <p className="text-xl opacity-90">Total General</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalGeneral.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
-
-                            {/* Mantenimiento - AZUL */}
-                            <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
-                                <p className="text-xl opacity-90 font-medium">Mantenimiento</p>
+                            <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                                <p className="text-xl opacity-90">Mantenimiento</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalMantenimiento.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
-
-                            {/* Infracciones - NARANJA */}
-                            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
-                                <p className="text-xl opacity-90 font-medium">Infracciones</p>
+                            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition">
+                                <p className="text-xl opacity-90">Infracciones</p>
                                 <p className="text-5xl font-bold mt-3">
                                     ${totalMultas.toLocaleString('es-AR')}.00
                                 </p>
@@ -647,22 +642,10 @@ const VehiculoDetail: React.FC = () => {
                                                 <td style={{ padding: '14px', textAlign: 'right', fontWeight: 'bold', color: '#1f2937' }}>
                                                     ${gasto.monto.toLocaleString('es-AR')}
                                                 </td>
-                                                <td style={{ padding: '14px', textAlign: 'center' }}>
-                                                    <button 
+                                                <td className="px-6 py-4 text-center">
+                                                    <button
                                                         onClick={() => borrarGastoUniversal(gasto.id, gasto.origen === "mantenimiento" ? "costos" : "finanzas")}
-                                                        style={{ 
-                                                            background: '#dc3545', 
-                                                            color: 'white', 
-                                                            border: 'none', 
-                                                            padding: '10px 20px', 
-                                                            borderRadius: '8px', 
-                                                            cursor: 'pointer', 
-                                                            fontWeight: 'bold',
-                                                            fontSize: '0.95em',
-                                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                                        }}
-                                                        onMouseOver={(e) => e.currentTarget.style.background = '#c82333'}
-                                                        onMouseOut={(e) => e.currentTarget.style.background = '#dc3545'}
+                                                        className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition shadow-md hover:shadow-lg"
                                                     >
                                                         Borrar
                                                     </button>
