@@ -5,6 +5,7 @@ from typing import List, Optional, Any
 from fastapi.middleware.cors import CORSMiddleware
 from routers import flota
 from routers.archivos import router as archivos_router
+from routers.costos import router as costos_router
 
 # =========================================================================
 # INSTANCIA DE FASTAPI
@@ -33,6 +34,7 @@ app.add_middleware(
 # Ahora sí: incluir los routers DESPUÉS del middleware
 app.include_router(archivos_router)
 app.include_router(flota.router, prefix="")
+app.include_router(costos_router)
 
 # =========================================================================
 # EVENTO DE INICIO: CONEXIÓN ASINCRÓNICA A MONGODB

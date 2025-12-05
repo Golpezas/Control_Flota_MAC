@@ -11,7 +11,8 @@ import type {
 } from '../api/models/vehiculos'; 
 import { 
     fetchVehiculoByPatente, 
-    fetchReporteVehiculo, 
+    fetchReporteVehiculo,
+    borrarGastoUniversal, 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
 interface GastoUnificado {
@@ -24,6 +25,7 @@ interface GastoUnificado {
     origen: string;
 }
 //import CostosTable from '../components/CostosTable'; 
+
 
 // =================================================================
 // Definimos el tipo de origen usado en el mapeo
@@ -47,18 +49,6 @@ export interface CostoItemExtended {
 // Definimos la URL de la API (asumimos que está en localhost:8000)
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-/*
-// =================================================================
-// UTILITY FUNCTION
-// =================================================================
-// Función de formato de moneda (Definida afuera para ser compartida)
-const formatCurrency = (amount: number | null): string => {
-    if (amount == null || isNaN(amount)) {
-        return '$ 0.00';
-    }
-    return `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-};*/
-
 // =================================================================
 // COMPONENTES AUXILIARES
 // =================================================================
@@ -74,75 +64,6 @@ const DetailItem: React.FC<DetailItemProps> = ({ label, value }) => (
         <span style={{ color: '#1D3557' }}>{value === null || value === undefined || value === '' ? 'N/A' : value}</span>
     </div>
 );
-
-/*
-// 2. Componente DocumentItem 
-interface DocumentItemProps {
-    documento: DocumentoDigital;
-    onRefresh: () => void;
-}
-const DocumentItem: React.FC<DocumentItemProps> = ({ documento, onRefresh }) => {
-    const hasFile = !!documento.nombre_archivo && !!documento.path_esperado;
-    const downloadUrl = hasFile ? `${API_URL}/api/archivos/descargar?path_relativo=${encodeURIComponent(documento.path_esperado!)}` : '';
-    
-    return (
-        <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            padding: '8px 0', 
-            borderBottom: '1px dotted #eee', 
-            alignItems: 'center'
-        }}>
-            <span style={{ fontWeight: 'bold' }}>{documento.tipo.replace('_', ' ')}:</span>
-            <div style={{ display: 'flex', alignItems: 'center' }}>
-                <span style={{ marginRight: '10px', color: hasFile ? '#2A9D8F' : '#E63946', fontWeight: 'bold' }}>
-                    {hasFile ? `✅ Subido` : '❌ Falta/Revisar'}
-                </span>
-                {hasFile && (
-                    <a 
-                        href={downloadUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ padding: '5px 10px', marginLeft: '10px', cursor: 'pointer', background: '#457B9D', color: 'white', textDecoration: 'none', border: 'none', borderRadius: '4px', fontSize: '0.8em' }}
-                    >
-                        Descargar ({documento.nombre_archivo})
-                    </a>
-                )}
-                <button 
-                    onClick={() => onRefresh()} 
-                    style={{ padding: '5px 10px', marginLeft: '10px', cursor: 'pointer', background: '#A8DADC', color: '#1D3557', border: 'none', borderRadius: '4px', fontSize: '0.8em' }}
-                >
-                    Subir/Revisar
-                </button>
-            </div>
-        </div>
-    );
-};
-
-*/
-
-/*
-// 3. Componente CostosSummary
-interface CostosSummaryProps {
-    total_general: number | null;
-    total_mantenimiento: number | null;
-    total_infracciones: number | null;
-}
-
-const SummaryBox: React.FC<{ label: string; value: number | null; color: string }> = ({ label, value, color }) => (
-    <div style={{ padding: '15px', background: color, color: 'white', borderRadius: '4px', textAlign: 'center' }}>
-        <div style={{ fontSize: '0.9em' }}>{label}</div>
-        <div style={{ fontSize: '1.5em', fontWeight: 'bold' }}>{formatCurrency(value)}</div>
-    </div>
-);
-
-const CostosSummary: React.FC<CostosSummaryProps> = ({ total_general, total_mantenimiento, total_infracciones }) => (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '30px' }}>
-        <SummaryBox label="Total General" value={total_general} color="#E63946" />
-        <SummaryBox label="Mantenimiento" value={total_mantenimiento} color="#457B9D" />
-        <SummaryBox label="Infracciones" value={total_infracciones} color="#F4A261" />
-    </div>
-)*/
 
 // 4. Componente AlertaItem
 interface AlertaItemProps {
@@ -636,33 +557,33 @@ const VehiculoDetail: React.FC = () => {
                 {/* ------------------------------------- */}
                 <div>
                     {/* TOTALES MODERNOS Y UNIFICADOS (incluye multas + descripción) */}
-                    {/* TOTALES EXACTAMENTE COMO LA CAPTURA QUE TE GUSTÓ */}
-                    <div className="mt-8 p-6 bg-gradient-to-r from-slate-900 to-slate-800 rounded-2xl shadow-2xl">
-                        <h2 className="text-2xl font-bold text-white mb-8 text-center">
+                    {/* TOTALES CON COLORES ROJO / AZUL / NARANJA - EXACTO COMO TU CAPTURA FAVORITA */}
+                    <div className="mt-10 p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-700 rounded-3xl shadow-2xl border border-slate-700">
+                        <h2 className="text-3xl font-bold text-white mb-8 text-center tracking-tight">
                             Reporte de Costos (Últimos 12 meses)
                         </h2>
                         
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {/* Total General */}
-                            <div className="bg-red-600 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
-                                <p className="text-lg opacity-90">Total General</p>
-                                <p className="text-4xl font-bold mt-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                            {/* Total General - ROJO */}
+                            <div className="bg-gradient-to-br from-red-600 to-red-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
+                                <p className="text-xl opacity-90 font-medium">Total General</p>
+                                <p className="text-5xl font-bold mt-3">
                                     ${totalGeneral.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
 
-                            {/* Mantenimiento */}
-                            <div className="bg-blue-600 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
-                                <p className="text-lg opacity-90">Mantenimiento</p>
-                                <p className="text-4xl font-bold mt-2">
+                            {/* Mantenimiento - AZUL */}
+                            <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
+                                <p className="text-xl opacity-90 font-medium">Mantenimiento</p>
+                                <p className="text-5xl font-bold mt-3">
                                     ${totalMantenimiento.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
 
-                            {/* Infracciones */}
-                            <div className="bg-orange-500 text-white p-6 rounded-xl shadow-lg text-center transform hover:scale-105 transition">
-                                <p className="text-lg opacity-90">Infracciones</p>
-                                <p className="text-4xl font-bold mt-2">
+                            {/* Infracciones - NARANJA */}
+                            <div className="bg-gradient-to-br from-orange-500 to-orange-600 text-white p-8 rounded-2xl shadow-xl text-center transform hover:scale-105 transition-all duration-300">
+                                <p className="text-xl opacity-90 font-medium">Infracciones</p>
+                                <p className="text-5xl font-bold mt-3">
                                     ${totalMultas.toLocaleString('es-AR')}.00
                                 </p>
                             </div>
@@ -728,8 +649,20 @@ const VehiculoDetail: React.FC = () => {
                                                 </td>
                                                 <td style={{ padding: '14px', textAlign: 'center' }}>
                                                     <button 
-                                                        onClick={() => alert("Borrar gasto: " + gasto.id)} 
-                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.3em' }}
+                                                        onClick={() => borrarGastoUniversal(gasto.id, gasto.origen === "mantenimiento" ? "costos" : "finanzas")}
+                                                        style={{ 
+                                                            background: '#dc3545', 
+                                                            color: 'white', 
+                                                            border: 'none', 
+                                                            padding: '10px 20px', 
+                                                            borderRadius: '8px', 
+                                                            cursor: 'pointer', 
+                                                            fontWeight: 'bold',
+                                                            fontSize: '0.95em',
+                                                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                                        }}
+                                                        onMouseOver={(e) => e.currentTarget.style.background = '#c82333'}
+                                                        onMouseOut={(e) => e.currentTarget.style.background = '#dc3545'}
                                                     >
                                                         Borrar
                                                     </button>

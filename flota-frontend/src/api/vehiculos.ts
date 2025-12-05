@@ -107,7 +107,7 @@ export async function createVehiculo(data: VehiculoInput): Promise<Vehiculo> {
  * Elimina un costo manual por su ID (solo los creados manualmente).
  * Usa el endpoint correcto: DELETE /costos/manual/{id}?origen=...
  */
-export async function deleteCostoItem(id: string, origen: 'Finanzas' | 'Mantenimiento'): Promise<void> {
+/*export async function deleteCostoItem(id: string, origen: 'Finanzas' | 'Mantenimiento'): Promise<void> {
     try {
         // RUTA CORRECTA
         const url = `/costos/manual/${id}`;
@@ -137,6 +137,37 @@ export async function deleteCostoItem(id: string, origen: 'Finanzas' | 'Mantenim
         
         console.error("Error al eliminar costo:", error);
         throw new Error(errorMessage);
+    }
+}*/
+
+export async function borrarGastoUniversal(
+    id: string, 
+    origen: "costos" | "finanzas"
+): Promise<void> {
+    if (!confirm("¿Estás seguro de eliminar este gasto? Esta acción no se puede deshacer.")) {
+        return;
+    }
+
+    try {
+        await apiClient.delete(`/costos/universal/${id}`, {
+            params: { origen }
+        });
+
+        alert("Gasto eliminado correctamente");
+    } catch (error) {
+        // 100% TypeScript seguro - sin "any"
+        let mensaje = "Error al eliminar el gasto";
+
+        if (error && typeof error === "object" && "response" in error) {
+            const err = error as { response?: { data?: { detail?: string } } };
+            mensaje = err.response?.data?.detail || "Error del servidor";
+        } else if (error instanceof Error) {
+            mensaje = error.message;
+        }
+
+        alert("Error: " + mensaje);
+        console.error("Error borrando gasto:", error);
+        throw new Error(mensaje);
     }
 }
 
