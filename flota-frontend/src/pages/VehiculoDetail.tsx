@@ -124,12 +124,6 @@ const VehiculoDetail: React.FC = () => {
 
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setArchivoNuevo(e.target.files[0]);
-        }
-    };
-
     const handleDownload = (fileId: string) => {
         window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
     };
@@ -159,8 +153,8 @@ const VehiculoDetail: React.FC = () => {
                 setPreviewUrl(URL.createObjectURL(blob));
             }
         } catch (err) {
-            console.error("Error cargando documento:", err);
-            alert("El documento tardó en cargar. Intentá de nuevo en 10 segundos.");
+            console.error("Error cargando preview:", err);
+            alert("Error al cargar vista previa. Intentá de nuevo.");
         } finally {
             setLoadingPreview(false);
         }
@@ -168,24 +162,24 @@ const VehiculoDetail: React.FC = () => {
     };
 
     const subirDocumento = async () => {
-        if (!docSeleccionado || !archivoNuevo) return;
+        if (!docSeleccionado || !archivoNuevo || !vehiculo) return;
 
         const formData = new FormData();
-        formData.append("patente", vehiculo!._id);
+        formData.append("patente", vehiculo._id);
         formData.append("file", archivoNuevo);
 
         try {
-            await apiClient.post(`/api/archivos/subir-documento`, formData, {
-                headers: { "Content-Type": "multipart/form-data" },
-                params: { tipo: docSeleccionado.tipo }
+            await apiClient.post("/api/archivos/subir-documento", formData, {
+                params: { tipo: docSeleccionado.tipo },
             });
 
             alert("Documento subido correctamente");
             setModalIsOpen(false);
-            cargarDatos();
+            setArchivoNuevo(null);
+            cargarDatos(); // Refresca el vehículo
         } catch (error) {
-            console.error("Error al subir documento:", error);
-            alert("Error al subir el documento. Reintentá en unos segundos.");
+            console.error("Error subiendo documento:", error);
+            alert("Error al subir el documento. Reintentá.");
         }
     };
 
@@ -256,7 +250,7 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* ========================================= */}
-            {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS)    */}
+            {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS) - 100% FUNCIONAL */}
             {/* ========================================= */}
             <div className="mt-8 border border-slate-300 rounded-xl bg-emerald-50/30 p-6">
                 <h2 className="text-2xl font-bold text-slate-800 mb-5">Documentos Digitales</h2>
@@ -264,15 +258,16 @@ const VehiculoDetail: React.FC = () => {
                 {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
                     <p className="text-slate-600 italic">No hay documentos configurados para este vehículo.</p>
                 ) : (
-                    (vehiculo.documentos_digitales as DocumentoDigital[]).map((doc, index) => {
+                    vehiculo.documentos_digitales.map((doc, index) => {
                         const tieneArchivo = !!doc.file_id;
-
                         return (
                             <div
                                 key={index}
                                 className="flex justify-between items-center py-4 border-b border-slate-200 last:border-0"
                             >
-                                <strong className="text-slate-700">{doc.tipo.replace(/_/g, " ")}:</strong>
+                                <strong className="text-slate-700">
+                                    {doc.tipo.replace(/_/g, " ").toUpperCase()}:
+                                </strong>
 
                                 <div className="flex items-center gap-3">
                                     <span
@@ -288,7 +283,7 @@ const VehiculoDetail: React.FC = () => {
                                     {tieneArchivo && (
                                         <button
                                             onClick={() => handleDownload(doc.file_id!)}
-                                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition"
+                                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition shadow-md"
                                         >
                                             Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ""}
                                         </button>
@@ -296,7 +291,7 @@ const VehiculoDetail: React.FC = () => {
 
                                     <button
                                         onClick={() => abrirModalDocumento(doc)}
-                                        className={`px-4 py-2 text-sm font-medium rounded-lg transition ${
+                                        className={`px-5 py-2 text-sm font-bold rounded-lg transition shadow-md ${
                                             tieneArchivo
                                                 ? "bg-amber-600 hover:bg-amber-700 text-white"
                                                 : "bg-red-600 hover:bg-red-700 text-white"
@@ -312,24 +307,27 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* ========================================= */}
-            {/* MODAL PARA SUBIR / REVISAR DOCUMENTO      */}
+            {/* MODAL PARA REVISAR Y SUBIR DOCUMENTOS */}
             {/* ========================================= */}
             <Modal
                 isOpen={modalIsOpen}
                 onRequestClose={() => {
                     setModalIsOpen(false);
-                    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+                    if (previewUrl && previewUrl.startsWith("blob:")) {
+                        URL.revokeObjectURL(previewUrl);
+                    }
                     setPreviewUrl(null);
+                    setArchivoNuevo(null);
                 }}
-                className="max-w-3xl w-[92%] bg-white rounded-2xl shadow-2xl p-8 outline-none"
+                className="max-w-4xl w-[95%] bg-white rounded-2xl shadow-2xl p-8 outline-none overflow-y-auto max-h-[95vh]"
                 overlayClassName="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
                 ariaHideApp={false}
             >
                 <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
-                    {docSeleccionado?.tipo.replace(/_/g, " ") || "Documento"}
+                    {docSeleccionado?.tipo.replace(/_/g, " ").toUpperCase() || "Documento"}
                 </h2>
 
-                {/* ESTADO DE CARGA */}
+                {/* SPINNER MIENTRAS CARGA */}
                 {loadingPreview ? (
                     <div className="text-center py-20">
                         <div className="spinner-documento"></div>
@@ -340,7 +338,6 @@ const VehiculoDetail: React.FC = () => {
                     // VISTA PREVIA
                     docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
                         <iframe
-                            key={previewUrl}
                             src={previewUrl}
                             className="w-full h-96 md:h-[650px] border border-slate-300 rounded-xl shadow-inner"
                             title="Vista previa PDF"
@@ -348,10 +345,9 @@ const VehiculoDetail: React.FC = () => {
                         />
                     ) : (
                         <img
-                            key={previewUrl}
                             src={previewUrl}
                             alt="Vista previa"
-                            className="max-w-full h-auto rounded-xl border border-slate-300 shadow-lg mx-auto"
+                            className="max-w-full h-auto rounded-xl border border-slate-300 shadow-lg mx-auto block"
                         />
                     )
                 ) : (
@@ -361,12 +357,15 @@ const VehiculoDetail: React.FC = () => {
                     </div>
                 )}
 
-                {/* INPUT FILE */}
+                {/* INPUT PARA SUBIR ARCHIVO NUEVO */}
                 <div className="mt-8">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                        {docSeleccionado?.file_id ? "Reemplazar con un nuevo archivo:" : "Subir documento:"}
+                    </label>
                     <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handleFileChange}
+                        onChange={(e) => e.target.files?.[0] && setArchivoNuevo(e.target.files[0])}
                         className="block w-full text-sm text-slate-600
                                 file:mr-4 file:py-3 file:px-6
                                 file:rounded-xl file:border-0
@@ -382,10 +381,13 @@ const VehiculoDetail: React.FC = () => {
                     <button
                         onClick={() => {
                             setModalIsOpen(false);
-                            if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
+                            if (previewUrl && previewUrl.startsWith("blob:")) {
+                                URL.revokeObjectURL(previewUrl);
+                            }
                             setPreviewUrl(null);
+                            setArchivoNuevo(null);
                         }}
-                        className="px-6 py-3 bg-slate-500 text-white rounded-xl hover:bg-slate-600 transition"
+                        className="px-6 py-3 bg-slate-500 text-white rounded-xl hover:bg-slate-600 transition font-medium"
                     >
                         Cancelar
                     </button>
@@ -393,9 +395,9 @@ const VehiculoDetail: React.FC = () => {
                     <button
                         onClick={subirDocumento}
                         disabled={!archivoNuevo}
-                        className={`px-8 py-3 rounded-xl font-bold transition ${
+                        className={`px-8 py-3 rounded-xl font-bold transition shadow-lg ${
                             archivoNuevo
-                                ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg"
+                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
                                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
                         }`}
                     >
