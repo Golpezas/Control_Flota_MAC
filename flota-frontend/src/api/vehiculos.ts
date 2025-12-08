@@ -11,10 +11,11 @@ import type {
 } from './models/vehiculos';
 import type { Alerta } from './models/vehiculos';
 
-// 🔑 CORRECCIÓN: Asegura que API_URL es exportada
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'; // ⬅️ DEBE tener 'export'
+// API Base
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-const apiClient = axios.create({
+// EXPORTAMOS apiClient → ¡Esto resuelve el error principal!
+export const apiClient = axios.create({
     baseURL: API_BASE,
     headers: {
         'Content-Type': 'application/json',
@@ -43,11 +44,8 @@ function mapVehiculoResponse(data: VehiculoBackendResponse): Vehiculo {
         tipo_combustible: data.TIPO_COMBUSTIBLE || data.tipo_combustible || null, 
         
         documentos_digitales: data.documentos_digitales || [],
-    } as Vehiculo;
-    
-    // Log for depuration: Check if data is lost here
-    //console.log(`FRONTEND MAPEO VEHICULO: Patente=${mappedVehiculo._id}, Movil=${mappedVehiculo.nro_movil}, Año=${mappedVehiculo.anio}`);
-    
+    } as Vehiculo;  // Type assertion si es necesario
+
     return mappedVehiculo;
 }
 
@@ -102,43 +100,6 @@ export async function createVehiculo(data: VehiculoInput): Promise<Vehiculo> {
         throw new Error(`Fallo en la creación del vehículo: ${errorMessage}`);
     }
 }
-
-/**
- * Elimina un costo manual por su ID (solo los creados manualmente).
- * Usa el endpoint correcto: DELETE /costos/manual/{id}?origen=...
- */
-/*export async function deleteCostoItem(id: string, origen: 'Finanzas' | 'Mantenimiento'): Promise<void> {
-    try {
-        // RUTA CORRECTA
-        const url = `/costos/manual/${id}`;
-
-        await apiClient.delete(url, {
-            params: {
-                origen: origen  // ← obligatorio como query param
-            }
-        });
-
-        console.log(`Costo eliminado correctamente: ${id} (${origen})`);
-
-    } catch (error: unknown) {
-        let errorMessage = 'Error al eliminar el costo.';
-        
-        if (axios.isAxiosError(error) && error.response) {
-            const errorData = error.response.data as FastAPIErrorResponse;
-            const detail = errorData.detail || error.message;
-            
-            errorMessage = `No se pudo eliminar (Status: ${error.response.status}): ${detail}`;
-            
-            // Esto es clave para que veas por qué no te deja borrar los del ETL
-            if (error.response.status === 404) {
-                errorMessage = "Solo se pueden eliminar costos creados manualmente.";
-            }
-        }
-        
-        console.error("Error al eliminar costo:", error);
-        throw new Error(errorMessage);
-    }
-}*/
 
 export async function borrarGastoUniversal(
     id: string, 

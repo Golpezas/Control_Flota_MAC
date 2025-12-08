@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import type { CostoItem } from '../api/models/vehiculos';
-import { deleteCostoItem } from '../api/vehiculos'; // ← IMPORT CLAVE
+import { borrarGastoUniversal } from '../api/vehiculos'; // ← Corregido: Usar borrarGastoUniversal en vez de deleteCostoItem
 
 // =================================================================
 // 1. TIPOS AUXILIARES
@@ -20,7 +20,7 @@ export interface CostoItemExtended extends Omit<CostoItem, 'origen'> {
 // =================================================================
 
 const formatCurrency = (amount: number): string =>
-    `$ ${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+    `$ ${amount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // =================================================================
 // 3. PROPS DEL COMPONENTE
@@ -29,7 +29,7 @@ const formatCurrency = (amount: number): string =>
 interface CostosTableProps {
     costos: CostoItemExtended[];
     onRefresh: () => void;
-    // Ya no usamos onDelete como prop → lo hacemos directo con deleteCostoItem
+    // Ya no usamos onDelete como prop → lo hacemos directo con borrarGastoUniversal
 }
 
 // =================================================================
@@ -52,7 +52,8 @@ const CostosTable: React.FC<CostosTableProps> = ({ costos, onRefresh }) => {
             return;
         }
 
-        const origenValido = origen as CostoOrigen;
+        // Mapear origen a lo que espera borrarGastoUniversal ("costos" o "finanzas")
+        const origenMapped: "costos" | "finanzas" = origen === 'Mantenimiento' ? 'costos' : 'finanzas';
 
         if (!window.confirm(`¿Estás seguro de eliminar este costo?\nID: ${id.slice(-8)}\nOrigen: ${origen}`)) {
             return;
@@ -60,100 +61,90 @@ const CostosTable: React.FC<CostosTableProps> = ({ costos, onRefresh }) => {
 
         setIsProcessing(true);
         try {
-            // Llamada directa al API con orden correcto: ID primero, origen después
-            await deleteCostoItem(id, origenValido);
-
-            alert('Costo eliminado correctamente');
-            onRefresh(); // Recarga el reporte
+            await borrarGastoUniversal(id, origenMapped); // Llamada corregida
+            alert('Gasto eliminado correctamente');
+            onRefresh(); // Refrescar la lista después de eliminar
         } catch (error) {
-            // Manejo limpio sin 'any'
-            const mensaje = error instanceof Error 
-                ? error.message 
-                : 'Error desconocido al eliminar el costo';
-
-            console.error('Error al eliminar:', error);
-            alert(mensaje.includes('manual') 
-                ? 'Solo se pueden eliminar costos creados manualmente.' 
-                : mensaje
-            );
+            let mensaje = 'Error al eliminar el gasto';
+            if (error instanceof Error) {
+                mensaje = error.message;
+            }
+            alert(`Error: ${mensaje}`);
+            console.error('Error borrando gasto:', error);
         } finally {
             setIsProcessing(false);
         }
     };
 
     return (
-        <div style={{ marginTop: '30px', overflowX: 'auto' }}>
-            <h2 style={{ 
-                borderBottom: '1px solid #ccc', 
-                paddingBottom: '10px', 
-                marginBottom: '20px', 
-                color: '#1D3557' 
-            }}>
-                Historial de Costos ({costos.length})
-            </h2>
-
-            <table style={{ width: '100%', borderCollapse: 'collapse', background: 'white' }}>
-                <thead>
-                    <tr style={{ background: '#A8DADC', color: '#1D3557' }}>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Fecha</th>
-                        <th style={{ padding: '10px', textAlign: 'left' }}>Tipo</th>
-                        <th style={{ padding: '10px', textAlign: 'right' }}>Importe</th>
-                        <th style={{ padding: '10px', textAlign: 'center' }}>Origen</th>
-                        <th style={{ padding: '10px', textAlign: 'center' }}>Acciones</th>
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ backgroundColor: '#1D3557', color: 'white' }}>
+                    <tr>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Fecha</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Tipo</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Descripción</th>
+                        <th style={{ padding: '12px', textAlign: 'right' }}>Importe</th>
+                        <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {[...costos]
-                        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-                        .map((costo, index) => {
-                            const safeKey = costo._id || `costo-${costo.fecha}-${costo.importe}-${index}`;
-
-                            return (
-                                <tr
-                                    key={safeKey}
+                    {costos.map((costo, index) => (
+                        <tr 
+                            key={costo._id || index} 
+                            style={{ 
+                                backgroundColor: index % 2 === 0 ? '#f8f9fa' : 'white',
+                                borderBottom: '1px solid #ddd'
+                            }}
+                        >
+                            <td style={{ padding: '12px' }}>{costo.fecha}</td>
+                            <td style={{ padding: '12px' }}>
+                                <span style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '12px',
+                                    backgroundColor: costo.tipo === 'Multa' ? '#fee' : '#e6f4ea',
+                                    color: costo.tipo === 'Multa' ? '#c1121f' : '#2d6a4f',
+                                    fontWeight: 'bold'
+                                }}>
+                                    {costo.tipo}
+                                </span>
+                            </td>
+                            <td style={{ padding: '12px' }}>{costo.descripcion}</td>
+                            <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>
+                                {formatCurrency(costo.importe)}
+                            </td>
+                            <td style={{ padding: '12px', textAlign: 'center' }}>
+                                <button
+                                    onClick={() => {
+                                        console.log('BORRANDO →', costo._id, costo.origen);
+                                        handleDeleteClick(costo._id, costo.origen);
+                                    }}
+                                    disabled={isProcessing || !costo._id}
                                     style={{
-                                        borderBottom: '1px solid #eee',
-                                        backgroundColor: index % 2 === 0 ? '#F8F9FA' : 'white'
+                                        padding: '6px 12px',
+                                        cursor: (isProcessing || !costo._id) ? 'not-allowed' : 'pointer',
+                                        background: (isProcessing || !costo._id) ? '#999' : '#E63946',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        fontSize: '0.8em',
+                                        fontWeight: 'bold',
+                                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                                        opacity: (isProcessing || !costo._id) ? 0.5 : 1,
+                                        transition: 'background 0.3s'
+                                    }}
+                                    onMouseOver={(e) => {
+                                        if (!isProcessing && costo._id) e.currentTarget.style.background = '#c1121f';
+                                    }}
+                                    onMouseOut={(e) => {
+                                        if (!isProcessing && costo._id) e.currentTarget.style.background = '#E63946';
                                     }}
                                 >
-                                    <td style={{ padding: '10px' }}>
-                                        {costo.fecha ? costo.fecha.split('T')[0] : 'N/A'}
-                                    </td>
-                                    <td style={{ padding: '10px' }}>
-                                        {costo.descripcion || 'Sin Descripción'}
-                                    </td>
-                                    <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>
-                                        {formatCurrency(costo.importe)}
-                                    </td>
-                                    <td style={{ padding: '10px', textAlign: 'center', fontSize: '0.85em' }}>
-                                        {costo.origen}
-                                    </td>
-                                    <td style={{ padding: '10px', textAlign: 'center' }}>
-                                        <button
-                                            onClick={() => {
-                                                console.log('BORRANDO →', costo._id, costo.origen);
-                                                if (costo._id && window.confirm(`¿Seguro que querés BORRAR este costo?\nFecha: ${costo.fecha}\nOrigen: ${costo.origen}`)) {
-                                                    handleDeleteClick(costo._id, costo.origen);
-                                                }
-                                            }}
-                                            disabled={isProcessing || !costo._id}
-                                            style={{
-                                                padding: '6px 12px',
-                                                cursor: (isProcessing || !costo._id) ? 'not-allowed' : 'pointer',
-                                                background: (isProcessing || !costo._id) ? '#999' : '#E63946',
-                                                color: 'white',
-                                                border: 'none',
-                                                borderRadius: '4px',
-                                                fontSize: '0.8em',
-                                                opacity: (isProcessing || !costo._id) ? 0.5 : 1,
-                                            }}
-                                        >
-                                            {isProcessing ? 'Borrando...' : 'Borrar'}
-                                        </button>
-                                    </td>
-                                </tr>
-                            );
-                        })}
+                                    {isProcessing ? 'Borrando...' : 'Borrar'}
+                                </button>
+                            </td>
+                        </tr>
+                    ))}
                 </tbody>
             </table>
 

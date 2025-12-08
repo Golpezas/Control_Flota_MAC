@@ -6,6 +6,9 @@ from datetime import datetime
 # =================================================================
 from fastapi import APIRouter
 from dependencies import get_db_collection   # ← ESTO SÍ FUNCIONA PERFECTO
+import logging
+
+logger = logging.getLogger(__name__)  # Configurar logging
 
 def normalize_patente(patente: str) -> str:
     if not patente:
@@ -67,11 +70,12 @@ async def get_gastos_unificados(patente: str):
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(
     gasto_id: str,
-    origen: str = Query(..., description="Colección: 'costos' (mantenimientos) o 'finanzas' (multas)")
+    origen: str = Query(..., description="Colección: 'costos' (mantenimiento) o 'finanzas' (multas)")
 ):
     try:
         obj_id = ObjectId(gasto_id)
-    except:
+    except Exception as e:
+        logger.error(f"ID inválido: {gasto_id} - Error: {e}")
         raise HTTPException(400, "ID inválido")
 
     collection_name = "costos" if origen.lower() == "costos" else "finanzas"
@@ -79,6 +83,8 @@ async def borrar_gasto_universal(
 
     result = await collection.delete_one({"_id": obj_id})
     if result.deleted_count == 0:
+        logger.warning(f"Gasto no encontrado: {gasto_id} en {collection_name}")
         raise HTTPException(404, "Gasto no encontrado")
 
+    logger.info(f"Gasto eliminado: {gasto_id} en {collection_name}")
     return {"message": "Gasto eliminado correctamente"}
