@@ -461,57 +461,54 @@ async def get_reporte_vehiculo(
         origen="Mantenimiento"
     ))
 
-    # === 5. FINANZAS (infracciones + gastos manuales) ===
+    # === 5. FINANZAS (infracciones + gastos manuales) - VERSIÓN CORREGIDA ===
     db_finanzas = get_db_collection("Finanzas")
+    
+    # Traemos TODOS los registros de la patente (no filtramos por fecha en MongoDB)
     cursor_finanzas = db_finanzas.find({"patente": patente_norm})
-    # 🔑 CORRECCIÓN 4: Reemplazar iteración síncrona por to_list() asíncrono
-    docs_finanzas = await cursor_finanzas.to_list(length=None) 
+    docs_finanzas = await cursor_finanzas.to_list(length=None)
 
     for doc in docs_finanzas:
         try:
-            # --- Parseo seguro de fecha ---
-            fecha_raw = doc.get("dia") or doc.get("fecha")
-            if not fecha_raw or fecha_raw in ["N/A", "", None]:
-                continue
+            # === PARSEO DE FECHA USANDO LA MISMA FUNCIÓN QUE EN MANTENIMIENTO ===
+            fecha_iso = parse_fecha_segura(doc)
+            try:
+                fecha_dt = datetime.strptime(fecha_iso, "%Y-%m-%d")
+            except:
+                continue  # Si no se puede parsear, saltamos
 
-            if isinstance(fecha_raw, datetime):
-                fecha_dt = fecha_raw
-            else:
-                fecha_str = str(fecha_raw).strip()
-                try:
-                    # Intento de parseo (D/M/YYYY)
-                    d, m, a = re.split(r'[\/\-\.]', fecha_str)
-                    fecha_dt = datetime(int(a), int(m), int(d))
-                except:
-                    # Si falla, salta este documento
-                    continue
-
-            # --- Filtrado de fecha en Python (manteniendo la lógica original) ---
+            # === FILTRO DE RANGO DE FECHAS ===
             if not (start_dt <= fecha_dt <= end_dt):
                 continue
 
-            # --- Monto ---
+            # === MONTO ===
             monto = float(doc.get("MONTO") or doc.get("monto") or 0)
 
-            # --- Tipo usando la constante centralizada ---
+            # === DETERMINAR SI ES MULTA ===
+            motivo = str(doc.get("motivo") or doc.get("MOTIVO") or "").upper()
             tipo_registro = doc.get("tipo_registro", "").upper()
-            if tipo_registro == "INFRACCION":
+
+            if any(palabra in motivo for palabra in ["MULTA", "INFRACCION", "EXCESO", "VELOCIDAD", "VIA PROHIBIDA"]):
                 total_infracciones += monto
-                tipo_final = "Infracción" 
+                tipo_final = "Multa"
+            elif tipo_registro == "INFRACCION":
+                total_infracciones += monto
+                tipo_final = "Multa"
             else:
                 tipo_final = doc.get("tipo_costo", "Otros")
 
+            # === AGREGAR A LA LISTA ===
             costos_list.append(CostoItem(
                 _id=str(doc["_id"]),
-                tipo=TIPO_POR_ORIGEN.get(tipo_final, tipo_final),
-                fecha=fecha_dt.strftime("%Y-%m-%d"),
-                descripcion=(doc.get("motivo") or doc.get("ACTA") or "Sin descripción")[:100],
+                tipo=tipo_final,
+                fecha=fecha_iso,
+                descripcion=(doc.get("motivo") or doc.get("ACTA") or "Gasto financiero")[:100],
                 importe=monto,
                 origen="Finanzas"
             ))
 
         except Exception as e:
-            print(f"Error procesando Finanzas {doc.get('_id')}: {e}")
+            print(f"Error procesando registro Finanzas {doc.get('_id')}: {e}")
             continue
 
     # === 6. Ordenar por fecha descendente ===
