@@ -35,77 +35,6 @@ const DetailItem: React.FC<{ label: string; value: string | number | null | unde
     </div>
 );
 
-/*const DocumentoItem: React.FC<{ doc: DocumentoDigital }> = ({ doc }) => {
-    const [modalIsOpen, setModalIsOpen] = useState(false);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [error, setError] = useState<string | null>(null);
-
-    const fileId = doc.file_id;
-    const nombreArchivo = doc.nombre_archivo || 'Archivo sin nombre';
-
-    const handlePreview = async () => {
-        if (!fileId) return;
-        setError(null);
-        try {
-            const response = await apiClient.get(`/archivos/descargar/${fileId}?preview=true`, { responseType: 'blob' });
-            const url = URL.createObjectURL(response.data);
-            setPreviewUrl(url);
-            setModalIsOpen(true);
-        } catch {
-            setError('Archivo no encontrado o error al cargar.');
-        }
-    };
-
-    const handleDownload = async () => {
-        if (!fileId) return;
-        try {
-            const response = await apiClient.get(`/archivos/descargar/${fileId}`, { responseType: 'blob' });
-            const url = URL.createObjectURL(response.data);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = nombreArchivo;
-            a.click();
-            URL.revokeObjectURL(url);
-        } catch {
-            alert('Error al descargar el archivo.');
-        }
-    };
-
-    return (
-        <div style={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            padding: '10px 0', 
-            borderBottom: '1px solid #eee' 
-        }}>
-            <span>{doc.tipo}: {nombreArchivo}</span>
-            {fileId ? (
-                <div>
-                    <button onClick={handlePreview} style={{ marginRight: '10px', color: '#457B9D' }}>
-                        Vista Previa
-                    </button>
-                    <button onClick={handleDownload} style={{ color: '#E63946' }}>
-                        Descargar
-                    </button>
-                </div>
-            ) : (
-                <span style={{ color: '#E63946' }}>Archivo no disponible</span>
-            )}
-            {error && <p style={{ color: 'red' }}>{error}</p>}
-
-            <Modal isOpen={modalIsOpen} onRequestClose={() => setModalIsOpen(false)}
-                style={{ content: { top: '50%', left: '50%', right: 'auto', bottom: 'auto', marginRight: '-50%', transform: 'translate(-50%, -50%)', maxWidth: '90%', maxHeight: '90%' }}}>
-                {previewUrl ? (
-                    <iframe src={previewUrl} style={{ width: '100%', height: '80vh', border: 'none' }} />
-                ) : (
-                    <p>Cargando preview...</p>
-                )}
-            </Modal>
-        </div>
-    );
-};*/
-
 // Componente principal
 const VehiculoDetail: React.FC = () => {
     const { patente } = useParams<{ patente: string }>();
@@ -122,12 +51,24 @@ const VehiculoDetail: React.FC = () => {
     const [loadingPreview, setLoadingPreview] = useState(false);
     const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
 
+    // =========================================
+    // FUNCIONES PARA DOCUMENTOS DIGITALES
+    // =========================================
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+    // 1. Maneja el cambio en el input file
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) {
+            setArchivoNuevo(e.target.files[0]);
+        }
+    };
+
+    // 2. Descarga directa (funciona perfecto)
     const handleDownload = (fileId: string) => {
         window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
     };
 
+    // 3. Abre el modal con vista previa (PDF directo, imágenes con blob)
     const abrirModalDocumento = async (doc: DocumentoDigital) => {
         setDocSeleccionado(doc);
         setPreviewUrl(null);
@@ -145,22 +86,26 @@ const VehiculoDetail: React.FC = () => {
             const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
 
             if (doc.nombre_archivo?.toLowerCase().includes(".pdf")) {
+                // PDF: URL directa → más rápido y sin problemas de blob
                 setPreviewUrl(url);
             } else {
+                // Imágenes: blob para mejor compatibilidad
                 const response = await fetch(url, { cache: "no-store" });
-                if (!response.ok) throw new Error("Error al cargar");
+                if (!response.ok) throw new Error("No se pudo cargar");
                 const blob = await response.blob();
                 setPreviewUrl(URL.createObjectURL(blob));
             }
         } catch (err) {
-            console.error("Error cargando preview:", err);
-            alert("Error al cargar vista previa. Intentá de nuevo.");
+            console.error("Error cargando vista previa:", err);
+            alert("Error al cargar el documento. Reintentá en 10 segundos.");
         } finally {
             setLoadingPreview(false);
         }
+
         setModalIsOpen(true);
     };
 
+    // 4. Sube o reemplaza el documento
     const subirDocumento = async () => {
         if (!docSeleccionado || !archivoNuevo || !vehiculo) return;
 
@@ -176,13 +121,12 @@ const VehiculoDetail: React.FC = () => {
             alert("Documento subido correctamente");
             setModalIsOpen(false);
             setArchivoNuevo(null);
-            cargarDatos(); // Refresca el vehículo
+            cargarDatos(); // Refresca todo
         } catch (error) {
             console.error("Error subiendo documento:", error);
             alert("Error al subir el documento. Reintentá.");
         }
     };
-
     const cargarDatos = useCallback(async () => {
         if (!patente) return;
 
@@ -232,7 +176,7 @@ const VehiculoDetail: React.FC = () => {
     if (!vehiculo) return <div>No se encontró el vehículo.</div>;
 
     return (
-        <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto' }}>
+        <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
             <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
                 Detalle del Vehículo: {vehiculo._id}
             </h1>
@@ -250,32 +194,35 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* ========================================= */}
-            {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS) - 100% FUNCIONAL */}
+            {/* SECCIÓN: DOCUMENTOS DIGITALES (GridFS) - FIXEADO */}
             {/* ========================================= */}
-            <div className="mt-8 border border-slate-300 rounded-xl bg-emerald-50/30 p-6">
-                <h2 className="text-2xl font-bold text-slate-800 mb-5">Documentos Digitales</h2>
+            <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>Documentos Digitales</h2>
 
                 {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
-                    <p className="text-slate-600 italic">No hay documentos configurados para este vehículo.</p>
+                    <p style={{ color: '#475569', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
                 ) : (
                     vehiculo.documentos_digitales.map((doc, index) => {
                         const tieneArchivo = !!doc.file_id;
                         return (
                             <div
                                 key={index}
-                                className="flex justify-between items-center py-4 border-b border-slate-200 last:border-0"
+                                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid #e2e8f0' }}
                             >
-                                <strong className="text-slate-700">
+                                <strong style={{ color: '#1e293b' }}>
                                     {doc.tipo.replace(/_/g, " ").toUpperCase()}:
                                 </strong>
 
-                                <div className="flex items-center gap-3">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                     <span
-                                        className={`font-bold text-sm px-3 py-1 rounded-full ${
-                                            tieneArchivo
-                                                ? "bg-emerald-100 text-emerald-800"
-                                                : "bg-red-100 text-red-800"
-                                        }`}
+                                        style={{
+                                            fontWeight: 'bold',
+                                            fontSize: '0.875rem',
+                                            padding: '4px 12px',
+                                            borderRadius: '9999px',
+                                            backgroundColor: tieneArchivo ? '#d1fae5' : '#fee2e2',
+                                            color: tieneArchivo ? '#059669' : '#ef4444',
+                                        }}
                                     >
                                         {tieneArchivo ? "Subido" : "Falta"}
                                     </span>
@@ -283,7 +230,17 @@ const VehiculoDetail: React.FC = () => {
                                     {tieneArchivo && (
                                         <button
                                             onClick={() => handleDownload(doc.file_id!)}
-                                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition shadow-md"
+                                            style={{
+                                                padding: '8px 16px',
+                                                backgroundColor: '#2563eb',
+                                                color: 'white',
+                                                fontSize: '0.875rem',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                transition: 'background-color 0.3s',
+                                            }}
+                                            onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#1d4ed8')}
+                                            onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#2563eb')}
                                         >
                                             Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ""}
                                         </button>
@@ -291,11 +248,18 @@ const VehiculoDetail: React.FC = () => {
 
                                     <button
                                         onClick={() => abrirModalDocumento(doc)}
-                                        className={`px-5 py-2 text-sm font-bold rounded-lg transition shadow-md ${
-                                            tieneArchivo
-                                                ? "bg-amber-600 hover:bg-amber-700 text-white"
-                                                : "bg-red-600 hover:bg-red-700 text-white"
-                                        }`}
+                                        style={{
+                                            padding: '8px 16px',
+                                            fontSize: '0.875rem',
+                                            fontWeight: 'bold',
+                                            borderRadius: '8px',
+                                            cursor: 'pointer',
+                                            transition: 'background-color 0.3s',
+                                            backgroundColor: tieneArchivo ? '#d97706' : '#dc2626',
+                                            color: 'white',
+                                        }}
+                                        onMouseOver={(e) => (e.currentTarget.style.backgroundColor = tieneArchivo ? '#b45309' : '#b91c1c')}
+                                        onMouseOut={(e) => (e.currentTarget.style.backgroundColor = tieneArchivo ? '#d97706' : '#dc2626')}
                                     >
                                         {tieneArchivo ? "Revisar / Reemplazar" : "Subir"}
                                     </button>
@@ -307,99 +271,103 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* ========================================= */}
-            {/* MODAL PARA REVISAR Y SUBIR DOCUMENTOS */}
+            {/* MODAL PARA SUBIR / REVISAR DOCUMENTO - FIXEADO */}
             {/* ========================================= */}
             <Modal
                 isOpen={modalIsOpen}
                 onRequestClose={() => {
                     setModalIsOpen(false);
-                    if (previewUrl && previewUrl.startsWith("blob:")) {
-                        URL.revokeObjectURL(previewUrl);
-                    }
+                    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
                     setPreviewUrl(null);
-                    setArchivoNuevo(null);
                 }}
-                className="max-w-4xl w-[95%] bg-white rounded-2xl shadow-2xl p-8 outline-none overflow-y-auto max-h-[95vh]"
-                overlayClassName="fixed inset-0 bg-black/70 flex items-center justify-center z-50"
+                style={{
+                    content: {
+                        backgroundColor: 'white',
+                        color: 'black',
+                        maxWidth: '80%',
+                        maxHeight: '80%',
+                        top: '50%',
+                        left: '50%',
+                        right: 'auto',
+                        bottom: 'auto',
+                        marginRight: '-50%',
+                        transform: 'translate(-50%, -50%)',
+                        padding: '32px',
+                        borderRadius: '16px',
+                        boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+                        overflowY: 'auto'
+                    }
+                }}
                 ariaHideApp={false}
             >
-                <h2 className="text-2xl font-bold text-slate-800 mb-6 text-center">
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '24px', textAlign: 'center' }}>
                     {docSeleccionado?.tipo.replace(/_/g, " ").toUpperCase() || "Documento"}
                 </h2>
 
-                {/* SPINNER MIENTRAS CARGA */}
                 {loadingPreview ? (
-                    <div className="text-center py-20">
+                    <div style={{ textAlign: 'center', padding: '80px 0' }}>
                         <div className="spinner-documento"></div>
-                        <p className="text-slate-600 text-lg mt-4">Cargando documento...</p>
-                        <p className="text-slate-500 text-sm">Puede tardar unos segundos (Render Free)</p>
+                        <p style={{ color: '#475569', fontSize: '1.125rem', marginTop: '16px' }}>Cargando documento...</p>
+                        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Puede tardar unos segundos (Render Free)</p>
                     </div>
                 ) : previewUrl ? (
-                    // VISTA PREVIA
                     docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
                         <iframe
                             src={previewUrl}
-                            className="w-full h-96 md:h-[650px] border border-slate-300 rounded-xl shadow-inner"
+                            style={{ width: '100%', height: '500px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
                             title="Vista previa PDF"
-                            sandbox="allow-same-origin allow-scripts allow-popups"
                         />
                     ) : (
                         <img
                             src={previewUrl}
                             alt="Vista previa"
-                            className="max-w-full h-auto rounded-xl border border-slate-300 shadow-lg mx-auto block"
+                            style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', margin: '0 auto', display: 'block' }}
                         />
                     )
                 ) : (
-                    <div className="text-center py-20">
-                        <p className="text-red-600 text-lg font-medium">No se pudo cargar el documento</p>
-                        <p className="text-slate-600 mt-3">Intentá de nuevo en 10 segundos</p>
+                    <div style={{ textAlign: 'center', padding: '80px 0' }}>
+                        <p style={{ color: '#ef4444', fontSize: '1.125rem', fontWeight: 'medium' }}>No se pudo cargar el documento</p>
+                        <p style={{ color: '#475569', marginTop: '12px' }}>Intentá de nuevo en 10 segundos</p>
                     </div>
                 )}
 
-                {/* INPUT PARA SUBIR ARCHIVO NUEVO */}
-                <div className="mt-8">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                        {docSeleccionado?.file_id ? "Reemplazar con un nuevo archivo:" : "Subir documento:"}
-                    </label>
+                <div style={{ marginTop: '32px' }}>
                     <input
                         type="file"
                         accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={(e) => e.target.files?.[0] && setArchivoNuevo(e.target.files[0])}
-                        className="block w-full text-sm text-slate-600
-                                file:mr-4 file:py-3 file:px-6
-                                file:rounded-xl file:border-0
-                                file:text-sm file:font-bold
-                                file:bg-emerald-600 file:text-white
-                                hover:file:bg-emerald-700
-                                cursor-pointer"
+                        onChange={handleFileChange}
+                        style={{ display: 'block', width: '100%', fontSize: '0.875rem', color: '#475569' }}
+                        className="file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
                     />
                 </div>
 
-                {/* BOTONES */}
-                <div className="flex justify-end gap-4 mt-10">
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '40px' }}>
                     <button
                         onClick={() => {
                             setModalIsOpen(false);
-                            if (previewUrl && previewUrl.startsWith("blob:")) {
-                                URL.revokeObjectURL(previewUrl);
-                            }
+                            if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
                             setPreviewUrl(null);
-                            setArchivoNuevo(null);
                         }}
-                        className="px-6 py-3 bg-slate-500 text-white rounded-xl hover:bg-slate-600 transition font-medium"
+                        style={{ padding: '12px 24px', backgroundColor: '#64748b', color: 'white', borderRadius: '12px', cursor: 'pointer', transition: 'background-color 0.3s', fontWeight: 'bold' }}
+                        onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#475569')}
+                        onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#64748b')}
                     >
                         Cancelar
                     </button>
-
                     <button
                         onClick={subirDocumento}
                         disabled={!archivoNuevo}
-                        className={`px-8 py-3 rounded-xl font-bold transition shadow-lg ${
-                            archivoNuevo
-                                ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                                : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        }`}
+                        style={{
+                            padding: '12px 32px',
+                            borderRadius: '12px',
+                            fontWeight: 'bold',
+                            transition: 'background-color 0.3s',
+                            backgroundColor: archivoNuevo ? '#059669' : '#d1d5db',
+                            color: archivoNuevo ? 'white' : '#9ca3af',
+                            cursor: archivoNuevo ? 'pointer' : 'not-allowed',
+                        }}
+                        onMouseOver={(e) => archivoNuevo && (e.currentTarget.style.backgroundColor = '#047857')}
+                        onMouseOut={(e) => archivoNuevo && (e.currentTarget.style.backgroundColor = '#059669')}
                     >
                         {docSeleccionado?.file_id ? "Reemplazar Documento" : "Subir Documento"}
                     </button>
