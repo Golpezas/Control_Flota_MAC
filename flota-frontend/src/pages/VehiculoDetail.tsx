@@ -127,6 +127,7 @@ const VehiculoDetail: React.FC = () => {
             alert("Error al subir el documento. Reintentá.");
         }
     };
+
     const cargarDatos = useCallback(async () => {
         if (!patente) return;
 
@@ -134,25 +135,28 @@ const VehiculoDetail: React.FC = () => {
         setError(null);
 
         try {
+            // 1. Cargar datos del vehículo
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            const startDate = new Date();
-            startDate.setMonth(startDate.getMonth() - 12);
+            // 2. REPORTE DE COSTOS: Ahora incluye TODOS los costos desde 2023
+            // Antes solo traía últimos 12 meses → las multas de noviembre quedaban afuera
             const report = await fetchReporteVehiculo(
                 patente,
-                startDate.toISOString().split('T')[0],
-                new Date().toISOString().split('T')[0]
+                '2023-01-01',                                    // Desde 2023 (o antes si querés)
+                new Date().toISOString().split('T')[0]           // Hasta hoy
             );
             setReporteCostos(report);
             setAlertas(report.alertas || []);
 
+            // 3. HISTORIAL DE COSTOS: sigue trayendo todo (independiente del rango)
             const response = await apiClient.get(`/costos/unificado/${patente}`);
-            console.log('DEBUG GASTOS:', response.data);  // Para depurar inconsistencias
+            console.log('DEBUG GASTOS UNIFICADOS:', response.data);
             setGastos(response.data.gastos || []);
+
         } catch (err: unknown) {
             setError('Error al cargar los datos del vehículo.');
-            console.error(err);
+            console.error('Error en cargarDatos:', err);
         } finally {
             setLoading(false);
         }
@@ -392,7 +396,9 @@ const VehiculoDetail: React.FC = () => {
 
             {/* SECCIÓN DE COSTOS */}
             <div style={{ marginBottom: '30px' }}>
-                <h2 style={{ color: '#457B9D' }}>Reporte de Costos</h2>
+                <h2 style={{ color: '#457B9D', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                    Reporte de Costos (Todos los registros)
+                </h2>
                 {reporteCostos ? (
                     <>
                         <p><strong>Total General:</strong> ${reporteCostos.total_general.toLocaleString('es-AR')}</p>
