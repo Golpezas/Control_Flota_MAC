@@ -20,9 +20,13 @@ router = APIRouter(prefix="/costos", tags=["Costos"])
 
 
 @router.get("/unificado/{patente}")
-async def get_gastos_unificados(patente: str):
+async def get_gastos_unificados(
+    patente: str,
+    start_date: str = Query(None, description="Fecha inicio (YYYY-MM-DD)"),
+    end_date: str = Query(None, description="Fecha fin (YYYY-MM-DD)")
+):
     patente_norm = normalize_patente(patente)
-    logger.info(f"Reporte unificado solicitado para: {patente_norm}")
+    logger.info(f"Reporte unificado para {patente_norm} (rango: {start_date} - {end_date})")
 
     try:
         costos_collection = get_db_collection("Mantenimiento")
@@ -31,31 +35,38 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error conectando colecciones: {e}")
         raise HTTPException(500, "Error de base de datos")
 
+    # Filtro fecha común (si proporcionado)
+    date_filter = {}
+    if start_date:
+        date_filter["$gte"] = datetime.fromisoformat(start_date)
+    if end_date:
+        date_filter["$lte"] = datetime.fromisoformat(end_date)
+
     # ==================== MANTENIMIENTOS ====================
     mantenimientos = []
     try:
-        raw = await costos_collection.find({"patente": patente_norm}).to_list(1000)
+        query = {"patente": patente_norm}
+        if date_filter:
+            query["fecha"] = date_filter
+        raw = await costos_collection.find(query).to_list(100)
         logger.info(f"Mantenimientos encontrados: {len(raw)}")
         for m in raw:
             try:
-                # Normalizar fecha a datetime
                 fecha_str = m.get("fecha", "1970-01-01T00:00:00")
-                try:
-                    fecha = datetime.fromisoformat(fecha_str) if isinstance(fecha_str, str) else fecha_str
-                except ValueError:
-                    fecha = datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S') if isinstance(fecha_str, str) else datetime.min
+                fecha = safe_parse_date(fecha_str)
 
                 tipo = m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General"
-                monto = float(m.get("costo_monto") or m.get("COSTO_MONTO") or 0)
-                descripcion = m.get("descripcion") or m.get("DESCRIPCIN") or ""
+                monto = float(m.get("costo_monto") or 0)
+                descripcion = m.get("descripcion") or ""
                 mantenimientos.append({
                     "id": str(m["_id"]),
-                    "fecha": fecha.isoformat(),  # Siempre str ISO para frontend
+                    "fecha": fecha.isoformat(),
                     "tipo": tipo.strip(),
                     "monto": monto,
                     "descripcion": descripcion,
                     "comprobante_file_id": m.get("comprobante_file_id"),
-                    "origen": "mantenimiento"
+                    "origen": "mantenimiento",
+                    "status": "Pendiente"  # Asumir no pagados para mantenimiento
                 })
             except Exception as e:
                 logger.warning(f"Mantenimiento corrupto {m.get('_id')}: {e}")
@@ -63,57 +74,47 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error leyendo Mantenimiento: {e}")
         mantenimientos = []
 
-    # ==================== MULTAS (CAPTURA TODOS + CLASIFICA) ====================
+    # ==================== MULTAS (CON FILTRO PAGADAS) ====================
     multas = []
     try:
-        raw = await finanzas_collection.find({
-            "patente": patente_norm,
-            "$or": [
-                {"MONTO": {"$gt": 0}},
-                {"monto": {"$gt": 0}}
-            ]
-        }).to_list(1000)
+        query = {"patente": patente_norm, "MONTO": {"$gt": 0}}
+        if date_filter:
+            query["$or"] = [{"fecha_infraccion": date_filter}, {"FECHA_INFRACCIN": date_filter}, {"fecha": date_filter}]
+        raw = await finanzas_collection.find(query).to_list(100)
         logger.info(f"Finanzas encontrados: {len(raw)}")
 
         for f in raw:
             try:
-                # Motivo y tipo_reg (case-insensitive get)
-                motivo = str(f.get("motivo") or f.get("MOTIVO") or "").lower()
-                tipo_reg = str(f.get("tipo_registro") or f.get("TIPO_REGISTRO") or "").lower()
-                combined = motivo + " " + tipo_reg
+                fecha_str = f.get("fecha_infraccion") or f.get("FECHA_INFRACCIN") or f.get("fecha") or "1970-01-01T00:00:00"
+                fecha = safe_parse_date(fecha_str)
 
-                # Expandido check (covers all your cases)
-                es_multa = any(word in combined for word in [
-                    "multa", "infracci", "exceso", "velocidad", "semaforo", "semáforo",
-                    "gastos", "administrativo", "acta", "rojo", "respetar", "límites",
-                    "reglamentarios", "previstos", "77", "44", "51", "n", "2", "o"
-                ])
+                # Clasificar multa
+                combined = (str(f.get("motivo", "")) + " " + str(f.get("tipo_registro", ""))).lower()
+                es_multa = any(word in combined for word in ["multa", "infracci", "exceso", "velocidad", "semaforo", "gastos", "administrativo", "acta", "rojo", "respetar", "límites", "reglamentarios", "previstos", "77", "44", "51", "28", "22"])
 
                 tipo = "Multa" if es_multa else "Otro Financiero"
 
-                # Normalizar fecha a datetime
-                fecha_str = (
-                    f.get("fecha_infraccion") or f.get("FECHA_INFRACCIN") or
-                    f.get("fecha") or f.get("FECHA") or
-                    "1970-01-01T00:00:00"
-                )
-                try:
-                    fecha = datetime.fromisoformat(fecha_str) if isinstance(fecha_str, str) else fecha_str
-                except ValueError:
-                    fecha = datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S') if isinstance(fecha_str, str) else datetime.min
+                # Chequear si pagada
+                status = f.get("STATUS", "Pendiente").lower()
+                pago_vol = f.get("PAGO_VOLUNTARIO", "N/A").lower()
+                vcmto = f.get("FECHA_DE_VCMTO", "N/A")
+                vcmto_date = safe_parse_date(vcmto) if vcmto != "N/A" else None
+                es_pagada = (status == "pagada" or pago_vol != "n/a" or (vcmto_date and vcmto_date < datetime.now()))
 
-                monto = float(f.get("MONTO") or f.get("monto") or 0)
+                status_label = "Pagada" if es_pagada else "Pendiente"
 
-                descripcion = str(f.get("motivo") or f.get("MOTIVO") or f.get("descripcion") or f.get("DESCRIPCION") or "Infracción de tránsito").strip()
+                monto = float(f.get("MONTO") or 0)
+                descripcion = str(f.get("motivo") or "Infracción de tránsito").strip()
 
                 multas.append({
                     "id": str(f["_id"]),
-                    "fecha": fecha.isoformat(),  # Siempre str ISO para consistencia
+                    "fecha": fecha.isoformat(),
                     "tipo": tipo,
                     "monto": monto,
                     "descripcion": descripcion,
                     "comprobante_file_id": f.get("comprobante_file_id"),
-                    "origen": "finanzas"
+                    "origen": "finanzas",
+                    "status": status_label
                 })
             except Exception as e:
                 logger.warning(f"Finanza corrupta {f.get('_id')}: {e}")
@@ -122,34 +123,37 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error leyendo Finanzas: {e}")
         multas = []
 
-    # ==================== RESPUESTA FINAL (SORT SEGURO) ====================
+    # ==================== RESPUESTA FINAL ====================
     try:
         todos = mantenimientos + multas
+        todos.sort(key=lambda x: safe_parse_date(x["fecha"]), reverse=True)
 
-        # Sort seguro: Convertimos a datetime para comparar
-        def safe_date(fecha_str):
-            try:
-                return datetime.fromisoformat(fecha_str)
-            except ValueError:
-                try:
-                    return datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S')
-                except ValueError:
-                    return datetime.min
-
-        todos.sort(key=lambda x: safe_date(x["fecha"]), reverse=True)
+        # Totales solo pendientes
+        total_multas_pendientes = sum(g["monto"] for g in todos if g["tipo"] == "Multa" and g["status"] == "Pendiente")
 
         respuesta = {
             "gastos": todos,
-            "total_general": sum(g["monto"] for g in todos),
-            "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
-            "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
+            "total_general": sum(g["monto"] for g in todos if g["status"] == "Pendiente"),
+            "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento" and g["status"] == "Pendiente"),
+            "total_multas": total_multas_pendientes
         }
-        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items, total {respuesta['total_general']}")
+        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items, total pendiente {respuesta['total_general']}")
         return respuesta
     except Exception as e:
         logger.error(f"Error final {patente_norm}: {e}")
         return {"gastos": [], "total_general": 0, "total_mantenimiento": 0, "total_multas": 0}
 
+# Función helper para parseo seguro
+def safe_parse_date(fecha_str):
+    if fecha_str == "N/A" or not fecha_str:
+        return datetime.min
+    try:
+        return datetime.fromisoformat(fecha_str)
+    except ValueError:
+        try:
+            return datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S')
+        except ValueError:
+            return datetime.min
 
 # ==================== ELIMINAR GASTO UNIVERSAL ====================
 @router.delete("/universal/{gasto_id}")
