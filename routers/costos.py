@@ -34,6 +34,7 @@ async def get_gastos_unificados(patente: str):
     mantenimientos = []
     try:
         raw = await costos_collection.find({"patente": patente_norm}).to_list(1000)
+        logger.info(f"Mantenimientos encontrados: {len(raw)}")
         for m in raw:
             try:
                 tipo = m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General"
@@ -42,7 +43,7 @@ async def get_gastos_unificados(patente: str):
                     "fecha": m.get("fecha", "1970-01-01T00:00:00"),
                     "tipo": tipo.strip(),
                     "monto": float(m.get("costo_monto") or 0),
-                    "descripcion": m.get("descripcion") or m.get("DESCRIPCION") or "",
+                    "descripcion": m.get("descripcion") or m.get("DESCRIPCIN") or "",
                     "comprobante_file_id": m.get("comprobante_file_id"),
                     "origen": "mantenimiento"
                 })
@@ -52,25 +53,26 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error leyendo Mantenimiento: {e}")
         mantenimientos = []
 
-    # ==================== MULTAS (AHORA TIPO SIEMPRE CORRECTO) ====================
+    # ==================== MULTAS (CAPTURA TODOS + CLASIFICA) ====================
     multas = []
     try:
         raw = await finanzas_collection.find({
             "patente": patente_norm,
             "MONTO": {"$gt": 0}
-        }).to_list(1000)  # Ya no filtramos por regex, todo con MONTO > 0 es potencial multa
+        }).to_list(1000)
+        logger.info(f"Finanzas encontrados: {len(raw)}")
 
         for f in raw:
             try:
-                # Determinamos si es multa por varios campos posibles
-                es_multa = (
-                    str(f.get("tipo_registro", "")).lower().find("infracc") != -1 or
-                    str(f.get("motivo", "")).lower().find("multa") != -1 or
-                    str(f.get("motivo", "")).lower().find("exceso") != -1 or
-                    str(f.get("motivo", "")).lower().find("velocidad") != -1
-                )
+                # Regex expandido para detectar multas (cubrimos TODOS tus casos)
+                motivo_str = str(f.get("motivo") or "").lower()
+                tipo_reg = str(f.get("tipo_registro") or "").lower()
+                es_multa = any(word in (motivo_str + tipo_reg) for word in [
+                    "multa", "infracci", "exceso", "velocidad", "semaforo", "semáforo",
+                    "gastos administrativo", "acta", "rojo", "no respetar"
+                ])
 
-                tipo = "Multa" if es_multa else "Otro Gasto Financiero"
+                tipo = "Multa" if es_multa else "Otro Financiero"
 
                 fecha = (
                     f.get("fecha_infraccion") or
@@ -79,17 +81,19 @@ async def get_gastos_unificados(patente: str):
                     "1970-01-01T00:00:00"
                 )
 
+                descripcion = str(f.get("motivo") or f.get("descripcion") or "Infracción de tránsito").strip()
+
                 multas.append({
                     "id": str(f["_id"]),
                     "fecha": fecha,
-                    "tipo": tipo,  # ← Siempre llega "Multa" o algo claro
+                    "tipo": tipo,  # Siempre definido
                     "monto": float(f.get("MONTO") or 0),
-                    "descripcion": str(f.get("motivo") or f.get("descripcion") or "Infracción de tránsito").strip(),
+                    "descripcion": descripcion,
                     "comprobante_file_id": f.get("comprobante_file_id"),
                     "origen": "finanzas"
                 })
             except Exception as e:
-                logger.warning(f"Multa corrupta {f.get('_id')}: {e}")
+                logger.warning(f"Finanza corrupta {f.get('_id')}: {e}")
                 continue
     except Exception as e:
         logger.error(f"Error leyendo Finanzas: {e}")
@@ -106,7 +110,7 @@ async def get_gastos_unificados(patente: str):
             "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
             "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
         }
-        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items")
+        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items, total {respuesta['total_general']}")
         return respuesta
     except Exception as e:
         logger.error(f"Error final {patente_norm}: {e}")
