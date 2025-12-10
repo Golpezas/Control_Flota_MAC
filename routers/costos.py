@@ -21,53 +21,57 @@ router = APIRouter(prefix="/costos", tags=["Costos"])
 @router.get("/unificado/{patente}")
 async def get_gastos_unificados(patente: str):
     patente_norm = normalize_patente(patente)
-    logger.info(f"Generando reporte unificado para patente: {patente_norm}")
+    logger.info(f"Reporte unificado solicitado para: {patente_norm}")
 
-    # === COLECCIONES ===
     try:
         costos_collection = get_db_collection("Mantenimiento")
         finanzas_collection = get_db_collection("Finanzas")
     except Exception as e:
-        logger.error(f"Error obteniendo colecciones DB: {e}")
-        raise HTTPException(500, "Error interno del servidor")
+        logger.error(f"Error conectando colecciones: {e}")
+        raise HTTPException(500, "Error de base de datos")
 
     # ==================== MANTENIMIENTOS ====================
     mantenimientos = []
     try:
-        mantenimientos_raw = await costos_collection.find({"patente": patente_norm}).to_list(1000)
-        for m in mantenimientos_raw:
+        raw = await costos_collection.find({"patente": patente_norm}).to_list(1000)
+        for m in raw:
             try:
+                tipo = m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General"
                 mantenimientos.append({
                     "id": str(m["_id"]),
                     "fecha": m.get("fecha", "1970-01-01T00:00:00"),
-                    "tipo": m.get("motivo") or "Mantenimiento General",
+                    "tipo": tipo.strip(),
                     "monto": float(m.get("costo_monto") or 0),
-                    "descripcion": m.get("descripcion") or "",
+                    "descripcion": m.get("descripcion") or m.get("DESCRIPCION") or "",
                     "comprobante_file_id": m.get("comprobante_file_id"),
                     "origen": "mantenimiento"
                 })
             except Exception as e:
-                logger.warning(f"Documento mantenimiento corrupto {m.get('_id')}: {e}")
-                continue
+                logger.warning(f"Mantenimiento corrupto {m.get('_id')}: {e}")
     except Exception as e:
-        logger.error(f"Error leyendo colección Mantenimiento: {e}")
+        logger.error(f"Error leyendo Mantenimiento: {e}")
         mantenimientos = []
 
-    # ==================== MULTAS (ROBUSTO) ====================
+    # ==================== MULTAS (AHORA TIPO SIEMPRE CORRECTO) ====================
     multas = []
     try:
-        multas_raw = await finanzas_collection.find({
+        raw = await finanzas_collection.find({
             "patente": patente_norm,
-            "MONTO": {"$gt": 0},
-            "$or": [
-                {"tipo_registro": {"$regex": "infracci[óo]n", "$options": "i"}},
-                {"motivo": {"$regex": "(multa|infracci[óo]n|exceso.*velocidad|semaforo|estacionamiento)", "$options": "i"}}
-            ]
-        }).to_list(1000)
+            "MONTO": {"$gt": 0}
+        }).to_list(1000)  # Ya no filtramos por regex, todo con MONTO > 0 es potencial multa
 
-        for f in multas_raw:
+        for f in raw:
             try:
-                # Fecha más confiable posible
+                # Determinamos si es multa por varios campos posibles
+                es_multa = (
+                    str(f.get("tipo_registro", "")).lower().find("infracc") != -1 or
+                    str(f.get("motivo", "")).lower().find("multa") != -1 or
+                    str(f.get("motivo", "")).lower().find("exceso") != -1 or
+                    str(f.get("motivo", "")).lower().find("velocidad") != -1
+                )
+
+                tipo = "Multa" if es_multa else "Otro Gasto Financiero"
+
                 fecha = (
                     f.get("fecha_infraccion") or
                     f.get("FECHA_INFRACCIN") or
@@ -78,20 +82,20 @@ async def get_gastos_unificados(patente: str):
                 multas.append({
                     "id": str(f["_id"]),
                     "fecha": fecha,
-                    "tipo": "Multa",
+                    "tipo": tipo,  # ← Siempre llega "Multa" o algo claro
                     "monto": float(f.get("MONTO") or 0),
                     "descripcion": str(f.get("motivo") or f.get("descripcion") or "Infracción de tránsito").strip(),
                     "comprobante_file_id": f.get("comprobante_file_id"),
                     "origen": "finanzas"
                 })
             except Exception as e:
-                logger.warning(f"Documento multa corrupto {f.get('_id')}: {e}")
+                logger.warning(f"Multa corrupta {f.get('_id')}: {e}")
                 continue
     except Exception as e:
-        logger.error(f"Error leyendo colección Finanzas (multas): {e}")
+        logger.error(f"Error leyendo Finanzas: {e}")
         multas = []
 
-    # ==================== RESPUESTA FINAL SEGURA ====================
+    # ==================== RESPUESTA FINAL ====================
     try:
         todos = mantenimientos + multas
         todos.sort(key=lambda x: x["fecha"], reverse=True)
@@ -102,18 +106,11 @@ async def get_gastos_unificados(patente: str):
             "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
             "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
         }
-        logger.info(f"Reporte unificado generado correctamente para {patente_norm}: {len(todos)} registros")
+        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items")
         return respuesta
-
     except Exception as e:
-        logger.error(f"Error crítico generando respuesta para {patente_norm}: {e}")
-        # Nunca devolvemos null → siempre un objeto válido
-        return {
-            "gastos": [],
-            "total_general": 0,
-            "total_mantenimiento": 0,
-            "total_multas": 0
-        }
+        logger.error(f"Error final {patente_norm}: {e}")
+        return {"gastos": [], "total_general": 0, "total_mantenimiento": 0, "total_multas": 0}
 
 
 # ==================== ELIMINAR GASTO UNIVERSAL ====================
