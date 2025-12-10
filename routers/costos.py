@@ -39,33 +39,35 @@ async def get_gastos_unificados(patente: str):
             "origen": "mantenimiento"
         })
 
-    # MULTAS
+    # MULTAS - VERSIÓN 100% ROBUSTA
     multas_raw = await finanzas_collection.find({
         "patente": patente_norm,
-        "motivo": "Multa"
+        "MONTO": {"$gt": 0},
+        "$or": [
+            {"tipo_registro": {"$regex": "infracci[óo]n", "$options": "i"}},
+            {"motivo": {"$regex": "(multa|infracci[óo]n|exceso.*velocidad|semaforo|estacionamiento)", "$options": "i"}}
+        ]
     }).to_list(1000)
-    
+
     multas = []
     for f in multas_raw:
+        # Priorizamos la fecha más precisa
+        fecha = (
+            f.get("fecha_infraccion") or 
+            f.get("FECHA_INFRACCIN") or 
+            f.get("fecha") or 
+            "1970-01-01T00:00:00"
+        )
+
         multas.append({
             "id": str(f["_id"]),
-            "fecha": f["fecha"],
+            "fecha": fecha,
             "tipo": "Multa",
             "monto": float(f.get("MONTO") or 0),
-            "descripcion": f.get("descripcion") or "",
+            "descripcion": f.get("motivo", "").strip() or "Infracción de tránsito",
             "comprobante_file_id": f.get("comprobante_file_id"),
             "origen": "finanzas"
         })
-
-    todos = mantenimientos + multas
-    todos.sort(key=lambda x: x["fecha"], reverse=True)
-
-    return {
-        "gastos": todos,
-        "total_general": sum(g["monto"] for g in todos),
-        "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
-        "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
-    }
 
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(
