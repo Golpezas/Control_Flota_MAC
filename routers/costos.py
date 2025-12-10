@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Query, HTTPException
 from bson import ObjectId
 import logging
+from datetime import datetime
 
 # =================================================================
 # IMPORTS CORRECTOS PARA TU PROYECTO REAL
@@ -37,12 +38,19 @@ async def get_gastos_unificados(patente: str):
         logger.info(f"Mantenimientos encontrados: {len(raw)}")
         for m in raw:
             try:
+                # Normalizar fecha a datetime
+                fecha_str = m.get("fecha", "1970-01-01T00:00:00")
+                try:
+                    fecha = datetime.fromisoformat(fecha_str) if isinstance(fecha_str, str) else fecha_str
+                except ValueError:
+                    fecha = datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S') if isinstance(fecha_str, str) else datetime.min
+
                 tipo = m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General"
                 monto = float(m.get("costo_monto") or m.get("COSTO_MONTO") or 0)
                 descripcion = m.get("descripcion") or m.get("DESCRIPCIN") or ""
                 mantenimientos.append({
                     "id": str(m["_id"]),
-                    "fecha": m.get("fecha", "1970-01-01T00:00:00"),
+                    "fecha": fecha.isoformat(),  # Siempre str ISO para frontend
                     "tipo": tipo.strip(),
                     "monto": monto,
                     "descripcion": descripcion,
@@ -55,7 +63,7 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error leyendo Mantenimiento: {e}")
         mantenimientos = []
 
-    # ==================== MULTAS (CASE-INSENSITIVE FIELDS) ====================
+    # ==================== MULTAS (CAPTURA TODOS + CLASIFICA) ====================
     multas = []
     try:
         raw = await finanzas_collection.find({
@@ -74,20 +82,25 @@ async def get_gastos_unificados(patente: str):
                 tipo_reg = str(f.get("tipo_registro") or f.get("TIPO_REGISTRO") or "").lower()
                 combined = motivo + " " + tipo_reg
 
-                # Expandido regex-like check (covers all your cases)
+                # Expandido check (covers all your cases)
                 es_multa = any(word in combined for word in [
                     "multa", "infracci", "exceso", "velocidad", "semaforo", "semáforo",
                     "gastos", "administrativo", "acta", "rojo", "respetar", "límites",
-                    "reglamentarios", "previstos", "77", "44", "51"
+                    "reglamentarios", "previstos", "77", "44", "51", "n", "2", "o"
                 ])
 
                 tipo = "Multa" if es_multa else "Otro Financiero"
 
-                fecha = (
+                # Normalizar fecha a datetime
+                fecha_str = (
                     f.get("fecha_infraccion") or f.get("FECHA_INFRACCIN") or
                     f.get("fecha") or f.get("FECHA") or
                     "1970-01-01T00:00:00"
                 )
+                try:
+                    fecha = datetime.fromisoformat(fecha_str) if isinstance(fecha_str, str) else fecha_str
+                except ValueError:
+                    fecha = datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S') if isinstance(fecha_str, str) else datetime.min
 
                 monto = float(f.get("MONTO") or f.get("monto") or 0)
 
@@ -95,7 +108,7 @@ async def get_gastos_unificados(patente: str):
 
                 multas.append({
                     "id": str(f["_id"]),
-                    "fecha": fecha,
+                    "fecha": fecha.isoformat(),  # Siempre str ISO para consistencia
                     "tipo": tipo,
                     "monto": monto,
                     "descripcion": descripcion,
@@ -109,10 +122,21 @@ async def get_gastos_unificados(patente: str):
         logger.error(f"Error leyendo Finanzas: {e}")
         multas = []
 
-    # ==================== RESPUESTA FINAL ====================
+    # ==================== RESPUESTA FINAL (SORT SEGURO) ====================
     try:
         todos = mantenimientos + multas
-        todos.sort(key=lambda x: x["fecha"], reverse=True)
+
+        # Sort seguro: Convertimos a datetime para comparar
+        def safe_date(fecha_str):
+            try:
+                return datetime.fromisoformat(fecha_str)
+            except ValueError:
+                try:
+                    return datetime.strptime(fecha_str, '%Y-%m-%dT%H:%M:%S')
+                except ValueError:
+                    return datetime.min
+
+        todos.sort(key=lambda x: safe_date(x["fecha"]), reverse=True)
 
         respuesta = {
             "gastos": todos,
