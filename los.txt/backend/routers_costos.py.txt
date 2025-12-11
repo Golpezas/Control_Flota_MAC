@@ -1,12 +1,10 @@
-# routers_costos.py
+# routers_costos.py → VERSIÓN CORREGIDA Y DEFINITIVA (2025-12-10)
+# Manteniendo toda tu estructura, solo mejoramos lógica crítica
+
 from fastapi import APIRouter, Query, HTTPException
 from bson import ObjectId
 import logging
 from datetime import datetime
-
-# =================================================================
-# IMPORTS CORRECTOS PARA TU PROYECTO REAL
-# =================================================================
 from dependencies import get_db_collection
 
 logger = logging.getLogger(__name__)
@@ -18,6 +16,19 @@ def normalize_patente(patente: str) -> str:
 
 router = APIRouter(prefix="/costos", tags=["Costos"])
 
+def safe_parse_date(fecha_raw) -> datetime:
+    """Parsea fechas con tolerancia extrema a formatos legacy"""
+    if isinstance(fecha_raw, datetime):
+        return fecha_raw
+    if not isinstance(fecha_raw, str) or fecha_raw in ("N/A", "", "0001-01-01T00:00:00"):
+        return datetime(1970, 1, 1)  # Fecha neutra para ordenar al final
+    try:
+        return datetime.fromisoformat(fecha_raw.replace("Z", "+00:00"))
+    except:
+        try:
+            return datetime.strptime(fecha_raw, '%Y-%m-%dT%H:%M:%S')
+        except:
+            return datetime(1970, 1, 1)
 
 @router.get("/unificado/{patente}")
 async def get_gastos_unificados(patente: str):
@@ -34,126 +45,97 @@ async def get_gastos_unificados(patente: str):
     # ==================== MANTENIMIENTOS ====================
     mantenimientos = []
     try:
-        raw = await costos_collection.find({"patente": patente_norm}).to_list(1000)
-        logger.info(f"Mantenimientos encontrados: {len(raw)}")
-        for m in raw:
+        raw_mant = await costos_collection.find({"patente": patente_norm}).to_list(1000)
+        for m in raw_mant:
             try:
-                fecha_raw = m.get("fecha", "1970-01-01T00:00:00")
-                fecha = safe_parse_date(fecha_raw)
+                fecha = safe_parse_date(m.get("fecha", "1970-01-01T00:00:00"))
+                tipo = (m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General").strip()
+                monto_raw = m.get("costo_monto") or m.get("COSTO_MONTO") or 0
+                monto = float(monto_raw) if monto_raw else 0.0
+                descripcion = (m.get("descripcion") or m.get("DESCRIPCIN") or "").strip()
 
-                tipo = m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General"
-                monto = float(m.get("costo_monto") or m.get("COSTO_MONTO") or 0)
-                descripcion = m.get("descripcion") or m.get("DESCRIPCIN") or ""
+                # FILTRADO ESTRICTO: solo positivos y no administrativos
+                if monto <= 0:
+                    continue
+                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "ajuste", "devolucion"]):
+                    continue
+
                 mantenimientos.append({
                     "id": str(m["_id"]),
-                    "fecha": fecha.isoformat() if isinstance(fecha, datetime) else "1970-01-01T00:00:00",
-                    "tipo": tipo.strip(),
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "comprobante_file_id": m.get("comprobante_file_id"),
-                    "origen": "mantenimiento"
-                })
-            except Exception as e:
-                logger.warning(f"Mantenimiento corrupto {m.get('_id')}: {e}")
-    except Exception as e:
-        logger.error(f"Error leyendo Mantenimiento: {e}")
-        mantenimientos = []
-
-    # ==================== MULTAS (CASE-INSENSITIVE FIELDS) ====================
-    multas = []
-    try:
-        raw = await finanzas_collection.find({
-            "patente": patente_norm,
-            "$or": [
-                {"MONTO": {"$gt": 0}},
-                {"monto": {"$gt": 0}}
-            ]
-        }).to_list(1000)
-        logger.info(f"Finanzas encontrados: {len(raw)}")
-
-        for f in raw:
-            try:
-                fecha_raw = (
-                    f.get("fecha_infraccion") or f.get("FECHA_INFRACCIN") or
-                    f.get("fecha") or f.get("FECHA") or
-                    "1970-01-01T00:00:00"
-                )
-                fecha = safe_parse_date(fecha_raw)
-
-                # Motivo y tipo_reg (case-insensitive get)
-                motivo = str(f.get("motivo") or f.get("MOTIVO") or "").lower()
-                tipo_reg = str(f.get("tipo_registro") or f.get("TIPO_REGISTRO") or "").lower()
-                combined = motivo + " " + tipo_reg
-
-                # Expandido check (covers all your cases)
-                es_multa = any(word in combined for word in [
-                    "multa", "infracci", "exceso", "velocidad", "semaforo", "semáforo",
-                    "gastos", "administrativo", "acta", "rojo", "respetar", "límites",
-                    "reglamentarios", "previstos", "77", "44", "51", "n", "2", "o"
-                ])
-
-                tipo = "Multa" if es_multa else "Otro Financiero"
-
-                monto = float(f.get("MONTO") or f.get("monto") or 0)
-
-                descripcion = str(f.get("motivo") or f.get("MOTIVO") or f.get("descripcion") or f.get("DESCRIPCION") or "Infracción de tránsito").strip()
-
-                multas.append({
-                    "id": str(f["_id"]),
-                    "fecha": fecha.isoformat() if isinstance(fecha, datetime) else "1970-01-01T00:00:00",
+                    "fecha": fecha.isoformat(),
                     "tipo": tipo,
                     "monto": monto,
                     "descripcion": descripcion,
-                    "comprobante_file_id": f.get("comprobante_file_id"),
-                    "origen": "finanzas"
+                    "origen": "mantenimiento",
+                    "coleccion": "Mantenimiento"
                 })
             except Exception as e:
-                logger.warning(f"Finanza corrupta {f.get('_id')}: {e}")
+                logger.warning(f"Error procesando mantenimiento {m.get('_id')}: {e}")
                 continue
+
     except Exception as e:
-        logger.error(f"Error leyendo Finanzas: {e}")
-        multas = []
+        logger.error(f"Error leyendo mantenimientos: {e}")
 
-    # ==================== RESPUESTA FINAL (SORT SEGURO) ====================
+    # ==================== FINANZAS (Multas, etc.) ====================
+    finanzas = []
     try:
-        todos = mantenimientos + multas
+        raw_fin = await finanzas_collection.find({"patente": patente_norm}).to_list(1000)
+        for f in raw_fin:
+            try:
+                fecha_raw = f.get("dia") or f.get("FECHA_INFRACCION") or f.get("fecha_infraccion") or "1970-01-01"
+                fecha = safe_parse_date(fecha_raw)
+                tipo = f.get("tipo_registro", "Multa").strip()
+                monto_raw = f.get("monto") or f.get("MONTO") or 0
+                monto = float(monto_raw) if monto_raw else 0.0
+                descripcion = (f.get("motivo") or f.get("MOTIVO") or "Sin descripción").strip()
 
-        # Sort seguro: Convertimos a datetime para comparar
-        def safe_date(item):
-            fecha_str = item["fecha"]
-            if isinstance(fecha_str, datetime):
-                return fecha_str
-            return safe_parse_date(fecha_str)
+                # FILTRADO ESTRICTO
+                if monto <= 0:
+                    continue
+                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "devolucion", "descuento", "ajuste"]):
+                    continue
 
-        todos.sort(key=safe_date, reverse=True)
+                finanzas.append({
+                    "id": str(f["_id"]),
+                    "fecha": fecha.isoformat(),
+                    "tipo": tipo,
+                    "monto": monto,
+                    "descripcion": descripcion,
+                    "origen": "finanzas",
+                    "coleccion": "Finanzas"
+                })
+            except Exception as e:
+                logger.warning(f"Error procesando finanza {f.get('_id')}: {e}")
+                continue
 
-        respuesta = {
-            "gastos": todos,
-            "total_general": sum(g["monto"] for g in todos),
-            "total_mantenimiento": sum(g["monto"] for g in todos if g["origen"] == "mantenimiento"),
-            "total_multas": sum(g["monto"] for g in todos if g["tipo"] == "Multa")
-        }
-        logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items, total {respuesta['total_general']}")
-        return respuesta
     except Exception as e:
-        logger.error(f"Error final {patente_norm}: {e}")
-        return {"gastos": [], "total_general": 0, "total_mantenimiento": 0, "total_multas": 0}
+        logger.error(f"Error leyendo finanzas: {e}")
 
-def safe_parse_date(fecha_raw):
-    if isinstance(fecha_raw, datetime):
-        return fecha_raw
-    if not isinstance(fecha_raw, str) or fecha_raw == "N/A":
-        return datetime.min
-    try:
-        return datetime.fromisoformat(fecha_raw)
-    except ValueError:
-        try:
-            return datetime.strptime(fecha_raw, '%Y-%m-%dT%H:%M:%S')
-        except ValueError:
-            return datetime.min
+    # ==================== UNIFICACIÓN Y CÁLCULO FINAL ====================
+    todos = mantenimientos + finanzas
+
+    # Ordenar por fecha descendente
+    todos.sort(key=lambda x: x["fecha"], reverse=True)
+
+    # Cálculo FINAL con datos ya filtrados
+    total_general = sum(g["monto"] for g in todos)
+    total_mantenimiento = sum(g["monto"] for g in todos if g["origen"] == "mantenimiento")
+    total_multas = sum(g["monto"] for g in todos if g["tipo"] in ["Multa", "INFRACCION", "Infracción"])
+
+    respuesta = {
+        "patente": patente_norm,
+        "gastos": todos,
+        "total_general": round(total_general, 2),
+        "total_mantenimiento": round(total_mantenimiento, 2),
+        "total_multas": round(total_multas, 2),
+        "total_otras": round(total_general - total_mantenimiento - total_multas, 2)
+    }
+
+    logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items | Total: ${total_general:,.2f}")
+    return respuesta
 
 
-# ==================== ELIMINAR GASTO UNIVERSAL ====================
+# ==================== BORRADO UNIVERSAL (sin cambios, está perfecto) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(
     gasto_id: str,

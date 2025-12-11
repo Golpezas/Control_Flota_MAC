@@ -135,25 +135,42 @@ async def get_gastos_unificados(patente: str):
     return respuesta
 
 
-# ==================== BORRADO UNIVERSAL (sin cambios, está perfecto) ====================
+# ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(
     gasto_id: str,
     origen: str = Query(..., description="Colección: 'costos' (mantenimiento) o 'finanzas' (multas)")
 ):
+    """
+    Elimina un gasto por ID, manejando tanto ObjectId (costos manuales) como strings UUID (cargados vía ETL).
+    - Valida origen estrictamente.
+    - Loggea intentos y errores para trazabilidad.
+    - Normativa: Cumple con idempotencia (si no existe, 404).
+    """
+    # Normalización y validación inicial (mejor práctica: early return en errores)
+    collection_name = origen.lower()
+    if collection_name not in ["costos", "finanzas"]:
+        logger.warning(f"Origen inválido intentado: {origen}")
+        raise HTTPException(400, "Origen inválido: debe ser 'costos' o 'finanzas'")
+
+    collection = get_db_collection("Mantenimiento" if collection_name == "costos" else "Finanzas")
+    
+    # Lógica híbrida para _id (try ObjectId primero, fallback a string si falla)
+    filter_query = {}
     try:
         obj_id = ObjectId(gasto_id)
+        filter_query = {"_id": obj_id}
+        logger.info(f"Intentando eliminar como ObjectId: {gasto_id} ({collection_name})")
     except Exception as e:
-        logger.error(f"ID inválido: {gasto_id} - Error: {e}")
-        raise HTTPException(400, "ID inválido")
-
-    collection_name = "costos" if origen.lower() == "costos" else "finanzas"
-    collection = get_db_collection("Mantenimiento" if collection_name == "costos" else "Finanzas")
-
-    result = await collection.delete_one({"_id": obj_id})
+        filter_query = {"_id": gasto_id}  # Usar directamente como string (UUID u otro)
+        logger.info(f"Fallback a string ID (no es ObjectId válido): {gasto_id} ({collection_name}) - Razón: {e}")
+    
+    # Ejecución asíncrona del delete
+    result = await collection.delete_one(filter_query)
+    
     if result.deleted_count == 0:
         logger.warning(f"Gasto no encontrado: {gasto_id} en {collection_name}")
         raise HTTPException(404, "Gasto no encontrado")
-
-    logger.info(f"Gasto eliminado correctamente: {gasto_id} ({collection_name})")
+    
+    logger.info(f"Gasto eliminado correctamente: {gasto_id} ({collection_name}) - Fecha: {datetime.now()}")
     return {"message": "Gasto eliminado correctamente"}
