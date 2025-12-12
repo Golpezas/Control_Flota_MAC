@@ -77,10 +77,10 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         }
     };
 
-    const handleSubmit = async (e: FormEvent) => {
+    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        
-        // Validación ajustada: Si initialPatente existe, ignora la validación de patente (SE MANTIENE)
+
+        // Validación existente (sin cambios)
         if ((!initialPatente && !formData.patente) || formData.importe <= 0 || !formData.descripcion) {
             setStatusMessage('Error: Asegúrese de ingresar Patente (si aplica), Importe (>0) y Descripción.');
             return;
@@ -90,10 +90,18 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         setStatusMessage(null);
 
         try {
-            const patenteNormalizada = normalizePatente(formData.patente);
+            // ← NORMALIZACIÓN SEGURA DE PATENTE (prioriza initialPatente si existe)
+            const patenteFuente = initialPatente || formData.patente || '';
+            const patenteNormalizada = normalizePatente(patenteFuente);
 
-            // Caso con archivo: Usar FormData (multipart/form-data)
+            if (!patenteNormalizada) {
+                throw new Error('Patente no válida o no proporcionada.');
+            }
+
+            let payload: NewCostoInput | FormData;
+
             if (file) {
+                // Caso con comprobante: Multipart/form-data
                 const formDataToSend = new FormData();
                 formDataToSend.append('patente', patenteNormalizada);
                 formDataToSend.append('tipo_costo', formData.tipo_costo);
@@ -101,28 +109,51 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
                 formDataToSend.append('descripcion', formData.descripcion);
                 formDataToSend.append('importe', formData.importe.toString());
                 formDataToSend.append('origen', formData.origen);
-                formDataToSend.append('comprobante', file);  // Clave esperada en backend
+                formDataToSend.append('comprobante', file);  // ← Clave exacta para backend
 
-                await createCostoItem(formDataToSend);  // Backend debe manejar multipart
+                payload = formDataToSend;
+
+                console.log('📎 Enviando costo con comprobante:', {
+                    filename: file.name,
+                    size: file.size,
+                    type: file.type,
+                    patente: patenteNormalizada
+                });
             } else {
-                // Caso sin archivo: Mantener comportamiento actual (JSON)
+                // Caso sin comprobante: JSON (compatibilidad backward)
                 const dataToSend: NewCostoInput = {
                     ...formData,
                     patente: patenteNormalizada,
-                    fecha: new Date(formData.fecha).toISOString(), 
+                    fecha: new Date(formData.fecha).toISOString(),
                 };
-                
-                await createCostoItem(dataToSend);
+
+                payload = dataToSend;
+
+                console.log('📄 Enviando costo sin comprobante (JSON):', dataToSend);
             }
-            
-            setStatusMessage(`✅ Costo de $${formData.importe.toFixed(2)} registrado con éxito para ${patenteNormalizada}. ${file ? 'Recibo adjunto.' : ''}`);
-            setFormData(initialPatente ? { ...defaultFormData, patente: normalizePatente(initialPatente || '') } : defaultFormData);
-            setFile(null);  // Limpiar archivo tras éxito
-            onSuccess();
-            
+
+            // Llamada unificada a la API
+            await createCostoItem(payload);
+
+            // Mensaje de éxito mejorado
+            setStatusMessage(
+                `✅ Costo de $${formData.importe.toFixed(2)} registrado con éxito para ${patenteNormalizada.toUpperCase()}.` +
+                (file ? ' Comprobante adjunto.' : '')
+            );
+
+            // Reset del formulario
+            setFormData(
+                initialPatente 
+                    ? { ...defaultFormData, patente: normalizePatente(initialPatente) }
+                    : defaultFormData
+            );
+            setFile(null);  // Limpia el input file
+            onSuccess();    // Refresca la vista (historial)
+
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : 'Error desconocido al registrar el costo.';
             setStatusMessage(`❌ Error: ${message}`);
+            console.error('Error en handleSubmit:', e);
         } finally {
             setIsLoading(false);
         }

@@ -172,12 +172,18 @@ async def create_costo_manual(
     comprobante: UploadFile | None = File(None),
 ):
     
-    logger.info(f"Recibiendo solicitud create_costo_manual para patente: {patente}")
+    # ← LOGS CRÍTICOS PARA DIAGNÓSTICO
+    logger.info(f"=== NUEVA SOLICITUD CREATE_COSTO_MANUAL ===")
+    logger.info(f"Patente: {patente}")
+    logger.info(f"Tipo costo: {tipo_costo}")
+    logger.info(f"Comprobante recibido: {comprobante}")  # ← None o <UploadFile ...>
     
     if comprobante:
-        logger.info(f"Archivo recibido: {comprobante.filename} ({comprobante.content_type}, tamaño: {comprobante.size} bytes)")
+        logger.info(f"  → Filename: {comprobante.filename}")
+        logger.info(f"  → Content-Type: {comprobante.content_type}")
+        logger.info(f"  → Size: {comprobante.size}")
     else:
-        logger.info("Solicitud SIN archivo adjunto (comprobante=None)")
+        logger.warning("  → NO se recibió archivo (comprobante = None)")
 
     try:
         costo_data = CostoManualInput(
