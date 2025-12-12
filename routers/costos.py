@@ -1,41 +1,42 @@
-# routers/costos.py → VERSIÓN CORREGIDA Y COMPLETA (2025-12-12)
-# Soporte completo para upload de comprobantes con GridFS + response model Pydantic
-# Resuelve todas las advertencias Pylance reportadas.
+# routers/costos.py → VERSIÓN CORREGIDA PARA GRIDFS ASÍNCRONO (2025-12-12)
+# Eliminamos gridfs síncrono → usamos AsyncIOMotorGridFS de Motor (nativo y compatible)
 
-import os  # ← Necesario para os.getenv("MONGO_URI")
-import gridfs  # ← CORREGIDO: Import explícito para GridFS
-from datetime import datetime, date  # ← CORREGIDO: datetime + date (para parseo)
+import os
+from datetime import datetime, date
 
-from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File  # ← CORREGIDO: Form, UploadFile, File
-from pydantic import BaseModel  # ← CORREGIDO: Para CreateCostoResponse
+from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
+from pydantic import BaseModel
 
 from bson import ObjectId
 import logging
 
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket  # ← NUEVO: GridFS async
+# from gridfs import GridFS  ← ELIMINADO (era síncrono e incompatible)
 
-from dependencies import get_db_collection, CostoManualInput  # Asumimos que CostoManualInput está definido aquí
+from dependencies import get_db_collection, CostoManualInput
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/costos", tags=["Costos"])
 
 # =================================================================
-# CONFIGURACIÓN GLOBAL DE GRIDFS (reutilización eficiente del cliente)
+# CONFIGURACIÓN GLOBAL DE GRIDFS ASÍNCRONO (recomendado por Motor)
 # =================================================================
 _client = AsyncIOMotorClient(os.getenv("MONGO_URI"))
 db = _client["MacSeguridadFlota"]
-fs = gridfs.GridFS(db)  # Ahora gridfs está correctamente importado
+
+# ← CORREGIDO: Usamos AsyncIOMotorGridFSBucket (async nativo)
+fs = AsyncIOMotorGridFSBucket(db)  # ¡Esto es async y compatible con Motor!
 
 # =================================================================
-# MODELO DE RESPUESTA (Pydantic v2 - moderno y recomendado)
+# MODELO DE RESPUESTA
 # =================================================================
 class CreateCostoResponse(BaseModel):
     message: str
     costo_id: str
-    file_id: str | None = None  # ID del comprobante subido (opcional)
+    file_id: str | None = None
 
-    model_config = {"extra": "ignore"}  # Buena práctica: rechazar campos extras
+    model_config = {"extra": "ignore"}
 
 def normalize_patente(patente: str) -> str:
     if not patente:
@@ -164,53 +165,72 @@ async def get_gastos_unificados(patente: str):
 async def create_costo_manual(
     patente: str = Form(...),
     tipo_costo: str = Form(...),
-    fecha: str = Form(...),  # Parsear a date en backend
+    fecha: str = Form(...),
     descripcion: str = Form(...),
     importe: float = Form(..., gt=0),
     origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
-    comprobante: UploadFile | None = File(None)  # Nuevo: Archivo opcional
+    comprobante: UploadFile | None = File(None),
 ):
-    """
-    Crea un costo manual con recibo digital opcional.
-    - Valida input con Pydantic.
-    - Sube archivo a GridFS si presente.
-    - Normativa: Cumple con atomicidad (todo o nada).
-    """
-    # Parsear y validar input (usar CostoManualInput para schema)
     try:
         costo_data = CostoManualInput(
-            patente=patente, tipo_costo=tipo_costo, fecha=date.fromisoformat(fecha),
-            descripcion=descripcion, importe=importe, origen=origen
+            patente=patente,
+            tipo_costo=tipo_costo,
+            fecha=date.fromisoformat(fecha),
+            descripcion=descripcion,
+            importe=importe,
+            origen=origen,
         )
     except ValueError as e:
-        raise HTTPException(400, f"Input inválido: {e}")
+        logger.warning(f"Validación fallida: {e}")
+        raise HTTPException(status_code=400, detail=f"Input inválido: {e}")
 
-    collection = get_db_collection(origen.capitalize())
+    collection_name = "Mantenimiento" if origen == "Mantenimiento" else "Finanzas"
+    collection = get_db_collection(collection_name)
 
     file_id = None
     if comprobante:
-        # Validaciones archivo (mejores prácticas: seguridad)
-        allowed_types = {"application/pdf", "image/jpeg", "image/png"}
+        allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
         if comprobante.content_type not in allowed_types:
-            raise HTTPException(400, "Tipo de archivo no permitido (solo PDF/JPG/PNG)")
-        if comprobante.size > 50 * 1024 * 1024:
-            raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
+            raise HTTPException(status_code=400, detail="Tipo de archivo no permitido (PDF, JPG, PNG)")
 
-        content = await comprobante.read()
-        file_id = fs.put(
-            content, filename=comprobante.filename, content_type=comprobante.content_type,
-            metadata={"patente": costo_data.patente, "tipo": "recibo_costo"}
-        )
+        if comprobante.size and comprobante.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 50MB)")
 
-    # Insertar costo con file_id (async)
-    insert_data = costo_data.dict()
-    insert_data["comprobante_file_id"] = str(file_id) if file_id else None
-    result = await collection.insert_one(insert_data)
+        try:
+            content = await comprobante.read()
+
+            # ← CORREGIDO: Usamos put() asíncrono del GridFSBucket
+            grid_in = await fs.put(
+                content,
+                filename=comprobante.filename,
+                content_type=comprobante.content_type,
+                metadata={
+                    "patente": patente,
+                    "tipo": "comprobante_costo",
+                    "uploaded_at": datetime.utcnow(),
+                },
+            )
+            file_id = str(grid_in)  # ObjectId del archivo en GridFS
+            logger.info(f"Comprobante subido a GridFS: {file_id} - Patente: {patente}")
+        except Exception as e:
+            logger.error(f"Error subiendo a GridFS: {e}")
+            raise HTTPException(status_code=500, detail="Error al guardar el comprobante")
+
+    # Insertar costo
+    insert_data = costo_data.model_dump()
+    if file_id:
+        insert_data["comprobante_file_id"] = file_id
+
+    try:
+        result = await collection.insert_one(insert_data)
+    except Exception as e:
+        logger.error(f"Error insertando costo: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar el costo")
 
     return CreateCostoResponse(
         message="Costo creado correctamente",
         costo_id=str(result.inserted_id),
-        file_id=str(file_id) if file_id else None
+        file_id=file_id,
     )
 
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
