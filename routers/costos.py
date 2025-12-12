@@ -193,6 +193,7 @@ async def create_costo_manual(
     if origen not in ["Finanzas", "Mantenimiento"]:
         raise HTTPException(status_code=400, detail="Origen inválido")
 
+    # Datos normalizados para insert
     insert_data = {
         "patente": patente.strip().upper(),
         "tipo_costo": tipo_costo,
