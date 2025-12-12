@@ -163,7 +163,7 @@ async def get_gastos_unificados(patente: str):
 
 @router.post("/manual", response_model=CreateCostoResponse)
 async def create_costo_manual(
-    request: Request,  # ← INYECCIÓN CORRECTA: FastAPI proporciona el objeto Request
+    request: Request,
     patente: str = Form(...),
     tipo_costo: str = Form(...),
     fecha: str = Form(...),
@@ -172,25 +172,19 @@ async def create_costo_manual(
     origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
     comprobante: UploadFile | None = File(None),
 ):
-    """
-    Crea un costo manual con recibo digital opcional.
-    - Logging detallado de headers para diagnóstico de uploads.
-    - Inyección explícita de Request (mejor práctica FastAPI).
-    """
-    # ← LOGGING DIAGNÓSTICO COMPLETO
     logger.info("=== NUEVA SOLICITUD POST /costos/manual ===")
-    logger.info(f"IP cliente: {request.client.host if request.client else 'unknown'}")
-    logger.info(f"Headers relevantes: Content-Type={request.headers.get('content-type')}, User-Agent={request.headers.get('user-agent')}")
+    logger.info(f"IP: {request.client.host if request.client else 'unknown'}")
+    logger.info(f"Content-Type: {request.headers.get('content-type')}")
 
-    logger.info(f"Comprobante recibido: {comprobante}")
+    # ← DIAGNÓSTICO: Confirmar si comprobante llega
     if comprobante:
-        logger.info(f"  → Filename: {comprobante.filename}")
-        logger.info(f"  → Content-Type: {comprobante.content_type}")
-        logger.info(f"  → Size: {comprobante.size} bytes")
+        logger.info(f"Archivo recibido: filename='{comprobante.filename}', content_type='{comprobante.content_type}', size={comprobante.size}")
     else:
-        logger.warning("  → NO se recibió archivo adjunto (comprobante = None)")
+        logger.warning("Archivo NO recibido (comprobante = None)")
 
+    file_id = None
     try:
+        # Validación de datos (sin tocar archivo aún)
         costo_data = CostoManualInput(
             patente=patente,
             tipo_costo=tipo_costo,
@@ -199,61 +193,54 @@ async def create_costo_manual(
             importe=importe,
             origen=origen,
         )
-    except ValueError as e:
-        logger.warning(f"Validación fallida: {e}")
-        raise HTTPException(status_code=400, detail=f"Input inválido: {e}")
 
-    collection_name = "Mantenimiento" if origen == "Mantenimiento" else "Finanzas"
-    collection = get_db_collection(collection_name)
+        collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
 
-    file_id = None
-    if comprobante:
-        allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
-        if comprobante.content_type not in allowed_types:
-            raise HTTPException(status_code=400, detail="Tipo de archivo no permitido (PDF, JPG, PNG)")
+        if comprobante:
+            # Validaciones de archivo
+            allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
+            if comprobante.content_type not in allowed_types:
+                raise HTTPException(400, "Tipo de archivo no permitido (solo PDF, JPG, PNG)")
 
-        if comprobante.size and comprobante.size > 50 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 50MB)")
+            if comprobante.size > 50 * 1024 * 1024:
+                raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
 
-        try:
+            # ← LECTURA SEGURA: No loguear content directamente
             content = await comprobante.read()
-            logger.info(f"Leyendo {len(content)} bytes del archivo")
+            logger.info(f"Archivo leído correctamente: {len(content)} bytes")
 
-            # ← CORREGIDO: Usamos put() asíncrono del GridFSBucket
             grid_in = await fs.put(
                 content,
                 filename=comprobante.filename,
                 content_type=comprobante.content_type,
-                metadata={
-                    "patente": patente,
-                    "tipo": "comprobante_costo",
-                    "uploaded_at": datetime.utcnow(),
-                },
+                metadata={"patente": patente, "tipo": "comprobante_costo", "uploaded_at": datetime.utcnow()}
             )
-            file_id = str(grid_in)  # ObjectId del archivo en GridFS
-            logger.info(f"Comprobante subido a GridFS: {file_id} - Patente: {patente}")
-        except Exception as e:
-            logger.error(f"Error subiendo a GridFS: {e}")
-            raise HTTPException(status_code=500, detail="Error al guardar el comprobante")
+            file_id = str(grid_in)
+            logger.info(f"✅ Archivo subido a GridFS: {file_id}")
 
-    # Insertar costo
-    insert_data = costo_data.model_dump()
-    if file_id:
-        insert_data["comprobante_file_id"] = file_id
+        # Insertar
+        insert_data = costo_data.model_dump()
+        if file_id:
+            insert_data["comprobante_file_id"] = file_id
 
-    try:
         result = await collection.insert_one(insert_data)
-        logger.info(f"✅ Costo creado: _id = {result.inserted_id}, comprobante_file_id = {file_id}")
+        logger.info(f"✅ Costo creado: _id={result.inserted_id}, file_id={file_id}")
+
+        return CreateCostoResponse(
+            message="Costo creado correctamente",
+            costo_id=str(result.inserted_id),
+            file_id=file_id
+        )
+
+    except HTTPException:
+        # Re-raise HTTPException sin tocar (ya es seguro)
+        raise
     except Exception as e:
-        logger.error(f"Error insertando costo: {e}")
-        raise HTTPException(status_code=500, detail="Error al guardar el costo")
-
-    return CreateCostoResponse(
-        message="Costo creado correctamente",
-        costo_id=str(result.inserted_id),
-        file_id=file_id,
-    )
-
+        # ← CRÍTICO: Evitar serializar bytes binarios en error
+        logger.error(f"Error inesperado en create_costo_manual: {type(e).__name__}: {str(e)}")
+        # No incluir 'e' completo si puede tener bytes
+        raise HTTPException(status_code=500, detail="Error interno al procesar el costo o comprobante")
+    
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(
