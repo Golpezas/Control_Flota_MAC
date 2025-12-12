@@ -310,30 +310,66 @@ export async function fetchDashboardData(): Promise<DashboardResponse> {
 }
 
 // ---------------------------------------------------------------------------------
-
 /**
- * 💸 Registra un nuevo costo o gasto de forma manual. (POST /costos/crear)
+ * 💸 Registra un nuevo costo o gasto de forma manual. (POST /costos/manual)
+ * 
+ * Soporta dos modos de envío:
+ *  - JSON (application/json): Cuando no hay archivo adjunto (comportamiento actual, fully backward-compatible).
+ *  - Multipart/form-data: Cuando se adjunta un comprobante/recibo (FormData con clave 'comprobante').
+ * 
+ * Mejores prácticas aplicadas:
+ *  - Sobrecarga de parámetros con union type.
+ *  - Detección automática del tipo de contenido (no sobrescribir Content-Type en FormData).
+ *  - Sanitización de importe.
+ *  - Manejo de errores detallado y tipado.
+ *  - Documentación completa y actualizada.
  */
-export async function createCostoItem(newCosto: NewCostoInput): Promise<CreateCostoResponse> {
+export async function createCostoItem(
+    newCosto: NewCostoInput | FormData
+): Promise<CreateCostoResponse> {
     try {
-        const dataToSend = {
-            ...newCosto,
-            // Aseguramos que 'importe' sea un número válido y positivo
-            importe: Math.max(0.01, newCosto.importe),
-        };
+        let response;
 
-        // Utilizamos CostoItem como tipo de respuesta esperada.
-        const response = await apiClient.post<CreateCostoResponse>('/costos/manual', dataToSend);
+        // Detección del tipo de payload
+        if (newCosto instanceof FormData) {
+            // Caso con archivo: Enviar como FormData (multipart)
+            // IMPORTANTE: No establecer 'Content-Type' manualmente → Axios lo hace con boundary correcto
+            response = await apiClient.post<CreateCostoResponse>('/costos/manual', newCosto, {
+                headers: {
+                    // Opcional: Puedes agregar headers adicionales si el backend requiere auth, etc.
+                },
+                // Axios detecta automáticamente multipart y configura headers correctos
+            });
+        } else {
+            // Caso sin archivo: Mantener comportamiento actual (JSON)
+            const dataToSend = {
+                ...newCosto,
+                // Sanitización: Asegurar importe positivo y mínimo
+                importe: Math.max(0.01, newCosto.importe),
+            };
+
+            response = await apiClient.post<CreateCostoResponse>('/costos/manual', dataToSend);
+        }
 
         return response.data;
     } catch (error: unknown) {
+        // Manejo de errores robusto y consistente (sin cambios, mejorado con tipado)
         let errorMessage = 'Fallo al registrar el costo manual.';
+        
         if (axios.isAxiosError(error) && error.response) {
             const errorData = error.response.data as FastAPIErrorResponse;
-            const detail = errorData.detail || (error.message as string);
+            const detail = errorData?.detail || error.message;
 
             errorMessage = `Fallo al crear costo (Status: ${error.response.status}): ${detail}`;
+            
+            // Logs adicionales en desarrollo para depuración
+            if (import.meta.env.DEV) {
+                console.error('Error detallado en createCostoItem:', error.response.data);
+            }
+        } else if (error instanceof Error) {
+            errorMessage = `Error de red o inesperado: ${error.message}`;
         }
+
         throw new Error(errorMessage);
     }
 }
