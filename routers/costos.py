@@ -4,7 +4,7 @@
 import os
 from datetime import datetime, date
 
-from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File, Request
 from pydantic import BaseModel
 
 from bson import ObjectId
@@ -163,6 +163,7 @@ async def get_gastos_unificados(patente: str):
 
 @router.post("/manual", response_model=CreateCostoResponse)
 async def create_costo_manual(
+    request: Request,  # ← INYECCIÓN CORRECTA: FastAPI proporciona el objeto Request
     patente: str = Form(...),
     tipo_costo: str = Form(...),
     fecha: str = Form(...),
@@ -171,19 +172,23 @@ async def create_costo_manual(
     origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
     comprobante: UploadFile | None = File(None),
 ):
-    
-    # ← LOGS CRÍTICOS PARA DIAGNÓSTICO
-    logger.info(f"=== NUEVA SOLICITUD CREATE_COSTO_MANUAL ===")
-    logger.info(f"Patente: {patente}")
-    logger.info(f"Tipo costo: {tipo_costo}")
-    logger.info(f"Comprobante recibido: {comprobante}")  # ← None o <UploadFile ...>
-    
+    """
+    Crea un costo manual con recibo digital opcional.
+    - Logging detallado de headers para diagnóstico de uploads.
+    - Inyección explícita de Request (mejor práctica FastAPI).
+    """
+    # ← LOGGING DIAGNÓSTICO COMPLETO
+    logger.info("=== NUEVA SOLICITUD POST /costos/manual ===")
+    logger.info(f"IP cliente: {request.client.host if request.client else 'unknown'}")
+    logger.info(f"Headers relevantes: Content-Type={request.headers.get('content-type')}, User-Agent={request.headers.get('user-agent')}")
+
+    logger.info(f"Comprobante recibido: {comprobante}")
     if comprobante:
         logger.info(f"  → Filename: {comprobante.filename}")
         logger.info(f"  → Content-Type: {comprobante.content_type}")
-        logger.info(f"  → Size: {comprobante.size}")
+        logger.info(f"  → Size: {comprobante.size} bytes")
     else:
-        logger.warning("  → NO se recibió archivo (comprobante = None)")
+        logger.warning("  → NO se recibió archivo adjunto (comprobante = None)")
 
     try:
         costo_data = CostoManualInput(
