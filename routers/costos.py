@@ -172,74 +172,90 @@ async def create_costo_manual(
     origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
     comprobante: UploadFile | None = File(None),
 ):
+    """
+    Crea un costo manual con recibo digital opcional.
+    - Validación manual (requerida para multipart con UploadFile).
+    - Logging completo para trazabilidad.
+    - Atomicidad y manejo seguro de binarios.
+    """
     logger.info("=== NUEVA SOLICITUD POST /costos/manual ===")
     logger.info(f"IP: {request.client.host if request.client else 'unknown'}")
     logger.info(f"Content-Type: {request.headers.get('content-type')}")
 
-    # ← DIAGNÓSTICO: Confirmar si comprobante llega
     if comprobante:
-        logger.info(f"Archivo recibido: filename='{comprobante.filename}', content_type='{comprobante.content_type}', size={comprobante.size}")
+        logger.info(f"Archivo recibido: filename='{comprobante.filename}', type='{comprobante.content_type}', size={comprobante.size}")
     else:
-        logger.warning("Archivo NO recibido (comprobante = None)")
+        logger.warning("Sin archivo adjunto")
+
+    # ← VALIDACIÓN MANUAL (reemplaza CostoManualInput)
+    try:
+        fecha_parsed = date.fromisoformat(fecha)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Fecha inválida (formato YYYY-MM-DD requerido)")
+
+    if importe <= 0:
+        raise HTTPException(status_code=400, detail="Importe debe ser mayor a 0")
+
+    if origen not in ["Finanzas", "Mantenimiento"]:
+        raise HTTPException(status_code=400, detail="Origen debe ser 'Finanzas' o 'Mantenimiento'")
+
+    # Datos normalizados para insert
+    insert_data = {
+        "patente": patente.strip().upper(),
+        "tipo_costo": tipo_costo,
+        "fecha": datetime.combine(fecha_parsed, datetime.min.time()),
+        "descripcion": descripcion,
+        "importe": importe,
+        "origen": origen,
+        "origen_manual": True,
+    }
+
+    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
 
     file_id = None
-    try:
-        # Validación de datos (sin tocar archivo aún)
-        costo_data = CostoManualInput(
-            patente=patente,
-            tipo_costo=tipo_costo,
-            fecha=date.fromisoformat(fecha),
-            descripcion=descripcion,
-            importe=importe,
-            origen=origen,
-        )
+    if comprobante:
+        allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
+        if comprobante.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail="Tipo de archivo no permitido (solo PDF, JPG, PNG)")
 
-        collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
+        if comprobante.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 50MB)")
 
-        if comprobante:
-            # Validaciones de archivo
-            allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
-            if comprobante.content_type not in allowed_types:
-                raise HTTPException(400, "Tipo de archivo no permitido (solo PDF, JPG, PNG)")
-
-            if comprobante.size > 50 * 1024 * 1024:
-                raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
-
-            # ← LECTURA SEGURA: No loguear content directamente
+        try:
             content = await comprobante.read()
-            logger.info(f"Archivo leído correctamente: {len(content)} bytes")
+            logger.info(f"Archivo leído: {len(content)} bytes")
 
             grid_in = await fs.put(
                 content,
                 filename=comprobante.filename,
                 content_type=comprobante.content_type,
-                metadata={"patente": patente, "tipo": "comprobante_costo", "uploaded_at": datetime.utcnow()}
+                metadata={
+                    "patente": patente,
+                    "tipo": "comprobante_costo",
+                    "uploaded_at": datetime.utcnow(),
+                },
             )
             file_id = str(grid_in)
             logger.info(f"✅ Archivo subido a GridFS: {file_id}")
+        except Exception as e:
+            logger.error(f"Error en GridFS: {e}")
+            raise HTTPException(status_code=500, detail="Error al guardar el comprobante")
 
-        # Insertar
-        insert_data = costo_data.model_dump()
-        if file_id:
-            insert_data["comprobante_file_id"] = file_id
+    if file_id:
+        insert_data["comprobante_file_id"] = file_id
 
+    try:
         result = await collection.insert_one(insert_data)
         logger.info(f"✅ Costo creado: _id={result.inserted_id}, file_id={file_id}")
-
-        return CreateCostoResponse(
-            message="Costo creado correctamente",
-            costo_id=str(result.inserted_id),
-            file_id=file_id
-        )
-
-    except HTTPException:
-        # Re-raise HTTPException sin tocar (ya es seguro)
-        raise
     except Exception as e:
-        # ← CRÍTICO: Evitar serializar bytes binarios en error
-        logger.error(f"Error inesperado en create_costo_manual: {type(e).__name__}: {str(e)}")
-        # No incluir 'e' completo si puede tener bytes
-        raise HTTPException(status_code=500, detail="Error interno al procesar el costo o comprobante")
+        logger.error(f"Error insertando en MongoDB: {e}")
+        raise HTTPException(status_code=500, detail="Error al guardar el costo")
+
+    return CreateCostoResponse(
+        message="Costo creado correctamente",
+        costo_id=str(result.inserted_id),
+        file_id=file_id,
+    )
     
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
