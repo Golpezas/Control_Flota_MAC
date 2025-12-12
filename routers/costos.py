@@ -171,6 +171,14 @@ async def create_costo_manual(
     origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
     comprobante: UploadFile | None = File(None),
 ):
+    
+    logger.info(f"Recibiendo solicitud create_costo_manual para patente: {patente}")
+    
+    if comprobante:
+        logger.info(f"Archivo recibido: {comprobante.filename} ({comprobante.content_type}, tamaño: {comprobante.size} bytes)")
+    else:
+        logger.info("Solicitud SIN archivo adjunto (comprobante=None)")
+
     try:
         costo_data = CostoManualInput(
             patente=patente,
@@ -198,6 +206,7 @@ async def create_costo_manual(
 
         try:
             content = await comprobante.read()
+            logger.info(f"Leyendo {len(content)} bytes del archivo")
 
             # ← CORREGIDO: Usamos put() asíncrono del GridFSBucket
             grid_in = await fs.put(
@@ -223,6 +232,7 @@ async def create_costo_manual(
 
     try:
         result = await collection.insert_one(insert_data)
+        logger.info(f"✅ Costo creado: _id = {result.inserted_id}, comprobante_file_id = {file_id}")
     except Exception as e:
         logger.error(f"Error insertando costo: {e}")
         raise HTTPException(status_code=500, detail="Error al guardar el costo")
