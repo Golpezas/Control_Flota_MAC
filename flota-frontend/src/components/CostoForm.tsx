@@ -18,11 +18,15 @@ const defaultFormData: NewCostoInput = {
     origen: 'Mantenimiento', 
 };
 
+/**
+ * Formulario para registrar costos manuales, con soporte para comprobante digital opcional.
+ * @param {CostoFormProps} props - Propiedades del componente.
+ */
 const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
     const [formData, setFormData] = useState<NewCostoInput>(defaultFormData);
     const [isLoading, setIsLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
-    const [file, setFile] = useState<File | null>(null);  // Nuevo: Estado para el recibo digital (opcional)
+    const [file, setFile] = useState<File | null>(null);  // Estado para el recibo digital (opcional)
 
     // Prellenar patente si se proporciona (y actualizar origen basado en tipo)
     useEffect(() => {
@@ -46,41 +50,26 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         if (type === 'number') {
             finalValue = parseFloat(value) || 0;
         }
-
-        setFormData(prev => ({
-            ...prev,
-            [name]: finalValue
-        }));
-        
-        // Lógica de asignación automática de origen (SE MANTIENE INTACTA)
-        if (name === 'tipo_costo') {
-            const newOrigen = ['Multa', 'Gasto Seguro', 'Impuesto/Patente'].includes(value) ? 'Finanzas' : 'Mantenimiento';
-            setFormData(prev => ({ ...prev, origen: newOrigen as 'Finanzas' | 'Mantenimiento' }));
-        }
+        setFormData(prev => ({ ...prev, [name]: finalValue }));
     };
 
-    // Nuevo: Handler específico para el archivo (con validaciones frontend)
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            const selectedFile = e.target.files[0];
-            const allowedTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-            if (!allowedTypes.includes(selectedFile.type)) {
-                setStatusMessage('❌ Error: Solo se permiten PDF, JPG o PNG.');
-                return;
-            }
-            if (selectedFile.size > 50 * 1024 * 1024) {  // 50MB
-                setStatusMessage('❌ Error: El archivo excede los 50MB permitidos.');
-                return;
-            }
-            setFile(selectedFile);
-            setStatusMessage(`📎 Archivo seleccionado: ${selectedFile.name} (${(selectedFile.size / 1024 / 1024).toFixed(2)} MB)`);
+        const selectedFile = e.target.files?.[0] || null;
+        if (selectedFile && selectedFile.size > 50 * 1024 * 1024) {
+            setStatusMessage('Error: Archivo demasiado grande (máx 50MB).');
+            return;
         }
+        setFile(selectedFile);
     };
 
+    /**
+     * Maneja el envío del formulario, con soporte para multipart si hay archivo.
+     * @param {FormEvent<HTMLFormElement>} e - Evento del formulario.
+     */
     const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
         e.preventDefault();
 
-        // Validación existente (sin cambios)
+        // Validación existente (sin cambios) + normalización
         if ((!initialPatente && !formData.patente) || formData.importe <= 0 || !formData.descripcion) {
             setStatusMessage('Error: Asegúrese de ingresar Patente (si aplica), Importe (>0) y Descripción.');
             return;
@@ -113,11 +102,13 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
 
                 payload = formDataToSend;
 
-                console.log('📎 Enviando costo con comprobante:', {
-                    filename: file.name,
-                    size: file.size,
-                    type: file.type,
-                    patente: patenteNormalizada
+                console.log("📎 Enviando costo con comprobante:", {
+                    patente: formData.patente,
+                    tipo_costo: formData.tipo_costo,
+                    fecha: formData.fecha,
+                    importe: formData.importe,
+                    origen: formData.origen,
+                    tieneArchivo: !!file  // ← CORREGIDO: Usar 'file' (estado definido)
                 });
             } else {
                 // Caso sin comprobante: JSON (compatibilidad backward)

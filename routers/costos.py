@@ -3,17 +3,14 @@
 
 import os
 from datetime import datetime, date
-
 from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File, Request
 from pydantic import BaseModel
-
+from typing import Optional
+from dependencies import normalize_patente, get_db_collection
 from bson import ObjectId
 import logging
-
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket  # ← NUEVO: GridFS async
-# from gridfs import GridFS  ← ELIMINADO (era síncrono e incompatible)
-
-from dependencies import get_db_collection, CostoManualInput
+from dependencies import get_db_collection, CostoManualInput, _client, DB_NAME  # ← CORREGIDO: Importar DB_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +19,11 @@ router = APIRouter(prefix="/costos", tags=["Costos"])
 # =================================================================
 # CONFIGURACIÓN GLOBAL DE GRIDFS ASÍNCRONO (recomendado por Motor)
 # =================================================================
-_client = AsyncIOMotorClient(os.getenv("MONGO_URI"))
-db = _client["MacSeguridadFlota"]
+# _client = AsyncIOMotorClient(os.getenv("MONGO_URI"))  ← ELIMINADO: No sobrescribir global; usar _client de dependencies
+# db = _client["MacSeguridadFlota"]  ← ELIMINADO: Usar DB_NAME importado
 
 # ← CORREGIDO: Usamos AsyncIOMotorGridFSBucket (async nativo)
-fs = AsyncIOMotorGridFSBucket(db)  # ¡Esto es async y compatible con Motor!
+fs = AsyncIOMotorGridFSBucket(_client[DB_NAME])  # ¡Esto es async y compatible con Motor!
 
 # =================================================================
 # MODELO DE RESPUESTA
@@ -161,91 +158,76 @@ async def get_gastos_unificados(patente: str):
     logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items | Total: ${total_general:,.2f}")
     return respuesta
 
-@router.post("/manual", response_model=CreateCostoResponse)
-async def create_costo_manual(
-    request: Request,
-    patente: str = Form(...),
-    tipo_costo: str = Form(...),
-    fecha: str = Form(...),
-    descripcion: str = Form(...),
-    importe: float = Form(..., gt=0),
-    origen: str = Form(..., pattern="^(Finanzas|Mantenimiento)$"),
-    comprobante: UploadFile | None = File(None),
+@router.post("/manual")
+async def crear_costo_manual(
+    patente: str = Form(..., description="Patente del vehículo"),
+    tipo_costo: str = Form(..., description="Tipo de gasto (ej: Reparación Mayor, Multa)"),
+    fecha: date = Form(..., description="Fecha del gasto (YYYY-MM-DD)"),
+    descripcion: str = Form(..., description="Descripción detallada"),
+    importe: float = Form(..., gt=0, description="Monto mayor a cero"),
+    origen: str = Form(..., regex="^(Finanzas|Mantenimiento)$", description="Colección destino"),
+    comprobante: Optional[UploadFile] = File(None, description="Comprobante opcional (PDF, JPG, PNG)")
 ):
-    logger.info("=== NUEVA SOLICITUD POST /costos/manual ===")
-    logger.info(f"IP: {request.client.host if request.client else 'unknown'}")
-    logger.info(f"Content-Type: {request.headers.get('content-type')}")
+    """
+    Crea un costo manual en la colección correspondiente (Mantenimiento o Finanzas).
+    Soporta subida de comprobante a GridFS.
+    """
+    patente_norm = normalize_patente(patente)
+    logger.info(f"Creando costo manual para patente: {patente_norm}, tipo: {tipo_costo}, importe: {importe}")
 
-    if comprobante:
-        logger.info(f"Archivo recibido: filename='{comprobante.filename}', type='{comprobante.content_type}', size={comprobante.size}")
-    else:
-        logger.warning("Sin archivo adjunto")
+    # Normalización y preparación del documento
+    collection_name = "Mantenimiento" if origen == "Mantenimiento" else "Finanzas"
+    collection = get_db_collection(collection_name)
 
-    # Validación manual de datos (evita Pydantic para multipart)
-    try:
-        fecha_parsed = date.fromisoformat(fecha)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Fecha inválida (YYYY-MM-DD)")
-
-    if importe <= 0:
-        raise HTTPException(status_code=400, detail="Importe debe ser >0")
-
-    if origen not in ["Finanzas", "Mantenimiento"]:
-        raise HTTPException(status_code=400, detail="Origen inválido")
-
-    # Datos normalizados para insert
-    insert_data = {
-        "patente": patente.strip().upper(),
+    documento = {
+        "patente": patente_norm,
         "tipo_costo": tipo_costo,
-        "fecha": datetime.combine(fecha_parsed, datetime.min.time()),
+        "fecha": fecha.isoformat(),
         "descripcion": descripcion,
-        "importe": importe,
-        "origen": origen,
+        "importe": round(importe, 2),
         "origen_manual": True,
+        "fecha_creacion": datetime.utcnow().isoformat()
     }
 
-    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
-
     file_id = None
-    if comprobante:
-        allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
-        if comprobante.content_type not in allowed_types:
-            raise HTTPException(status_code=400, detail="Tipo no permitido (PDF, JPG, PNG)")
-
-        if comprobante.size > 50 * 1024 * 1024:
-            raise HTTPException(status_code=413, detail="Archivo demasiado grande (máx 50MB)")
-
-        try:
-            content = await comprobante.read()
-            logger.info(f"Archivo leído: {len(content)} bytes")
-
-            grid_in = await fs.put(
-                content,
-                filename=comprobante.filename,
-                content_type=comprobante.content_type,
-                metadata={"patente": patente, "tipo": "comprobante_costo", "uploaded_at": datetime.utcnow()}
-            )
-            file_id = str(grid_in)
-            logger.info(f"✅ Archivo subido: {file_id}")
-        except Exception as e:
-            logger.error(f"Error GridFS: {e}")
-            raise HTTPException(status_code=500, detail="Error al guardar comprobante")
-
-    if file_id:
-        insert_data["comprobante_file_id"] = file_id
-
     try:
-        result = await collection.insert_one(insert_data)
-        logger.info(f"✅ Costo creado: _id={result.inserted_id}, file_id={file_id}")
-    except Exception as e:
-        logger.error(f"Error insert: {e}")
-        raise HTTPException(status_code=500, detail="Error al guardar costo")
+        # Subida de comprobante a GridFS (si existe)
+        if comprobante:
+            if comprobante.content_type not in ["image/jpeg", "image/jpg", "image/png", "application/pdf"]:
+                raise HTTPException(400, "Tipo de archivo no permitido. Solo PDF, JPG, PNG")
 
-    return CreateCostoResponse(
-        message="Costo creado correctamente",
-        costo_id=str(result.inserted_id),
-        file_id=file_id,
-    )
+            if comprobante.size > 50 * 1024 * 1024:  # 50MB
+                raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
+
+            content = await comprobante.read()
+            file_id = await fs.upload_from_stream(  # ← MEJORA OPCIONAL: Usar async upload
+                comprobante.filename,
+                content,
+                metadata={
+                    "patente": patente_norm,
+                    "tipo": "comprobante_costo",
+                    "tipo_costo": tipo_costo,
+                    "fecha": fecha.isoformat()
+                }
+            )
+            documento["comprobante_file_id"] = str(file_id)
+            logger.info(f"Comprobante subido a GridFS: {file_id}")
+
+        # Inserción en colección
+        result = await collection.insert_one(documento)
+        logger.info(f"Costo manual creado exitosamente: {result.inserted_id}")
+
+        return {
+            "message": "Costo creado exitosamente",
+            "id": str(result.inserted_id),
+            "comprobante_file_id": str(file_id) if file_id else None
+        }
+
+    except HTTPException:
+        raise  # Re-raise las controladas
+    except Exception as e:
+        logger.error(f"Error inesperado al crear costo manual: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar el costo")
     
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
