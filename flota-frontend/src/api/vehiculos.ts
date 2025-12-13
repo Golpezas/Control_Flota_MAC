@@ -5,11 +5,13 @@ import type {
   ReporteCostosResponse, 
   VehiculoUpdateInput, 
   NewCostoInput, 
-  CreateCostoResponse,
   DashboardResponse, 
   VehiculoBackendResponse,
 } from './models/vehiculos';
 import type { Alerta } from './models/vehiculos';
+
+import type { CostoItem } from './models/vehiculos';  // ← CostoItem y NewCostoInput están aquí
+import { normalizePatente } from '../utils/data-utils';  // ← Utilidad existente (ruta relativa correcta en Vite)
 
 // API Base
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -311,63 +313,55 @@ export async function fetchDashboardData(): Promise<DashboardResponse> {
 
 // ---------------------------------------------------------------------------------
 /**
- * 💸 Registra un nuevo costo o gasto de forma manual. (POST /costos/manual)
- * 
- * Soporta dos modos de envío:
- *  - JSON (application/json): Cuando no hay archivo adjunto (comportamiento actual, fully backward-compatible).
- *  - Multipart/form-data: Cuando se adjunta un comprobante/recibo (FormData con clave 'comprobante').
+ * 💸 Registra un nuevo costo o gasto de forma manual.
+ * Endpoint: POST /costos/manual
  * 
  * Mejores prácticas aplicadas:
- *  - Sobrecarga de parámetros con union type.
- *  - Detección automática del tipo de contenido (no sobrescribir Content-Type en FormData).
- *  - Sanitización de importe.
- *  - Manejo de errores detallado y tipado.
- *  - Documentación completa y actualizada.
+ * - Imports type-only para optimización (no side-effects).
+ * - Normalización de patente consistente con backend y utils existentes.
+ * - Sanitización estricta de datos (defensa en profundidad).
+ * - Manejo robusto de errores con type guards.
+ * - Documentación JSDoc completa y actualizada.
+ * - Preparado para extensión futura con comprobantes (FormData + UploadFile en backend).
+ * 
+ * Nota: El backend actual solo soporta JSON. Cuando se implemente subida de archivos,
+ *       descomentar la sobrecarga con FormData.
  */
 export async function createCostoItem(
-    newCosto: NewCostoInput | FormData
-): Promise<CreateCostoResponse> {
+    newCosto: NewCostoInput
+    // Futuro: | FormData  ← Activar cuando backend soporte UploadFile (GridFS + comprobante)
+): Promise<CostoItem> {  // ← Tipo existente en models/vehiculos.ts (correcto y usado en reportes)
     try {
-        let response;
+        // Sanitización y validación (mejor práctica: nunca confiar solo en backend)
+        const dataToSend: NewCostoInput = {
+            ...newCosto,
+            patente: normalizePatente(newCosto.patente),  // ← Consistencia total con backend
+            importe: Math.max(0.01, Number(newCosto.importe || 0)),  // Evita NaN o negativos
+        };
 
-        // Detección del tipo de payload
-        if (newCosto instanceof FormData) {
-            // Caso con archivo: Enviar como FormData (multipart)
-            // IMPORTANTE: No establecer 'Content-Type' manualmente → Axios lo hace con boundary correcto
-            response = await apiClient.post<CreateCostoResponse>('/costos/manual', newCosto, {
-                headers: {
-                    // Opcional: Puedes agregar headers adicionales si el backend requiere auth, etc.
-                },
-                // Axios detecta automáticamente multipart y configura headers correctos
-            });
-        } else {
-            // Caso sin archivo: Mantener comportamiento actual (JSON)
-            const dataToSend = {
-                ...newCosto,
-                // Sanitización: Asegurar importe positivo y mínimo
-                importe: Math.max(0.01, newCosto.importe),
-            };
-
-            response = await apiClient.post<CreateCostoResponse>('/costos/manual', dataToSend);
-        }
+        // Envío JSON estándar (100% compatible con routers/costos.py actual)
+        const response = await apiClient.post<CostoItem>('/costos/manual', dataToSend);
 
         return response.data;
     } catch (error: unknown) {
-        // Manejo de errores robusto y consistente (sin cambios, mejorado con tipado)
+        // Manejo estructurado y seguro (type guards modernos)
         let errorMessage = 'Fallo al registrar el costo manual.';
-        
-        if (axios.isAxiosError(error) && error.response) {
-            const errorData = error.response.data as FastAPIErrorResponse;
-            const detail = errorData?.detail || error.message;
 
-            errorMessage = `Fallo al crear costo (Status: ${error.response.status}): ${detail}`;
-            
-            // Logs adicionales en desarrollo para depuración
-            if (import.meta.env.DEV) {
-                console.error('Error detallado en createCostoItem:', error.response.data);
+        if (axios.isAxiosError(error)) {
+            if (error.response) {
+                const detail = (error.response.data as { detail?: string })?.detail || error.message;
+                errorMessage = `Error del servidor (${error.response.status}): ${detail}`;
+            } else if (error.request) {
+                errorMessage = 'Error de red: Sin respuesta del servidor.';
+            } else {
+                errorMessage = `Error de configuración: ${error.message}`;
             }
         } else if (error instanceof Error) {
-            errorMessage = `Error de red o inesperado: ${error.message}`;
+            errorMessage = `Error inesperado: ${error.message}`;
+        }
+
+        if (import.meta.env.DEV) {
+            console.error('[createCostoItem] Detalle completo:', error);
         }
 
         throw new Error(errorMessage);
