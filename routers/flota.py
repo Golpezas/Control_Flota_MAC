@@ -603,7 +603,7 @@ async def get_dashboard_data():
 # 4. ENDPOINTS: GESTIÓN DE COSTOS MANUALES (CRUD) - CORREGIDO
 # =========================================================================
 
-@router.post("/costos/manual", response_model=CostoItem, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo costo manual.")
+"""@router.post("/costos/manual", response_model=CostoItem, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo costo manual.")
 async def create_costo_manual(costo: CostoManualInput):
     collection_name = costo.origen 
     collection = get_db_collection(collection_name)
@@ -651,7 +651,7 @@ async def create_costo_manual(costo: CostoManualInput):
         importe=costo.importe,
         origen=collection_name,
         metadata_adicional=None 
-    )
+    )"""
 
 @router.delete("/costos/manual/{id}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina cualquier costo por ID (modo limpieza total)")
 async def delete_costo_manual(
