@@ -8,9 +8,6 @@ from dateutil.parser import parse, ParserError
 from fastapi import HTTPException
 from bson.objectid import ObjectId
 import re # Necesario para normalize_patente
-from dependencies import normalize_patente
-
-
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
