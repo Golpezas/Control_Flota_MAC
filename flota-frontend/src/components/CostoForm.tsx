@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'; 
-import type { FormEvent } from 'react';
+//import type { FormEvent } from 'react';
+import axios, { AxiosError } from 'axios';  // Para tipado de error
+import { API_BASE } from '../api/vehiculos';
 import type { NewCostoInput } from '../api/models/vehiculos';
-import { createCostoItem } from '../api/vehiculos';  // ← Esta función debe actualizarse para aceptar FormData | NewCostoInput (ver nota al final)
+//import { createCostoItem } from '../api/vehiculos';  // ← Esta función debe actualizarse para aceptar FormData | NewCostoInput (ver nota al final)
 import { normalizePatente } from '../utils/data-utils.ts';
+import type { FastAPIErrorResponse, ValidationErrorDetail } from '../api/models/errors';  // Ajusta path
 
 interface CostoFormProps {
     initialPatente?: string; 
@@ -63,38 +66,70 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
     };
 
     /**
- * Maneja el envío del formulario con validación completa y llamada a API.
- */
-const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setStatusMessage(null);
+    ** Maneja el envío del formulario con validación completa y llamada a API.
+    **/
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {  // Tipado preciso
+        e.preventDefault();
+        setIsLoading(true);
+        setStatusMessage(null);
 
-    try {
-        // Validación frontend (mejor práctica: nunca confiar solo en backend)
-        if (!formData.patente.trim()) {
-            throw new Error('La patente es obligatoria.');
+        // Construye FormData para multipart (soporta file)
+        const submitData = new FormData();
+        submitData.append('patente', formData.patente);  // formData es tu state: NewCostoInput
+        submitData.append('tipo_costo', formData.tipo_costo);
+        submitData.append('fecha', formData.fecha);
+        submitData.append('descripcion', formData.descripcion);
+        submitData.append('importe', formData.importe.toString());  // Float → string para Form
+        submitData.append('origen', formData.origen);
+        if (file) {
+            submitData.append('comprobante', file);  // File blob
         }
-        if (formData.importe <= 0) {
-            throw new Error('El importe debe ser mayor a cero.');
-        }
 
-        // Llamada real a la API → Esto elimina el warning "defined but never used"
-        await createCostoItem(formData);
+        try {
+            // Usa apiClient si existe, o axios directo (mejor práctica: instancia configurada)
+            const response = await axios.post(`${API_BASE}/costos/manual`, submitData, {
+                headers: { 'Content-Type': 'multipart/form-data' }  // Axios lo setea auto, pero explícito OK
+            });
 
-        setStatusMessage('¡Gasto registrado exitosamente!');
-        
-        // Limpiar formulario o mantener datos según UX deseada
-        setFormData({ ...defaultFormData, patente: formData.patente }); // Mantiene patente
-        
-        onSuccess(); // Refresca lista o redirige
-    } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Error desconocido.';
-        setStatusMessage(`Error: ${message}`);
-    } finally {
-        setIsLoading(false);
-    }
-};
+            // Opcional: Usa response.data (e.g., file_id para feedback)
+            console.log('Respuesta:', response.data);  // Ej: { message, costo_id, file_id }
+
+            setStatusMessage('✅ Costo registrado correctamente!');
+            setFormData(defaultFormData);  // Reset form (buena UX)
+            setFile(null);
+            onSuccess();  // Refresca lista
+        } catch (err) {
+            const error = err as AxiosError<FastAPIErrorResponse>;  // Tipado preciso: sin any
+            let errorMsg = 'Error desconocido al registrar el costo.';
+
+            if (error.response) {
+                const details = error.response.data?.detail;
+
+                if (Array.isArray(details)) {
+                    // details: ValidationErrorDetail[]
+                    errorMsg = details
+                        .map((d: ValidationErrorDetail) => 
+                            `${d.loc.join(' → ')}: ${d.msg}`  // Formato legible: "body → importe: Valor debe ser >0"
+                        )
+                        .join('; ');
+                } else if (typeof details === 'string') {
+                    errorMsg = details;
+                } else if (details === undefined) {
+                    errorMsg = `Error del servidor (${error.response.status})`;
+                }
+
+                errorMsg = `❌ ${errorMsg}`;
+            } else if (error.request) {
+                errorMsg = '❌ No se pudo conectar al servidor (verifique su conexión)';
+            } else {
+                errorMsg = `❌ ${error.message}`;
+            }
+
+            console.error('Error detallado:', error);
+            setStatusMessage(errorMsg);
+}
+    };
+
     return (
         <div style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '8px', background: '#fff' }}>
             <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
@@ -195,14 +230,9 @@ const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
 
                 {/* NUEVO: Campo para recibo digital (opcional, ancho completo) */}
                 <label style={{ display: 'block', gridColumn: '1 / -1' }}>
-                    Comprobante/Recibo (opcional - PDF, JPG o PNG, máx 50MB):
-                    <input 
-                        type="file" 
-                        accept=".pdf,.jpg,.jpeg,.png" 
-                        onChange={handleFileChange}
-                        style={{ padding: '8px', width: '100%', border: '1px solid #ccc', borderRadius: '4px', boxSizing: 'border-box' }} 
-                    />
-                    {file && <small style={{ color: '#457B9D' }}>Archivo actual: {file.name}</small>}
+                    Comprobante (opcional - PDF/JPG/PNG, max 50MB):
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={handleFileChange} />
+                    {file && <small>Archivo: {file.name}</small>}
                 </label>
                 
                 {/* Botón de envío (Ocupa el ancho completo) */}

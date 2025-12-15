@@ -397,51 +397,16 @@ def safe_sort_costos(costos: Iterable[Any]) -> List[CostoItem]:
 
 class CostoManualInput(BaseModel):
     """
-    Define el input requerido para que el usuario ingrese un costo de forma manual.
-    Ejemplos: 'Reparación Mayor', 'Multa', 'Neumático', 'Batería'.
-    
-    Este modelo incorpora validación automática, normalización de patente y manejo de fechas flexibles.
+    Input para costo manual. Soporta parseo flexible de fecha.
     """
-    patente: str = Field(
-        ...,
-        description="Patente del vehículo al que se aplica el costo. Se normalizará automáticamente (mayúsculas, sin espacios/guiones).",
-        examples=["ABC123", "ab-c 123"]
-    )
-    tipo_costo: str = Field(
-        ...,
-        description="Clasificación del costo (ej: 'Reparación Mayor', 'Multa', 'Neumático').",
-        examples=["Multa", "Reparación Menor"]
-    )
-    fecha: date = Field(
-        ...,
-        description="Fecha en que ocurrió o se pagó el costo. Acepta strings ISO o formatos comunes (se parsea automáticamente).",
-        examples=["2025-12-13", "13/12/2025"]
-    )
-    descripcion: str = Field(
-        ...,
-        description="Descripción detallada del gasto. Máximo 500 caracteres para eficiencia en BD.",
-        max_length=500,
-        examples=["Multa por exceso de velocidad en Av. Principal."]
-    )
-    importe: float = Field(
-        ...,
-        gt=0,
-        description="Monto total del gasto (debe ser mayor a cero). Se redondea a 2 decimales automáticamente.",
-        examples=[150.75]
-    )
-    origen: str = Field(
-        ...,
-        pattern="^(Finanzas|Mantenimiento)$",
-        description="Colección destino en MongoDB: 'Finanzas' o 'Mantenimiento'.",
-        examples=["Mantenimiento"]
-    )
+    patente: str = Field(..., description="Patente normalizada.", alias="patente")  # Alias para compat
+    tipo_costo: str = Field(..., description="Tipo (e.g., 'Multa').", alias="tipo_costo")
+    fecha: date = Field(..., description="Fecha (str o date, parsea auto).", alias="fecha")
+    descripcion: str = Field(..., description="Descripción.", alias="descripcion")
+    importe: float = Field(..., gt=0, description="Monto >0.", alias="importe")
+    origen: str = Field(..., pattern="^(Finanzas|Mantenimiento)$", description="Colección.", alias="origen")
 
-    model_config = ConfigDict(
-        **BASE_CONFIG_WITH_NUMERIC_FIX,  # Extiende tu config existente
-        str_strip_whitespace=True,       # Limpia espacios en strings automáticamente
-        strict=True,                     # Modo estricto: no coercion implícita de tipos
-        validate_assignment=True         # Valida al asignar valores post-instanciación
-    )
+    model_config = BASE_CONFIG_WITH_NUMERIC_FIX
 
     @field_validator('patente')
     @classmethod
@@ -455,15 +420,14 @@ class CostoManualInput(BaseModel):
     @field_validator('fecha', mode='before')
     @classmethod
     def parse_fecha(cls, v: Any) -> date:
-        """Parsea fechas flexibles (strings o dates) a date estándar."""
-        if isinstance(v, date):
-            return v
         if isinstance(v, str):
             try:
-                return parse(v).date()  # Usa dateutil para parseo inteligente
+                return parse(v).date()
             except ParserError:
-                raise ValueError(f"Formato de fecha inválido: {v}. Usa YYYY-MM-DD o similares.")
-        raise ValueError("Fecha debe ser un string o date válido.")
+                raise ValueError(f"Fecha inválida: {v}. Usa YYYY-MM-DD.")
+        if isinstance(v, date):
+            return v
+        raise ValueError("Fecha debe ser str o date.")
 
     @field_validator('importe')
     @classmethod

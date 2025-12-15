@@ -1,7 +1,6 @@
 from __future__ import annotations
 from pymongo import MongoClient
-from pydantic import BaseModel, Field, ConfigDict
-from datetime import datetime
+from pydantic import BaseModel, Field, ConfigDict, Field, field_validator
 from typing import List, Optional, Any, Dict, Iterable
 from datetime import datetime, date # Importado 'date'
 import math
@@ -9,7 +8,6 @@ from dateutil.parser import parse, ParserError
 from fastapi import HTTPException
 from bson.objectid import ObjectId
 import re # Necesario para normalize_patente
-
 import os
 from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
@@ -399,18 +397,79 @@ def safe_sort_costos(costos: Iterable[Any]) -> List[CostoItem]:
 
 class CostoManualInput(BaseModel):
     """
-    Define el input requerido para que el usuario ingrese un costo
-    de forma manual (Reparación, Multa, Neumático, Batería, etc.).
+    Define el input requerido para que el usuario ingrese un costo de forma manual.
+    Ejemplos: 'Reparación Mayor', 'Multa', 'Neumático', 'Batería'.
+    
+    Este modelo incorpora validación automática, normalización de patente y manejo de fechas flexibles.
     """
-    patente: str = Field(..., description="Patente del vehículo al que se aplica el costo.")
-    tipo_costo: str = Field(..., description="Clasificación del costo (ej: 'Reparación Mayor', 'Multa', 'Neumático').")
-    fecha: date = Field(..., description="Fecha en que ocurrió o se pagó el costo.") # 🔑 CORRECCIÓN: Usar tipo 'date'
-    descripcion: str = Field(..., description="Descripción detallada del gasto.")
-    importe: float = Field(..., gt=0, description="Monto total del gasto (debe ser mayor a cero).")
-    # Utilizamos el nombre de la colección destino como Origen (para el DELETE)
-    origen: str = Field(..., pattern="^(Finanzas|Mantenimiento)$", description="Colección destino: 'Finanzas' o 'Mantenimiento'.")
+    patente: str = Field(
+        ...,
+        description="Patente del vehículo al que se aplica el costo. Se normalizará automáticamente (mayúsculas, sin espacios/guiones).",
+        examples=["ABC123", "ab-c 123"]
+    )
+    tipo_costo: str = Field(
+        ...,
+        description="Clasificación del costo (ej: 'Reparación Mayor', 'Multa', 'Neumático').",
+        examples=["Multa", "Reparación Menor"]
+    )
+    fecha: date = Field(
+        ...,
+        description="Fecha en que ocurrió o se pagó el costo. Acepta strings ISO o formatos comunes (se parsea automáticamente).",
+        examples=["2025-12-13", "13/12/2025"]
+    )
+    descripcion: str = Field(
+        ...,
+        description="Descripción detallada del gasto. Máximo 500 caracteres para eficiencia en BD.",
+        max_length=500,
+        examples=["Multa por exceso de velocidad en Av. Principal."]
+    )
+    importe: float = Field(
+        ...,
+        gt=0,
+        description="Monto total del gasto (debe ser mayor a cero). Se redondea a 2 decimales automáticamente.",
+        examples=[150.75]
+    )
+    origen: str = Field(
+        ...,
+        pattern="^(Finanzas|Mantenimiento)$",
+        description="Colección destino en MongoDB: 'Finanzas' o 'Mantenimiento'.",
+        examples=["Mantenimiento"]
+    )
 
-    model_config = BASE_CONFIG_WITH_NUMERIC_FIX
+    model_config = ConfigDict(
+        **BASE_CONFIG_WITH_NUMERIC_FIX,  # Extiende tu config existente
+        str_strip_whitespace=True,       # Limpia espacios en strings automáticamente
+        strict=True,                     # Modo estricto: no coercion implícita de tipos
+        validate_assignment=True         # Valida al asignar valores post-instanciación
+    )
+
+    @field_validator('patente')
+    @classmethod
+    def normalize_patente_val(cls, v: str) -> str:
+        """Normaliza la patente usando la función compartida en dependencies.py."""
+        normalized = normalize_patente(v)
+        if not normalized:
+            raise ValueError("Patente inválida: debe contener al menos un carácter alfanumérico.")
+        return normalized
+
+    @field_validator('fecha', mode='before')
+    @classmethod
+    def parse_fecha(cls, v: Any) -> date:
+        """Parsea fechas flexibles (strings o dates) a date estándar."""
+        if isinstance(v, date):
+            return v
+        if isinstance(v, str):
+            try:
+                return parse(v).date()  # Usa dateutil para parseo inteligente
+            except ParserError:
+                raise ValueError(f"Formato de fecha inválido: {v}. Usa YYYY-MM-DD o similares.")
+        raise ValueError("Fecha debe ser un string o date válido.")
+
+    @field_validator('importe')
+    @classmethod
+    def round_importe(cls, v: float) -> float:
+        """Redondea el importe a 2 decimales para consistencia financiera."""
+        return round(v, 2)
 
 class CostoManualDelete(BaseModel):
     """

@@ -1,38 +1,32 @@
-# routers/costos.py → VERSIÓN CORREGIDA PARA GRIDFS ASÍNCRONO (2025-12-12)
-# Eliminamos gridfs síncrono → usamos AsyncIOMotorGridFS de Motor (nativo y compatible)
+# routers/costos.py → VERSIÓN CORREGIDA Y DEFINITIVA (2025-12-13)
+# Eliminamos inicialización top-level de fs → usamos función lazy async
 
 import os
 from datetime import datetime, date
-
-from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File, Request
-from pydantic import BaseModel
-
+from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
 from typing import Optional
-
-from dependencies import normalize_patente, get_db_collection
-
+from dependencies import normalize_patente, get_db_collection, _client, DB_NAME
 from bson import ObjectId
 import logging
-
-from gridfs import GridFS
-
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket  # ← NUEVO: GridFS async
-# from gridfs import GridFS  ← ELIMINADO (era síncrono e incompatible)
-
-from dependencies import get_db_collection, CostoManualInput, _client, DB_NAME
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/costos", tags=["Costos"])
 
 # =================================================================
-# CONFIGURACIÓN GLOBAL DE GRIDFS ASÍNCRONO (recomendado por Motor)
+# FUNCIÓN LAZY PARA OBTENER GRIDFS BUCKET (MEJOR PRÁCTICA MODERNA)
 # =================================================================
-_client = AsyncIOMotorClient(os.getenv("MONGO_URI"))
-db = _client["MacSeguridadFlota"]
-
-# ← CORREGIDO: Usamos AsyncIOMotorGridFSBucket (async nativo)
-fs = AsyncIOMotorGridFSBucket(db)  # ¡Esto es async y compatible con Motor!
+async def get_gridfs_bucket() -> AsyncIOMotorGridFSBucket:
+    """
+    Obtiene una instancia de AsyncIOMotorGridFSBucket de forma segura.
+    Solo se crea cuando _client ya está conectado (después del startup).
+    """
+    if _client is None:
+        raise HTTPException(status_code=500, detail="Conexión a MongoDB no establecida. Intente más tarde.")
+    
+    db = _client[DB_NAME]
+    return AsyncIOMotorGridFSBucket(db)
 
 # =================================================================
 # MODELO DE RESPUESTA
@@ -167,24 +161,22 @@ async def get_gastos_unificados(patente: str):
     logger.info(f"Reporte exitoso {patente_norm}: {len(todos)} items | Total: ${total_general:,.2f}")
     return respuesta
 
+# =================================================================
+# ENDPOINT: CREAR COSTO MANUAL (actualizado para usar get_gridfs_bucket)
+# =================================================================
 @router.post("/manual")
 async def crear_costo_manual(
     patente: str = Form(..., description="Patente del vehículo"),
-    tipo_costo: str = Form(..., description="Tipo de gasto (ej: Reparación Mayor, Multa)"),
+    tipo_costo: str = Form(..., description="Tipo de gasto"),
     fecha: date = Form(..., description="Fecha del gasto (YYYY-MM-DD)"),
     descripcion: str = Form(..., description="Descripción detallada"),
     importe: float = Form(..., gt=0, description="Monto mayor a cero"),
     origen: str = Form(..., regex="^(Finanzas|Mantenimiento)$", description="Colección destino"),
-    comprobante: Optional[UploadFile] = File(None, description="Comprobante opcional (PDF, JPG, PNG)")
+    comprobante: Optional[UploadFile] = File(None, description="Comprobante opcional")
 ):
-    """
-    Crea un costo manual en la colección correspondiente (Mantenimiento o Finanzas).
-    Soporta subida de comprobante a GridFS.
-    """
     patente_norm = normalize_patente(patente)
-    logger.info(f"Creando costo manual para patente: {patente_norm}, tipo: {tipo_costo}, importe: {importe}")
+    logger.info(f"Creando costo manual para patente: {patente_norm}")
 
-    # Normalización y preparación del documento
     collection_name = "Mantenimiento" if origen == "Mantenimiento" else "Finanzas"
     collection = get_db_collection(collection_name)
 
@@ -200,20 +192,23 @@ async def crear_costo_manual(
 
     file_id = None
     try:
-        # Subida de comprobante a GridFS (si existe)
         if comprobante:
+            # Validaciones
             if comprobante.content_type not in ["image/jpeg", "image/jpg", "image/png", "application/pdf"]:
                 raise HTTPException(400, "Tipo de archivo no permitido. Solo PDF, JPG, PNG")
 
-            if comprobante.size > 50 * 1024 * 1024:  # 50MB
+            if comprobante.size > 50 * 1024 * 1024:
                 raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
 
             content = await comprobante.read()
-            fs = GridFS(_client[DB_NAME])  # Usa el cliente global
-            file_id = fs.put(
-                content,
+
+            # ← AQUÍ OBTENEMOS EL BUCKET DE FORMA SEGURA
+            fs = await get_gridfs_bucket()
+
+            # Subida async moderna
+            file_id = await fs.upload_from_stream(
                 filename=comprobante.filename,
-                content_type=comprobante.content_type,
+                source=content,
                 metadata={
                     "patente": patente_norm,
                     "tipo": "comprobante_costo",
@@ -224,21 +219,21 @@ async def crear_costo_manual(
             documento["comprobante_file_id"] = str(file_id)
             logger.info(f"Comprobante subido a GridFS: {file_id}")
 
-        # Inserción en colección
+        # Inserción
         result = await collection.insert_one(documento)
-        logger.info(f"Costo manual creado exitosamente: {result.inserted_id}")
+        logger.info(f"Costo creado: {result.inserted_id}")
 
         return {
             "message": "Costo creado exitosamente",
-            "id": str(result.inserted_id),
-            "comprobante_file_id": str(file_id) if file_id else None
+            "costo_id": str(result.inserted_id),
+            "file_id": str(file_id) if file_id else None
         }
 
     except HTTPException:
-        raise  # Re-raise las controladas
+        raise
     except Exception as e:
-        logger.error(f"Error inesperado al crear costo manual: {type(e).__name__}: {e}")
-        raise HTTPException(status_code=500, detail="Error interno al procesar el costo")
+        logger.error(f"Error inesperado al crear costo: {type(e).__name__}: {e}")
+        raise HTTPException(500, "Error interno al procesar el costo")
     
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
