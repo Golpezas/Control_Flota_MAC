@@ -164,72 +164,64 @@ async def get_gastos_unificados(patente: str):
 # =================================================================
 # ENDPOINT: CREAR COSTO MANUAL (actualizado para usar get_gridfs_bucket)
 # =================================================================
-@router.post("/manual", response_model=CreateCostoResponse)
+# === RUTA PARA JSON (sin comprobante) ===
+@router.post("/manual/json")
+async def crear_costo_manual_json(data: CostoManualInput):  # ← Usa Pydantic model directo
+    # Normalización
+    normalized_patente = normalize_patente(data.patente)
+    
+    # Lógica de inserción (igual que antes, sin GridFS)
+    costo_dict = data.model_dump()
+    costo_dict["patente"] = normalized_patente
+    costo_dict["comprobante_file_id"] = None
+    
+    collection = get_db_collection("Mantenimiento" if data.origen == "Mantenimiento" else "Finanzas")
+    result = await collection.insert_one(costo_dict)
+    
+    return CreateCostoResponse(
+        message="Costo registrado correctamente",
+        costo_id=str(result.inserted_id),
+        file_id=None
+    )
+
+# === RUTA EXISTENTE PARA MULTIPART (con comprobante) ===
+@router.post("/manual")
 async def crear_costo_manual(
     patente: str = Form(...),
     tipo_costo: str = Form(...),
-    fecha: str = Form(...),  # Recibe str, parser en model (via Pydantic en CostoManualInput)
+    fecha: str = Form(...),
     descripcion: str = Form(...),
     importe: float = Form(...),
     origen: str = Form(...),
-    comprobante: UploadFile = File(None)  # Opcional, con validación estricta
+    comprobante: Optional[UploadFile] = File(None)
 ):
-    """
-    Crea un costo manual con soporte para comprobante digital opcional.
-    - Valida input via Pydantic (CostoManualInput).
-    - Sube archivo a GridFS si se proporciona (max 50MB, solo PDF/JPG/PNG).
-    - Normativa: Cumple con idempotencia (insert único) y logging para auditoría.
-    """
-    logger.info(f"Payload recibido: patente={patente}, tipo={tipo_costo}, fecha={fecha}, origen={origen}")
-    try:
-        costo = CostoManualInput(
-            patente=patente, tipo_costo=tipo_costo, fecha=fecha,
-            descripcion=descripcion, importe=importe, origen=origen
-        )
-    except ValueError as ve:
-        logger.error(f"Validación falló: {ve}")
-        raise HTTPException(422, detail=str(ve))
-
-    fs = await get_gridfs_bucket()  # Lazy GridFS (mejor práctica: evita init top-level)
+    # Normalización
+    normalized_patente = normalize_patente(patente)
+    
+    # Subida a GridFS si hay archivo
     file_id = None
     if comprobante:
-        # Validación corregida: Chequea MIME types reales (no extensiones)
-        allowed_mimes = ["application/pdf", "image/jpeg", "image/png"]
-        if comprobante.content_type not in allowed_mimes:
-            logger.warning(f"Content-Type inválido: {comprobante.content_type}")
-            raise HTTPException(400, "Solo PDF, JPG o PNG permitidos")
-        
-        if comprobante.size > 50 * 1024 * 1024:
-            raise HTTPException(413, "Archivo excede 50MB")
-        
-        content = await comprobante.read()
-        # Agrego metadata para queries futuras (mejor práctica: indexable)
-        file_id = fs.put(
-            content, 
-            filename=comprobante.filename, 
-            metadata={
-                "patente": normalize_patente(patente),
-                "tipo_costo": tipo_costo,
-                "uploaded_at": datetime.utcnow()
-            }
-        )
-        logger.info(f"Archivo subido correctamente: file_id={file_id}, filename={comprobante.filename}")
-
-    # Obtiene colección basada en origen (validado en Pydantic)
-    collection = get_db_collection(origen)
+        bucket = await get_gridfs_bucket()
+        file_id = str(await bucket.upload_from_stream(comprobante.filename, comprobante.file))
     
-    # Dump modelo a dict, excluyendo unset (mejor práctica: datos limpios)
-    doc = costo.model_dump(exclude_unset=True)
-    doc["comprobante_file_id"] = str(file_id) if file_id else None
+    # Inserción
+    costo_dict = {
+        "patente": normalized_patente,
+        "tipo_costo": tipo_costo,
+        "fecha": fecha,
+        "descripcion": descripcion,
+        "importe": importe,
+        "origen": origen,
+        "comprobante_file_id": file_id
+    }
     
-    # Insert asíncrono con logging para trazabilidad
-    result = await collection.insert_one(doc)
-    logger.info(f"Costo creado correctamente: ID={result.inserted_id}, file_id={doc.get('comprobante_file_id')}")
-
+    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
+    result = await collection.insert_one(costo_dict)
+    
     return CreateCostoResponse(
-        message="Costo creado correctamente",
+        message="Costo registrado correctamente",
         costo_id=str(result.inserted_id),
-        file_id=doc["comprobante_file_id"]
+        file_id=file_id
     )
    
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================

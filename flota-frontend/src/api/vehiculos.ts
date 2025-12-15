@@ -389,7 +389,10 @@ export async function createCostoItem(
             config.headers = { 'Content-Type': 'application/json' };
         }
 
-        const response = await apiClient.post<CreateCostoResponse>('/costos/manual', body, config);
+        const url = file ? '/costos/manual' : '/costos/manual/json';  // ← Ruta dinámica
+
+        const response = await apiClient.post<CreateCostoResponse>(url, body, config);
+        
         return response.data;
 
     } catch (error: unknown) {
