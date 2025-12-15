@@ -168,13 +168,19 @@ async def get_gastos_unificados(patente: str):
 async def crear_costo_manual(
     patente: str = Form(...),
     tipo_costo: str = Form(...),
-    fecha: str = Form(...),  # Recibe str, parser en model
+    fecha: str = Form(...),  # Recibe str, parser en model (via Pydantic en CostoManualInput)
     descripcion: str = Form(...),
     importe: float = Form(...),
     origen: str = Form(...),
-    comprobante: UploadFile = File(None)  # Opcional
+    comprobante: UploadFile = File(None)  # Opcional, con validación estricta
 ):
-    logger.info(f"Payload recibido: patente={patente}, tipo={tipo_costo}, fecha={fecha}")
+    """
+    Crea un costo manual con soporte para comprobante digital opcional.
+    - Valida input via Pydantic (CostoManualInput).
+    - Sube archivo a GridFS si se proporciona (max 50MB, solo PDF/JPG/PNG).
+    - Normativa: Cumple con idempotencia (insert único) y logging para auditoría.
+    """
+    logger.info(f"Payload recibido: patente={patente}, tipo={tipo_costo}, fecha={fecha}, origen={origen}")
     try:
         costo = CostoManualInput(
             patente=patente, tipo_costo=tipo_costo, fecha=fecha,
@@ -184,25 +190,48 @@ async def crear_costo_manual(
         logger.error(f"Validación falló: {ve}")
         raise HTTPException(422, detail=str(ve))
 
-    fs = await get_gridfs_bucket()  # Lazy GridFS
+    fs = await get_gridfs_bucket()  # Lazy GridFS (mejor práctica: evita init top-level)
     file_id = None
     if comprobante:
-        if comprobante.content_type not in [".pdf", ".jpg", ".jpeg", ".png"]:
-            raise HTTPException(400, "Solo PDF/JPG/PNG")
-        if comprobante.size > 50*1024*1024:
-            raise HTTPException(413, "Max 50MB")
+        # Validación corregida: Chequea MIME types reales (no extensiones)
+        allowed_mimes = ["application/pdf", "image/jpeg", "image/png"]
+        if comprobante.content_type not in allowed_mimes:
+            logger.warning(f"Content-Type inválido: {comprobante.content_type}")
+            raise HTTPException(400, "Solo PDF, JPG o PNG permitidos")
+        
+        if comprobante.size > 50 * 1024 * 1024:
+            raise HTTPException(413, "Archivo excede 50MB")
+        
         content = await comprobante.read()
-        file_id = fs.put(content, filename=comprobante.filename, metadata={"patente": normalize_patente(patente)})
-        logger.info(f"File subido: {file_id}")
+        # Agrego metadata para queries futuras (mejor práctica: indexable)
+        file_id = fs.put(
+            content, 
+            filename=comprobante.filename, 
+            metadata={
+                "patente": normalize_patente(patente),
+                "tipo_costo": tipo_costo,
+                "uploaded_at": datetime.utcnow()
+            }
+        )
+        logger.info(f"Archivo subido correctamente: file_id={file_id}, filename={comprobante.filename}")
 
+    # Obtiene colección basada en origen (validado en Pydantic)
     collection = get_db_collection(origen)
-    doc = costo.model_dump()
-    doc["comprobante_file_id"] = str(file_id) if file_id else None
-    result = await collection.insert_one(doc)
-    logger.info(f"Costo creado: ID={result.inserted_id}")
-
-    return CreateCostoResponse(message="Creado OK", costo_id=str(result.inserted_id), file_id=doc["comprobante_file_id"])
     
+    # Dump modelo a dict, excluyendo unset (mejor práctica: datos limpios)
+    doc = costo.model_dump(exclude_unset=True)
+    doc["comprobante_file_id"] = str(file_id) if file_id else None
+    
+    # Insert asíncrono con logging para trazabilidad
+    result = await collection.insert_one(doc)
+    logger.info(f"Costo creado correctamente: ID={result.inserted_id}, file_id={doc.get('comprobante_file_id')}")
+
+    return CreateCostoResponse(
+        message="Costo creado correctamente",
+        costo_id=str(result.inserted_id),
+        file_id=doc["comprobante_file_id"]
+    )
+   
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(

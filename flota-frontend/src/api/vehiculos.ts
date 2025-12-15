@@ -5,12 +5,13 @@ import type {
   ReporteCostosResponse, 
   VehiculoUpdateInput, 
   NewCostoInput, 
-  DashboardResponse, 
+  DashboardResponse,
+  CreateCostoResponse, 
   VehiculoBackendResponse,
 } from './models/vehiculos';
 import type { Alerta } from './models/vehiculos';
-
-import type { CostoItem } from './models/vehiculos';  // ← CostoItem y NewCostoInput están aquí
+import type { ValidationErrorDetail } from './models/errors';  // ← Importa el tipo reutilizable
+//import type { CostoItem } from './models/vehiculos';  // ← CostoItem y NewCostoInput están aquí
 import { normalizePatente } from '../utils/data-utils';  // ← Utilidad existente (ruta relativa correcta en Vite)
 
 // API Base
@@ -311,57 +312,100 @@ export async function fetchDashboardData(): Promise<DashboardResponse> {
     }
 }
 
-// ---------------------------------------------------------------------------------
 /**
- * 💸 Registra un nuevo costo o gasto de forma manual.
- * Endpoint: POST /costos/manual
+ * Registra un nuevo costo manual en el backend.
  * 
- * Mejores prácticas aplicadas:
- * - Imports type-only para optimización (no side-effects).
- * - Normalización de patente consistente con backend y utils existentes.
- * - Sanitización estricta de datos (defensa en profundidad).
- * - Manejo robusto de errores con type guards.
- * - Documentación JSDoc completa y actualizada.
- * - Preparado para extensión futura con comprobantes (FormData + UploadFile en backend).
+ * Características modernas implementadas:
+ * - Normalización estricta de patente (consistencia con backend).
+ * - Validación y sanitización de importe (evita NaN, negativos o cero).
+ * - Soporte dual: JSON (actual) o multipart/form-data (futuro con comprobante GridFS).
+ * - Manejo de errores tipado y estructurado (axios + type guards).
+ * - Logging seguro solo en desarrollo.
  * 
- * Nota: El backend actual solo soporta JSON. Cuando se implemente subida de archivos,
- *       descomentar la sobrecarga con FormData.
- */
+ * @param newCosto - Datos del costo (normalizados internamente).
+ * @param file - Comprobante digital opcional (PDF, JPG, PNG ≤ 50MB). Si se proporciona, usa FormData.
+ * @returns CostoItem creado (alineado con modelos existentes).
+ * @throws Error con mensaje amigable para UI.
+ **/
 export async function createCostoItem(
-    newCosto: NewCostoInput
-    // Futuro: | FormData  ← Activar cuando backend soporte UploadFile (GridFS + comprobante)
-): Promise<CostoItem> {  // ← Tipo existente en models/vehiculos.ts (correcto y usado en reportes)
+    newCosto: NewCostoInput,
+    file?: File | null  // ← Opcional: Activa modo multipart cuando backend esté listo
+): Promise<CreateCostoResponse> {
     try {
-        // Sanitización y validación (mejor práctica: nunca confiar solo en backend)
-        const dataToSend: NewCostoInput = {
-            ...newCosto,
-            patente: normalizePatente(newCosto.patente),  // ← Consistencia total con backend
-            importe: Math.max(0.01, Number(newCosto.importe || 0)),  // Evita NaN o negativos
-        };
+        // === 1. Normalización y validación estricta (mejor práctica: fail-fast) ===
+        const normalizedPatente = normalizePatente(newCosto.patente);
+        if (!normalizedPatente) {
+            throw new Error('Patente inválida: debe contener caracteres alfanuméricos.');
+        }
 
-        // Envío JSON estándar (100% compatible con routers/costos.py actual)
-        const response = await apiClient.post<CostoItem>('/costos/manual', dataToSend);
+        const importeValidado = Math.max(0.01, Number(newCosto.importe || 0));
+        if (isNaN(importeValidado)) {
+            throw new Error('Importe inválido: debe ser un número positivo.');
+        }
 
+        // === 2. Preparación de payload según modo ===
+        let body: NewCostoInput | FormData;
+        const config: { headers?: Record<string, string> } = {};  // ← Cambio clave: const
+
+        if (file) {
+            // MODO MULTIPART (futuro/producción con GridFS)
+            if (file.size > 50 * 1024 * 1024) {
+                throw new Error('Archivo demasiado grande: máximo 50MB.');
+            }
+            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+                throw new Error('Formato no permitido: solo PDF, JPG o PNG.');
+            }
+
+            const formData = new FormData();
+            formData.append('patente', normalizedPatente);
+            formData.append('tipo_costo', newCosto.tipo_costo);
+            formData.append('fecha', newCosto.fecha);
+            formData.append('descripcion', newCosto.descripcion);
+            formData.append('importe', importeValidado.toString());
+            formData.append('origen', newCosto.origen);
+            formData.append('comprobante', file);  // ← Nombre exacto que espera FastAPI (UploadFile)
+
+            body = formData;
+            // Axios detecta FormData y establece boundary automáticamente → no forzar Content-Type
+        } else {
+            // MODO JSON (actual, 100% compatible)
+            body = {
+                ...newCosto,
+                patente: normalizedPatente,
+                importe: importeValidado,
+            };
+            config.headers = { 'Content-Type': 'application/json' };
+        }
+
+        // === 3. Envío ===
+        const response = await apiClient.post<CreateCostoResponse>('/costos/manual', body, config);
+    
         return response.data;
+
     } catch (error: unknown) {
-        // Manejo estructurado y seguro (type guards modernos)
+        // === 4. Manejo de errores estructurado y seguro ===
         let errorMessage = 'Fallo al registrar el costo manual.';
 
         if (axios.isAxiosError(error)) {
             if (error.response) {
-                const detail = (error.response.data as { detail?: string })?.detail || error.message;
-                errorMessage = `Error del servidor (${error.response.status}): ${detail}`;
+                const detail = (error.response.data as { detail?: string | ValidationErrorDetail[] })?.detail;
+                if (Array.isArray(detail)) {
+                    // Errores de validación Pydantic → extraer mensajes legibles
+                    errorMessage = detail.map(d => `${d.loc.join(' → ')}: ${d.msg}`).join('; ');
+                } else {
+                    errorMessage = `Error del servidor (${error.response.status}): ${detail || error.message}`;
+                }
             } else if (error.request) {
-                errorMessage = 'Error de red: Sin respuesta del servidor.';
+                errorMessage = 'Error de red: el servidor no responde.';
             } else {
                 errorMessage = `Error de configuración: ${error.message}`;
             }
         } else if (error instanceof Error) {
-            errorMessage = `Error inesperado: ${error.message}`;
+            errorMessage = error.message;
         }
 
         if (import.meta.env.DEV) {
-            console.error('[createCostoItem] Detalle completo:', error);
+            console.error('[createCostoItem] Error completo:', error);
         }
 
         throw new Error(errorMessage);

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'; 
 //import type { FormEvent } from 'react';
-import axios, { AxiosError } from 'axios';  // Para tipado de error
-import { API_BASE } from '../api/vehiculos';
+import { AxiosError } from 'axios';  // Para tipado de error
 import type { NewCostoInput } from '../api/models/vehiculos';
-//import { createCostoItem } from '../api/vehiculos';  // ← Esta función debe actualizarse para aceptar FormData | NewCostoInput (ver nota al final)
+import { createCostoItem } from '../api/vehiculos';  // ← Esta función debe actualizarse para aceptar FormData | NewCostoInput (ver nota al final)
 import { normalizePatente } from '../utils/data-utils.ts';
 import type { FastAPIErrorResponse, ValidationErrorDetail } from '../api/models/errors';  // Ajusta path
 
@@ -68,48 +67,41 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
     /**
     ** Maneja el envío del formulario con validación completa y llamada a API.
     **/
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {  // Tipado preciso
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsLoading(true);
         setStatusMessage(null);
 
-        // Construye FormData para multipart (soporta file)
-        const submitData = new FormData();
-        submitData.append('patente', formData.patente);  // formData es tu state: NewCostoInput
-        submitData.append('tipo_costo', formData.tipo_costo);
-        submitData.append('fecha', formData.fecha);
-        submitData.append('descripcion', formData.descripcion);
-        submitData.append('importe', formData.importe.toString());  // Float → string para Form
-        submitData.append('origen', formData.origen);
-        if (file) {
-            submitData.append('comprobante', file);  // File blob
+        if (formData.importe <= 0) {
+            setStatusMessage('❌ El importe debe ser mayor a 0.');
+            setIsLoading(false);
+            return;
         }
 
         try {
-            // Usa apiClient si existe, o axios directo (mejor práctica: instancia configurada)
-            const response = await axios.post(`${API_BASE}/costos/manual`, submitData, {
-                headers: { 'Content-Type': 'multipart/form-data' }  // Axios lo setea auto, pero explícito OK
-            });
+            const response = await createCostoItem(formData, file);
 
-            // Opcional: Usa response.data (e.g., file_id para feedback)
-            console.log('Respuesta:', response.data);  // Ej: { message, costo_id, file_id }
+            setStatusMessage(
+                response.file_id
+                    ? `✅ Costo registrado! ID: ${response.costo_id} | 📎 Comprobante subido`
+                    : `✅ Costo registrado correctamente! ID: ${response.costo_id}`
+            );
 
-            setStatusMessage('✅ Costo registrado correctamente!');
-            setFormData(defaultFormData);  // Reset form (buena UX)
+            setFormData(defaultFormData);
             setFile(null);
-            onSuccess();  // Refresca lista
+            onSuccess();
         } catch (err) {
-            const error = err as AxiosError<FastAPIErrorResponse>;  // Tipado preciso: sin any
+            const error = err as AxiosError<FastAPIErrorResponse>;  // Tipado preciso
             let errorMsg = 'Error desconocido al registrar el costo.';
 
             if (error.response) {
                 const details = error.response.data?.detail;
 
                 if (Array.isArray(details)) {
-                    // details: ValidationErrorDetail[]
+                    // details: ValidationErrorDetail[] (de FastAPI/Pydantic)
                     errorMsg = details
                         .map((d: ValidationErrorDetail) => 
-                            `${d.loc.join(' → ')}: ${d.msg}`  // Formato legible: "body → importe: Valor debe ser >0"
+                            `${d.loc.join(' → ')}: ${d.msg} (${d.type})`  // Formato legible: "body → importe: Valor debe ser >0 (value_error)"
                         )
                         .join('; ');
                 } else if (typeof details === 'string') {
@@ -127,7 +119,9 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
 
             console.error('Error detallado:', error);
             setStatusMessage(errorMsg);
-}
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
