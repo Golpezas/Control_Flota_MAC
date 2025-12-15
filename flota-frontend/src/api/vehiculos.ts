@@ -13,7 +13,7 @@ import type { Alerta } from './models/vehiculos';
 import type { ValidationErrorDetail } from './models/errors';  // ← Importa el tipo reutilizable
 //import type { CostoItem } from './models/vehiculos';  // ← CostoItem y NewCostoInput están aquí
 import { normalizePatente } from '../utils/data-utils';  // ← Utilidad existente (ruta relativa correcta en Vite)
-
+import type { AxiosRequestConfig } from 'axios';
 // API Base
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -329,10 +329,9 @@ export async function fetchDashboardData(): Promise<DashboardResponse> {
  **/
 export async function createCostoItem(
     newCosto: NewCostoInput,
-    file?: File | null  // ← Opcional: Activa modo multipart cuando backend esté listo
+    file?: File | null
 ): Promise<CreateCostoResponse> {
     try {
-        // === 1. Normalización y validación estricta (mejor práctica: fail-fast) ===
         const normalizedPatente = normalizePatente(newCosto.patente);
         if (!normalizedPatente) {
             throw new Error('Patente inválida: debe contener caracteres alfanuméricos.');
@@ -343,12 +342,22 @@ export async function createCostoItem(
             throw new Error('Importe inválido: debe ser un número positivo.');
         }
 
-        // === 2. Preparación de payload según modo ===
-        let body: NewCostoInput | FormData;
-        const config: { headers?: Record<string, string> } = {};  // ← Cambio clave: const
+        // === TIPADO ESTRICTO Y SEGURO (sin 'any') ===
+        // Cuando NO hay archivo → body es objeto JSON plano
+        // Cuando SÍ hay archivo → body es FormData
+        let body: FormData | {
+            patente: string;
+            tipo_costo: string;
+            fecha: string;
+            descripcion: string;
+            importe: number;
+            origen: 'Finanzas' | 'Mantenimiento';
+        };
+
+        const config: AxiosRequestConfig = {};  // ← Ahora reconocido gracias al import
 
         if (file) {
-            // MODO MULTIPART (futuro/producción con GridFS)
+            // === MODO MULTIPART/FORM-DATA ===
             if (file.size > 50 * 1024 * 1024) {
                 throw new Error('Archivo demasiado grande: máximo 50MB.');
             }
@@ -363,23 +372,24 @@ export async function createCostoItem(
             formData.append('descripcion', newCosto.descripcion);
             formData.append('importe', importeValidado.toString());
             formData.append('origen', newCosto.origen);
-            formData.append('comprobante', file);  // ← Nombre exacto que espera FastAPI (UploadFile)
+            formData.append('comprobante', file);
 
             body = formData;
-            // Axios detecta FormData y establece boundary automáticamente → no forzar Content-Type
+            // NO tocar headers → Axios establece automáticamente multipart con boundary
         } else {
-            // MODO JSON (actual, 100% compatible)
+            // === MODO JSON ===
             body = {
-                ...newCosto,
                 patente: normalizedPatente,
+                tipo_costo: newCosto.tipo_costo,
+                fecha: newCosto.fecha,
+                descripcion: newCosto.descripcion,
                 importe: importeValidado,
+                origen: newCosto.origen,
             };
             config.headers = { 'Content-Type': 'application/json' };
         }
 
-        // === 3. Envío ===
         const response = await apiClient.post<CreateCostoResponse>('/costos/manual', body, config);
-    
         return response.data;
 
     } catch (error: unknown) {
