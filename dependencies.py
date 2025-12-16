@@ -15,7 +15,6 @@ from typing import Optional
 
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 from fastapi import HTTPException
-from main import _client, DB_NAME
 
 load_dotenv()
 
