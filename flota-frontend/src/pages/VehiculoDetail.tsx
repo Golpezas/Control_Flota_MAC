@@ -16,6 +16,8 @@ import {
     apiClient 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
+import axios from 'axios';
+import { normalizePatente } from '../utils/data-utils';
 
 // Interface para gastos
 interface GastoUnificado {
@@ -105,26 +107,40 @@ const VehiculoDetail: React.FC = () => {
         setModalIsOpen(true);
     };
 
-    // 4. Sube o reemplaza el documento
+    // 4. Sube o reemplaza el documento (CORREGIDO Y OPTIMIZADO)
     const subirDocumento = async () => {
-        if (!docSeleccionado || !archivoNuevo || !vehiculo) return;
+        if (!docSeleccionado || !archivoNuevo || !vehiculo) {
+            alert("Faltan datos: selecciona documento y archivo.");
+            return;
+        }
 
         const formData = new FormData();
-        formData.append("patente", vehiculo._id);
-        formData.append("file", archivoNuevo);
+        formData.append("patente", normalizePatente(vehiculo._id));  // ← Normalización consistente
+        formData.append("file", archivoNuevo);  // ← Binario real
 
         try {
-            await apiClient.post("/api/archivos/subir-documento", formData, {
+            const response = await apiClient.post("/api/archivos/subir-documento", formData, {
                 params: { tipo: docSeleccionado.tipo },
+                headers: {
+                    // CRÍTICO: No forzar Content-Type → Axios establece multipart/form-data con boundary automáticamente
+                    // Si se fuerza 'application/json', falla el upload
+                },
+                // Opcional: timeout para uploads grandes
+                timeout: 30000,
             });
 
-            alert("Documento subido correctamente");
+            console.log("Subida exitosa:", response.data);  // Debug: file_id retornado
+            alert(`✅ Documento "${docSeleccionado.tipo}" subido correctamente`);
             setModalIsOpen(false);
             setArchivoNuevo(null);
-            cargarDatos(); // Refresca todo
-        } catch (error) {
+            cargarDatos();  // Refresca vista (incluye nuevo file_id)
+        } catch (error: unknown) {
             console.error("Error subiendo documento:", error);
-            alert("Error al subir el documento. Reintentá.");
+            let msg = "Error al subir el documento.";
+            if (axios.isAxiosError(error) && error.response) {
+                msg += ` (Status: ${error.response.status})`;
+            }
+            alert(`❌ ${msg} Reintentá o verifica el archivo.`);
         }
     };
 

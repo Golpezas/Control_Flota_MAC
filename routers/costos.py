@@ -201,7 +201,7 @@ async def crear_costo_manual(
     Registra costo manual con comprobante opcional (multipart/form-data).
     Validación estricta equivalente a CostoManualInput (Pydantic).
     """
-    logger.info(f"Creando costo manual multipart para patente: {patente}")
+    logger.info(f"Creando costo multipart - Patente: {patente}, Archivo: {comprobante.filename if comprobante else 'None'}")
 
     # === VALIDACIÓN MANUAL ESTRICTA (mirror de CostoManualInput) ===
     # 1. Importe > 0 y redondeo

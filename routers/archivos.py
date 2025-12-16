@@ -9,8 +9,11 @@ from bson.errors import InvalidId
 import gridfs
 import gridfs.errors
 from io import BytesIO
-from dependencies import normalize_patente
 from datetime import datetime
+import logging
+from dependencies import normalize_patente, get_gridfs_bucket  # ← Asegura imports
+
+logger = logging.getLogger(__name__)  # ← Definición clave que resuelve Pylance
 
 router = APIRouter(prefix="/api/archivos", tags=["Archivos Digitales"])
 
@@ -18,39 +21,41 @@ client = MongoClient(os.getenv("MONGO_URI"))
 db = client["MacSeguridadFlota"]
 fs = gridfs.GridFS(db)  # Instancia global
 
-
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
 async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)):
+    logger.info(f"Intentando subir documento para patente: {patente}, archivo: {file.filename if file else 'None'}")
+    
     normalized_patente = normalize_patente(patente)
 
-    # Validaciones
+    # Validaciones (ya existentes, pero normalizadas)
     allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
     if file.content_type not in allowed_types:
+        logger.warning(f"Tipo inválido: {file.content_type}")
         raise HTTPException(400, "Solo PDF, JPG o PNG")
 
     if file.size > 50 * 1024 * 1024:
+        logger.warning(f"Archivo grande: {file.size}")
         raise HTTPException(413, "Archivo muy grande")
 
     try:
-        # LEE EL ARCHIVO COMPLETO
         content = await file.read()
-        
-        # GUARDA CON CONTENT_TYPE CORRECTO
-        file_id = fs.put(
+        bucket = await get_gridfs_bucket()
+        file_id = bucket.put(
             content,
             filename=file.filename,
-            content_type=file.content_type,      # ← ESTO ES CRÍTICO
+            content_type=file.content_type,
             metadata={"patente": normalized_patente, "uploaded_at": datetime.utcnow()}
         )
-
+        logger.info(f"Subida exitosa: file_id={file_id}, patente={normalized_patente}")
         return {
             "message": "Archivo subido correctamente",
             "file_id": str(file_id),
             "filename": file.filename,
-            "content_type": file.content_type   # ← Para debug
+            "content_type": file.content_type
         }
     except Exception as e:
-        raise HTTPException(500, f"Error: {str(e)}")
+        logger.error(f"Error en subida: {str(e)}")
+        raise HTTPException(500, f"Error interno: {str(e)}")
 
 
 @router.get("/descargar/{file_id}")

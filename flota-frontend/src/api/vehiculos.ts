@@ -357,6 +357,7 @@ export async function createCostoItem(
             formData.append('origen', newCosto.origen);
             formData.append('comprobante', file);
             body = formData;
+            config.headers = { 'Content-Type': undefined };  // ← Asegura boundary
         } else {
             // MODO JSON
             body = {
