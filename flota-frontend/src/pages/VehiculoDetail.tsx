@@ -114,17 +114,24 @@ const VehiculoDetail: React.FC = () => {
         formData.append("file", archivoNuevo);
 
         try {
+            // FORZAMOS EL HEADER CORRECTO (esto es clave)
             const response = await apiClient.post("/api/archivos/subir-documento", formData, {
+                headers: {
+                    "Content-Type": "multipart/form-data",  // ← FORZAMOS (Axios a veces lo pierde)
+                },
                 timeout: 60000,
             });
 
             console.log("Subida exitosa:", response.data);
-            alert(`✅ Documento "${docSeleccionado.tipo}" subido correctamente`);
+            alert(`✅ Documento "${docSeleccionado.tipo.replace(/_/g, " ")}" subido correctamente`);
+
             setModalIsOpen(false);
             setArchivoNuevo(null);
-            await cargarDatos();
+            await cargarDatos();  // Refresca la lista de documentos
+
         } catch (error: unknown) {
             console.error("Error subiendo documento:", error);
+
             let msg = "Error al subir el documento.";
             if (axios.isAxiosError(error) && error.response) {
                 msg += ` (Status: ${error.response.status})`;
