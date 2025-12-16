@@ -6,7 +6,7 @@ from dateutil.parser import parse, ParserError
 from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
 from typing import Optional
-from dependencies import normalize_patente, get_db_collection, _client, DB_NAME, CostoManualInput
+from dependencies import normalize_patente, get_db_collection, _client, DB_NAME, CostoManualInput,get_gridfs_bucket
 from bson import ObjectId
 import logging
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
@@ -14,20 +14,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/costos", tags=["Costos"])
-
-# =================================================================
-# FUNCIÓN LAZY PARA OBTENER GRIDFS BUCKET (MEJOR PRÁCTICA MODERNA)
-# =================================================================
-async def get_gridfs_bucket() -> AsyncIOMotorGridFSBucket:
-    """
-    Obtiene una instancia de AsyncIOMotorGridFSBucket de forma segura.
-    Solo se crea cuando _client ya está conectado (después del startup).
-    """
-    if _client is None:
-        raise HTTPException(status_code=500, detail="Conexión a MongoDB no establecida. Intente más tarde.")
-    
-    db = _client[DB_NAME]
-    return AsyncIOMotorGridFSBucket(db)
 
 # =================================================================
 # MODELO DE RESPUESTA

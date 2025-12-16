@@ -13,6 +13,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from typing import Optional
 
+from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+from fastapi import HTTPException
+from .main import _client, DB_NAME 
+
 load_dotenv()
 
 # =================================================================
@@ -77,6 +81,20 @@ BASE_CONFIG_WITH_NUMERIC_FIX = ConfigDict(
         float: lambda v: v if not math.isnan(v) else None
     }
 )
+
+# =================================================================
+# FUNCIÓN LAZY PARA OBTENER GRIDFS BUCKET (MEJOR PRÁCTICA MODERNA)
+# =================================================================
+async def get_gridfs_bucket() -> AsyncIOMotorGridFSBucket:
+    """
+    Obtiene una instancia de AsyncIOMotorGridFSBucket de forma segura.
+    Solo se crea cuando _client ya está conectado (después del startup).
+    """
+    if _client is None:
+        raise HTTPException(status_code=500, detail="Conexión a MongoDB no establecida. Intente más tarde.")
+    
+    db = _client[DB_NAME]
+    return AsyncIOMotorGridFSBucket(db)
 
 # =========================================================================
 # 2. MODELOS DE DATOS (PYDANTIC)
