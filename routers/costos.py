@@ -50,95 +50,106 @@ async def get_gastos_unificados(patente: str):
     logger.info(f"Reporte unificado solicitado para: {patente_norm}")
 
     try:
-        costos_collection = get_db_collection("Mantenimiento")
-        finanzas_collection = get_db_collection("Finanzas")
+        mant_collection = get_db_collection("Mantenimiento")
+        fin_collection = get_db_collection("Finanzas")
     except Exception as e:
         logger.error(f"Error conectando colecciones: {e}")
         raise HTTPException(500, "Error de base de datos")
 
-    # ==================== MANTENIMIENTOS ====================
-    mantenimientos = []
-    try:
-        raw_mant = await costos_collection.find({"patente": patente_norm}).to_list(1000)
-        for m in raw_mant:
-            try:
-                fecha = safe_parse_date(m.get("fecha", "1970-01-01T00:00:00"))
-                tipo = (m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General").strip()
-                monto_raw = m.get("costo_monto") or m.get("COSTO_MONTO") or 0
+    todos = []
+
+    # ==================== PROCESAR COLECCIÓN MANTENIMIENTO ====================
+    async for doc in mant_collection.find({"patente": patente_norm}).sort("fecha", -1):
+        try:
+            # Campos NUEVOS (costos manuales modernos)
+            if "importe" in doc or "tipo_costo" in doc:
+                fecha = doc.get("fecha")
+                if isinstance(fecha, str):
+                    fecha = safe_parse_date(fecha)
+                fecha_str = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha)
+
+                tipo = doc.get("tipo_costo", "Mantenimiento General")
+                monto = float(doc.get("importe", 0) or 0)
+                descripcion = doc.get("descripcion", "Sin descripción").strip()
+                origen = "mantenimiento"
+
+            # Campos ANTIGUOS (legado)
+            else:
+                fecha_str = safe_parse_date(doc.get("fecha", "1970-01-01")).isoformat()
+                tipo = (doc.get("motivo") or doc.get("tipo_registro") or "Mantenimiento General").strip()
+                monto_raw = doc.get("costo_monto") or doc.get("COSTO_MONTO") or 0
                 monto = float(monto_raw) if monto_raw else 0.0
-                descripcion = (m.get("descripcion") or m.get("DESCRIPCIN") or "").strip()
+                descripcion = (doc.get("descripcion") or doc.get("DESCRIPCIN") or "").strip()
+                origen = "mantenimiento"
 
-                # FILTRADO ESTRICTO: solo positivos y no administrativos
-                if monto <= 0:
-                    continue
-                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "ajuste", "devolucion"]):
-                    continue
-
-                mantenimientos.append({
-                    "id": str(m["_id"]),
-                    "fecha": fecha.isoformat(),
-                    "tipo": tipo,
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "origen": "mantenimiento",
-                    "coleccion": "Mantenimiento"
-                })
-            except Exception as e:
-                logger.warning(f"Error procesando mantenimiento {m.get('_id')}: {e}")
+            if monto <= 0:
+                continue
+            if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "ajuste", "devolucion"]):
                 continue
 
-    except Exception as e:
-        logger.error(f"Error leyendo mantenimientos: {e}")
+            todos.append({
+                "id": str(doc["_id"]),
+                "fecha": fecha_str,
+                "tipo": tipo,                   # ← Este es el que muestra en la columna "Tipo"
+                "descripcion": descripcion,
+                "importe": monto,               # ← Cambié "monto" por "importe" para coincidir con frontend
+                "origen": origen,
+                "comprobante_file_id": doc.get("comprobante_file_id")
+            })
+        except Exception as e:
+            logger.warning(f"Error procesando doc mantenimiento {doc.get('_id')}: {e}")
+            continue
 
-    # ==================== FINANZAS (Multas, etc.) ====================
-    finanzas = []
-    try:
-        raw_fin = await finanzas_collection.find({"patente": patente_norm}).to_list(1000)
-        for f in raw_fin:
-            try:
-                fecha_raw = f.get("dia") or f.get("FECHA_INFRACCION") or f.get("fecha_infraccion") or "1970-01-01"
-                fecha = safe_parse_date(fecha_raw)
-                tipo = f.get("tipo_registro", "Multa").strip()
-                monto_raw = f.get("monto") or f.get("MONTO") or 0
-                monto = float(monto_raw) if monto_raw else 0.0
-                descripcion = (f.get("motivo") or f.get("MOTIVO") or "Sin descripción").strip()
+    # ==================== PROCESAR COLECCIÓN FINANZAS ====================
+    async for doc in fin_collection.find({"patente": patente_norm}).sort("fecha", -1):
+        try:
+            # Campos NUEVOS (multas manuales)
+            if "importe" in doc or "tipo_costo" in doc:
+                fecha = doc.get("fecha")
+                if isinstance(fecha, str):
+                    fecha = safe_parse_date(fecha)
+                fecha_str = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha)
 
-                # FILTRADO ESTRICTO
-                if monto <= 0:
-                    continue
-                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "devolucion", "descuento", "ajuste"]):
-                    continue
+                tipo = doc.get("tipo_costo", "Multa")
+                monto = float(doc.get("importe", 0) or 0)
+                descripcion = doc.get("descripcion", "Multa").strip()
+                origen = "finanzas"
 
-                finanzas.append({
-                    "id": str(f["_id"]),
-                    "fecha": fecha.isoformat(),
-                    "tipo": tipo,
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "origen": "finanzas",
-                    "coleccion": "Finanzas"
-                })
-            except Exception as e:
-                logger.warning(f"Error procesando finanza {f.get('_id')}: {e}")
+            # Campos ANTIGUOS
+            else:
+                fecha_raw = doc.get("dia") or doc.get("FECHA_INFRACCION") or doc.get("fecha_infraccion") or "1970-01-01"
+                fecha_str = safe_parse_date(fecha_raw).isoformat()
+                tipo = doc.get("tipo_registro", "Multa").strip()
+                monto = float(doc.get("monto") or doc.get("MONTO") or 0)
+                descripcion = (doc.get("motivo") or doc.get("MOTIVO") or "Sin descripción").strip()
+                origen = "finanzas"
+
+            if monto <= 0:
+                continue
+            if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "devolucion", "descuento", "ajuste"]):
                 continue
 
-    except Exception as e:
-        logger.error(f"Error leyendo finanzas: {e}")
+            todos.append({
+                "id": str(doc["_id"]),
+                "fecha": fecha_str,
+                "tipo": tipo,
+                "descripcion": descripcion,
+                "importe": monto,
+                "origen": origen,
+                "comprobante_file_id": doc.get("comprobante_file_id")
+            })
+        except Exception as e:
+            logger.warning(f"Error procesando doc finanzas {doc.get('_id')}: {e}")
+            continue
 
-    # ==================== UNIFICACIÓN Y CÁLCULO FINAL ====================
-    todos = mantenimientos + finanzas
-
-    # Ordenar por fecha descendente
-    todos.sort(key=lambda x: x["fecha"], reverse=True)
-
-    # Cálculo FINAL con datos ya filtrados
-    total_general = sum(g["monto"] for g in todos)
-    total_mantenimiento = sum(g["monto"] for g in todos if g["origen"] == "mantenimiento")
-    total_multas = sum(g["monto"] for g in todos if g["tipo"] in ["Multa", "INFRACCION", "Infracción"])
+    # ==================== CÁLCULOS FINALES ====================
+    total_general = sum(g["importe"] for g in todos)
+    total_mantenimiento = sum(g["importe"] for g in todos if g["origen"] == "mantenimiento")
+    total_multas = sum(g["importe"] for g in todos if "multa" in g["tipo"].lower() or g["tipo"] in ["Multa", "INFRACCION"])
 
     respuesta = {
         "patente": patente_norm,
-        "gastos": todos,
+        "gastos": todos,  # ← Lista unificada con formato consistente
         "total_general": round(total_general, 2),
         "total_mantenimiento": round(total_mantenimiento, 2),
         "total_multas": round(total_multas, 2),
