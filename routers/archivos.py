@@ -22,40 +22,56 @@ db = client["MacSeguridadFlota"]
 fs = gridfs.GridFS(db)  # Instancia global
 
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
-async def subir_documento(patente: str = Form(...), file: UploadFile = File(...)):
-    logger.info(f"Intentando subir documento para patente: {patente}, archivo: {file.filename if file else 'None'}")
-    
+async def subir_documento(
+    patente: str = Form(...),
+    tipo: str = Form(...),  # ← NUEVO: obligatorio
+    file: UploadFile = File(...)
+):
+    logger.info(f"Subiendo {tipo} para patente: {patente}, archivo: {file.filename}")
+
     normalized_patente = normalize_patente(patente)
 
-    # Validaciones (ya existentes, pero normalizadas)
+    # Opcional: validación de tipos permitidos
+    tipos_permitidos = {
+        "TITULO_AUTOMOTOR", "CEDULA_AZUL", "CEDULA_VERDE",
+        "POLIZA_SEGURO", "VTV", "RUTA", "OTRO"
+    }
+    if tipo not in tipos_permitidos:
+        raise HTTPException(400, f"Tipo de documento no válido: {tipo}")
+
     allowed_types = {"application/pdf", "image/jpeg", "image/jpg", "image/png"}
     if file.content_type not in allowed_types:
-        logger.warning(f"Tipo inválido: {file.content_type}")
         raise HTTPException(400, "Solo PDF, JPG o PNG")
 
     if file.size > 50 * 1024 * 1024:
-        logger.warning(f"Archivo grande: {file.size}")
-        raise HTTPException(413, "Archivo muy grande")
+        raise HTTPException(413, "Archivo muy grande (máx 50MB)")
 
     try:
         content = await file.read()
         bucket = await get_gridfs_bucket()
-        file_id = bucket.put(
+        file_id = await bucket.upload_from_stream(  # ← Mejor usar upload_from_stream para async
+            file.filename,
             content,
-            filename=file.filename,
-            content_type=file.content_type,
-            metadata={"patente": normalized_patente, "uploaded_at": datetime.utcnow()}
+            metadata={
+                "patente": normalized_patente,
+                "tipo": tipo,  # ← Guardamos el tipo en metadata
+                "uploaded_at": datetime.utcnow(),
+                "original_filename": file.filename,
+                "content_type": file.content_type
+            }
         )
-        logger.info(f"Subida exitosa: file_id={file_id}, patente={normalized_patente}")
+
+        logger.info(f"Documento {tipo} subido: file_id={file_id}")
         return {
-            "message": "Archivo subido correctamente",
+            "message": "Documento subido correctamente",
             "file_id": str(file_id),
-            "filename": file.filename,
-            "content_type": file.content_type
+            "tipo": tipo,
+            "filename": file.filename
         }
+
     except Exception as e:
-        logger.error(f"Error en subida: {str(e)}")
-        raise HTTPException(500, f"Error interno: {str(e)}")
+        logger.error(f"Error subiendo documento: {str(e)}")
+        raise HTTPException(500, "Error interno al subir el documento")
 
 
 @router.get("/descargar/{file_id}")

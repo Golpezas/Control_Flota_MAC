@@ -115,30 +115,36 @@ const VehiculoDetail: React.FC = () => {
         }
 
         const formData = new FormData();
-        formData.append("patente", normalizePatente(vehiculo._id));  // ← Normalización consistente
-        formData.append("file", archivoNuevo);  // ← Binario real
+        // ← Estos DOS campos van como form fields (no como query params)
+        formData.append("patente", normalizePatente(vehiculo._id));
+        formData.append("tipo", docSeleccionado.tipo);  // ← ¡AQUÍ ESTABA EL PROBLEMA!
+        formData.append("file", archivoNuevo);
 
         try {
             const response = await apiClient.post("/api/archivos/subir-documento", formData, {
-                params: { tipo: docSeleccionado.tipo },
                 headers: {
-                    // CRÍTICO: No forzar Content-Type → Axios establece multipart/form-data con boundary automáticamente
-                    // Si se fuerza 'application/json', falla el upload
+                    // IMPORTANTE: NO poner Content-Type. Axios lo pone automáticamente con el boundary correcto
                 },
-                // Opcional: timeout para uploads grandes
-                timeout: 30000,
+                timeout: 60000, // Más tiempo para archivos grandes
             });
 
-            console.log("Subida exitosa:", response.data);  // Debug: file_id retornado
+            console.log("Subida exitosa:", response.data);
             alert(`✅ Documento "${docSeleccionado.tipo}" subido correctamente`);
+
+            // === REFRESH DE DATOS ===
             setModalIsOpen(false);
             setArchivoNuevo(null);
-            cargarDatos();  // Refresca vista (incluye nuevo file_id)
+            await cargarDatos();  // ← Esto ya lo tenías, perfecto. Refresca la lista de documentos
+
         } catch (error: unknown) {
             console.error("Error subiendo documento:", error);
+
             let msg = "Error al subir el documento.";
             if (axios.isAxiosError(error) && error.response) {
                 msg += ` (Status: ${error.response.status})`;
+                if (error.response.data?.detail) {
+                    msg += ` - ${JSON.stringify(error.response.data.detail)}`;
+                }
             }
             alert(`❌ ${msg} Reintentá o verifica el archivo.`);
         }
