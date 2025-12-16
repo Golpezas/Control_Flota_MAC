@@ -342,29 +342,12 @@ export async function createCostoItem(
             throw new Error('Importe inválido: debe ser un número positivo.');
         }
 
-        // === TIPADO ESTRICTO Y SEGURO (sin 'any') ===
-        // Cuando NO hay archivo → body es objeto JSON plano
-        // Cuando SÍ hay archivo → body es FormData
-        let body: FormData | {
-            patente: string;
-            tipo_costo: string;
-            fecha: string;
-            descripcion: string;
-            importe: number;
-            origen: 'Finanzas' | 'Mantenimiento';
-        };
-
-        const config: AxiosRequestConfig = {};  // ← Ahora reconocido gracias al import
+        let body: FormData | NewCostoInput;
+        const config: AxiosRequestConfig = {};
+        const url = file ? '/costos/manual' : '/costos/manual/json';  // ← Ruta dinámica clave
 
         if (file) {
-            // === MODO MULTIPART/FORM-DATA ===
-            if (file.size > 50 * 1024 * 1024) {
-                throw new Error('Archivo demasiado grande: máximo 50MB.');
-            }
-            if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
-                throw new Error('Formato no permitido: solo PDF, JPG o PNG.');
-            }
-
+            // MODO MULTIPART
             const formData = new FormData();
             formData.append('patente', normalizedPatente);
             formData.append('tipo_costo', newCosto.tipo_costo);
@@ -373,11 +356,9 @@ export async function createCostoItem(
             formData.append('importe', importeValidado.toString());
             formData.append('origen', newCosto.origen);
             formData.append('comprobante', file);
-
             body = formData;
-            // NO tocar headers → Axios establece automáticamente multipart con boundary
         } else {
-            // === MODO JSON ===
+            // MODO JSON
             body = {
                 patente: normalizedPatente,
                 tipo_costo: newCosto.tipo_costo,
@@ -389,12 +370,8 @@ export async function createCostoItem(
             config.headers = { 'Content-Type': 'application/json' };
         }
 
-        const url = file ? '/costos/manual' : '/costos/manual/json';  // ← Ruta dinámica
-
         const response = await apiClient.post<CreateCostoResponse>(url, body, config);
-        
         return response.data;
-
     } catch (error: unknown) {
         // === 4. Manejo de errores estructurado y seguro ===
         let errorMessage = 'Fallo al registrar el costo manual.';

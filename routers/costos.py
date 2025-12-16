@@ -1,8 +1,9 @@
 # routers/costos.py → VERSIÓN CORREGIDA Y DEFINITIVA (2025-12-13)
 # Eliminamos inicialización top-level de fs → usamos función lazy async
 
-import os
-from datetime import datetime, date
+import re  # ← Para validación de patrón en origen
+from dateutil.parser import parse, ParserError
+from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
 from typing import Optional
 from dependencies import normalize_patente, get_db_collection, _client, DB_NAME, CostoManualInput
@@ -166,18 +167,19 @@ async def get_gastos_unificados(patente: str):
 # =================================================================
 # === RUTA PARA JSON (sin comprobante) ===
 @router.post("/manual/json")
-async def crear_costo_manual_json(data: CostoManualInput):  # ← Usa Pydantic model directo
-    # Normalización
+async def crear_costo_manual_json(data: CostoManualInput):
+    logger.info(f"Creando costo manual JSON para patente: {data.patente}")  # ← Agregar logging para trazabilidad
     normalized_patente = normalize_patente(data.patente)
     
-    # Lógica de inserción (igual que antes, sin GridFS)
     costo_dict = data.model_dump()
     costo_dict["patente"] = normalized_patente
     costo_dict["comprobante_file_id"] = None
+    costo_dict["fecha"] = data.fecha if isinstance(data.fecha, datetime) else datetime.combine(data.fecha, datetime.min.time())  # ← Asegurar datetime si es date
     
     collection = get_db_collection("Mantenimiento" if data.origen == "Mantenimiento" else "Finanzas")
     result = await collection.insert_one(costo_dict)
     
+    logger.info(f"Costo creado: ID {result.inserted_id}")  # ← Logging éxito
     return CreateCostoResponse(
         message="Costo registrado correctamente",
         costo_id=str(result.inserted_id),
@@ -195,29 +197,67 @@ async def crear_costo_manual(
     origen: str = Form(...),
     comprobante: Optional[UploadFile] = File(None)
 ):
-    # Normalización
+    """
+    Registra costo manual con comprobante opcional (multipart/form-data).
+    Validación estricta equivalente a CostoManualInput (Pydantic).
+    """
+    logger.info(f"Creando costo manual multipart para patente: {patente}")
+
+    # === VALIDACIÓN MANUAL ESTRICTA (mirror de CostoManualInput) ===
+    # 1. Importe > 0 y redondeo
+    if importe <= 0:
+        logger.warning(f"Importe inválido: {importe}")
+        raise HTTPException(status_code=422, detail="Importe debe ser mayor a 0.")
+    importe = round(importe, 2)
+
+    # 2. Origen válido
+    if not re.match(r"^(Finanzas|Mantenimiento)$", origen):
+        logger.warning(f"Origen inválido: {origen}")
+        raise HTTPException(status_code=422, detail="Origen debe ser 'Finanzas' o 'Mantenimiento'.")
+
+    # 3. Parseo flexible de fecha (reutilizando safe_parse_date para consistencia)
+    try:
+        fecha_parsed = safe_parse_date(fecha)
+        if fecha_parsed.year == 1970:  # Fecha neutra indica parseo fallido
+            raise ValueError("Fecha inválida")
+    except Exception as e:
+        logger.warning(f"Fecha inválida recibida: {fecha} - Error: {e}")
+        raise HTTPException(status_code=422, detail=f"Fecha inválida: {fecha}. Usa formato válido (YYYY-MM-DD o similar).")
+
+    # 4. Normalización de patente
     normalized_patente = normalize_patente(patente)
-    
-    # Subida a GridFS si hay archivo
+    if not normalized_patente:
+        logger.warning(f"Patente inválida: {patente}")
+        raise HTTPException(status_code=400, detail="Patente inválida: debe contener caracteres alfanuméricos.")
+
+    # === SUBIDA DE COMPROBANTE (opcional) ===
     file_id = None
     if comprobante:
+        if comprobante.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Archivo demasiado grande: máximo 50MB.")
+        if comprobante.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
+            raise HTTPException(status_code=400, detail="Formato no permitido: solo PDF, JPG o PNG.")
+        
         bucket = await get_gridfs_bucket()
-        file_id = str(await bucket.upload_from_stream(comprobante.filename, comprobante.file))
-    
-    # Inserción
+        file_id = str(await bucket.upload_from_stream(comprobante.filename, await comprobante.read()))
+        logger.info(f"Comprobante subido a GridFS: file_id={file_id}")
+
+    # === INSERCIÓN EN MONGODB ===
     costo_dict = {
         "patente": normalized_patente,
         "tipo_costo": tipo_costo,
-        "fecha": fecha,
+        "fecha": fecha_parsed,  # ← Guardado como datetime (consistente con safe_parse_date)
         "descripcion": descripcion,
         "importe": importe,
         "origen": origen,
         "comprobante_file_id": file_id
     }
-    
+
     collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
     result = await collection.insert_one(costo_dict)
     
+    logger.info(f"Costo creado exitosamente: _id={result.inserted_id}, file_id={file_id}")
+
     return CreateCostoResponse(
         message="Costo registrado correctamente",
         costo_id=str(result.inserted_id),

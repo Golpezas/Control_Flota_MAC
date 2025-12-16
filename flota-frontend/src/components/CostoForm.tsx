@@ -79,14 +79,13 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         }
 
         try {
-            const response = await createCostoItem(formData, file);
+            const response = await createCostoItem(formData, file || null);  // ← Asegura null si no file
 
             setStatusMessage(
                 response.file_id
                     ? `✅ Costo registrado! ID: ${response.costo_id} | 📎 Comprobante subido`
                     : `✅ Costo registrado correctamente! ID: ${response.costo_id}`
             );
-
             setFormData(defaultFormData);
             setFile(null);
             onSuccess();
