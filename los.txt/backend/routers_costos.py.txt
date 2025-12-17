@@ -1,11 +1,12 @@
 # routers/costos.py → VERSIÓN CORREGIDA Y DEFINITIVA (2025-12-13)
 # Eliminamos inicialización top-level de fs → usamos función lazy async
 
-import os
-from datetime import datetime, date
+import re  # ← Para validación de patrón en origen
+from dateutil.parser import parse, ParserError
+from datetime import datetime
 from fastapi import APIRouter, Query, HTTPException, Form, UploadFile, File
 from typing import Optional
-from dependencies import normalize_patente, get_db_collection, _client, DB_NAME
+from dependencies import normalize_patente, get_db_collection, _client, DB_NAME, CostoManualInput,get_gridfs_bucket
 from bson import ObjectId
 import logging
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
@@ -13,20 +14,6 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/costos", tags=["Costos"])
-
-# =================================================================
-# FUNCIÓN LAZY PARA OBTENER GRIDFS BUCKET (MEJOR PRÁCTICA MODERNA)
-# =================================================================
-async def get_gridfs_bucket() -> AsyncIOMotorGridFSBucket:
-    """
-    Obtiene una instancia de AsyncIOMotorGridFSBucket de forma segura.
-    Solo se crea cuando _client ya está conectado (después del startup).
-    """
-    if _client is None:
-        raise HTTPException(status_code=500, detail="Conexión a MongoDB no establecida. Intente más tarde.")
-    
-    db = _client[DB_NAME]
-    return AsyncIOMotorGridFSBucket(db)
 
 # =================================================================
 # MODELO DE RESPUESTA
@@ -63,95 +50,106 @@ async def get_gastos_unificados(patente: str):
     logger.info(f"Reporte unificado solicitado para: {patente_norm}")
 
     try:
-        costos_collection = get_db_collection("Mantenimiento")
-        finanzas_collection = get_db_collection("Finanzas")
+        mant_collection = get_db_collection("Mantenimiento")
+        fin_collection = get_db_collection("Finanzas")
     except Exception as e:
         logger.error(f"Error conectando colecciones: {e}")
         raise HTTPException(500, "Error de base de datos")
 
-    # ==================== MANTENIMIENTOS ====================
-    mantenimientos = []
-    try:
-        raw_mant = await costos_collection.find({"patente": patente_norm}).to_list(1000)
-        for m in raw_mant:
-            try:
-                fecha = safe_parse_date(m.get("fecha", "1970-01-01T00:00:00"))
-                tipo = (m.get("motivo") or m.get("tipo_registro") or "Mantenimiento General").strip()
-                monto_raw = m.get("costo_monto") or m.get("COSTO_MONTO") or 0
+    todos = []
+
+    # ==================== PROCESAR COLECCIÓN MANTENIMIENTO ====================
+    async for doc in mant_collection.find({"patente": patente_norm}).sort("fecha", -1):
+        try:
+            # Campos NUEVOS (costos manuales modernos)
+            if "importe" in doc or "tipo_costo" in doc:
+                fecha = doc.get("fecha")
+                if isinstance(fecha, str):
+                    fecha = safe_parse_date(fecha)
+                fecha_str = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha)
+
+                tipo = doc.get("tipo_costo", "Mantenimiento General")
+                monto = float(doc.get("importe", 0) or 0)
+                descripcion = doc.get("descripcion", "Sin descripción").strip()
+                origen = "mantenimiento"
+
+            # Campos ANTIGUOS (legado)
+            else:
+                fecha_str = safe_parse_date(doc.get("fecha", "1970-01-01")).isoformat()
+                tipo = (doc.get("motivo") or doc.get("tipo_registro") or "Mantenimiento General").strip()
+                monto_raw = doc.get("costo_monto") or doc.get("COSTO_MONTO") or 0
                 monto = float(monto_raw) if monto_raw else 0.0
-                descripcion = (m.get("descripcion") or m.get("DESCRIPCIN") or "").strip()
+                descripcion = (doc.get("descripcion") or doc.get("DESCRIPCIN") or "").strip()
+                origen = "mantenimiento"
 
-                # FILTRADO ESTRICTO: solo positivos y no administrativos
-                if monto <= 0:
-                    continue
-                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "ajuste", "devolucion"]):
-                    continue
-
-                mantenimientos.append({
-                    "id": str(m["_id"]),
-                    "fecha": fecha.isoformat(),
-                    "tipo": tipo,
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "origen": "mantenimiento",
-                    "coleccion": "Mantenimiento"
-                })
-            except Exception as e:
-                logger.warning(f"Error procesando mantenimiento {m.get('_id')}: {e}")
+            if monto <= 0:
+                continue
+            if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "ajuste", "devolucion"]):
                 continue
 
-    except Exception as e:
-        logger.error(f"Error leyendo mantenimientos: {e}")
+            todos.append({
+                "id": str(doc["_id"]),
+                "fecha": fecha_str,
+                "tipo": tipo,                   # ← Este es el que muestra en la columna "Tipo"
+                "descripcion": descripcion,
+                "importe": monto,               # ← Cambié "monto" por "importe" para coincidir con frontend
+                "origen": origen,
+                "comprobante_file_id": doc.get("comprobante_file_id")
+            })
+        except Exception as e:
+            logger.warning(f"Error procesando doc mantenimiento {doc.get('_id')}: {e}")
+            continue
 
-    # ==================== FINANZAS (Multas, etc.) ====================
-    finanzas = []
-    try:
-        raw_fin = await finanzas_collection.find({"patente": patente_norm}).to_list(1000)
-        for f in raw_fin:
-            try:
-                fecha_raw = f.get("dia") or f.get("FECHA_INFRACCION") or f.get("fecha_infraccion") or "1970-01-01"
-                fecha = safe_parse_date(fecha_raw)
-                tipo = f.get("tipo_registro", "Multa").strip()
-                monto_raw = f.get("monto") or f.get("MONTO") or 0
-                monto = float(monto_raw) if monto_raw else 0.0
-                descripcion = (f.get("motivo") or f.get("MOTIVO") or "Sin descripción").strip()
+    # ==================== PROCESAR COLECCIÓN FINANZAS ====================
+    async for doc in fin_collection.find({"patente": patente_norm}).sort("fecha", -1):
+        try:
+            # Campos NUEVOS (multas manuales)
+            if "importe" in doc or "tipo_costo" in doc:
+                fecha = doc.get("fecha")
+                if isinstance(fecha, str):
+                    fecha = safe_parse_date(fecha)
+                fecha_str = fecha.isoformat() if hasattr(fecha, "isoformat") else str(fecha)
 
-                # FILTRADO ESTRICTO
-                if monto <= 0:
-                    continue
-                if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "devolucion", "descuento", "ajuste"]):
-                    continue
+                tipo = doc.get("tipo_costo", "Multa")
+                monto = float(doc.get("importe", 0) or 0)
+                descripcion = doc.get("descripcion", "Multa").strip()
+                origen = "finanzas"
 
-                finanzas.append({
-                    "id": str(f["_id"]),
-                    "fecha": fecha.isoformat(),
-                    "tipo": tipo,
-                    "monto": monto,
-                    "descripcion": descripcion,
-                    "origen": "finanzas",
-                    "coleccion": "Finanzas"
-                })
-            except Exception as e:
-                logger.warning(f"Error procesando finanza {f.get('_id')}: {e}")
+            # Campos ANTIGUOS
+            else:
+                fecha_raw = doc.get("dia") or doc.get("FECHA_INFRACCION") or doc.get("fecha_infraccion") or "1970-01-01"
+                fecha_str = safe_parse_date(fecha_raw).isoformat()
+                tipo = doc.get("tipo_registro", "Multa").strip()
+                monto = float(doc.get("monto") or doc.get("MONTO") or 0)
+                descripcion = (doc.get("motivo") or doc.get("MOTIVO") or "Sin descripción").strip()
+                origen = "finanzas"
+
+            if monto <= 0:
+                continue
+            if any(palabra in descripcion.lower() for palabra in ["administrativo", "correccion", "devolucion", "descuento", "ajuste"]):
                 continue
 
-    except Exception as e:
-        logger.error(f"Error leyendo finanzas: {e}")
+            todos.append({
+                "id": str(doc["_id"]),
+                "fecha": fecha_str,
+                "tipo": tipo,
+                "descripcion": descripcion,
+                "importe": monto,
+                "origen": origen,
+                "comprobante_file_id": doc.get("comprobante_file_id")
+            })
+        except Exception as e:
+            logger.warning(f"Error procesando doc finanzas {doc.get('_id')}: {e}")
+            continue
 
-    # ==================== UNIFICACIÓN Y CÁLCULO FINAL ====================
-    todos = mantenimientos + finanzas
-
-    # Ordenar por fecha descendente
-    todos.sort(key=lambda x: x["fecha"], reverse=True)
-
-    # Cálculo FINAL con datos ya filtrados
-    total_general = sum(g["monto"] for g in todos)
-    total_mantenimiento = sum(g["monto"] for g in todos if g["origen"] == "mantenimiento")
-    total_multas = sum(g["monto"] for g in todos if g["tipo"] in ["Multa", "INFRACCION", "Infracción"])
+    # ==================== CÁLCULOS FINALES ====================
+    total_general = sum(g["importe"] for g in todos)
+    total_mantenimiento = sum(g["importe"] for g in todos if g["origen"] == "mantenimiento")
+    total_multas = sum(g["importe"] for g in todos if "multa" in g["tipo"].lower() or g["tipo"] in ["Multa", "INFRACCION"])
 
     respuesta = {
         "patente": patente_norm,
-        "gastos": todos,
+        "gastos": todos,  # ← Lista unificada con formato consistente
         "total_general": round(total_general, 2),
         "total_mantenimiento": round(total_mantenimiento, 2),
         "total_multas": round(total_multas, 2),
@@ -164,77 +162,105 @@ async def get_gastos_unificados(patente: str):
 # =================================================================
 # ENDPOINT: CREAR COSTO MANUAL (actualizado para usar get_gridfs_bucket)
 # =================================================================
+# === RUTA PARA JSON (sin comprobante) ===
+@router.post("/manual/json")
+async def crear_costo_manual_json(data: CostoManualInput):
+    logger.info(f"Creando costo manual JSON para patente: {data.patente}")  # ← Agregar logging para trazabilidad
+    normalized_patente = normalize_patente(data.patente)
+    
+    costo_dict = data.model_dump()
+    costo_dict["patente"] = normalized_patente
+    costo_dict["comprobante_file_id"] = None
+    costo_dict["fecha"] = data.fecha if isinstance(data.fecha, datetime) else datetime.combine(data.fecha, datetime.min.time())  # ← Asegurar datetime si es date
+    
+    collection = get_db_collection("Mantenimiento" if data.origen == "Mantenimiento" else "Finanzas")
+    result = await collection.insert_one(costo_dict)
+    
+    logger.info(f"Costo creado: ID {result.inserted_id}")  # ← Logging éxito
+    return CreateCostoResponse(
+        message="Costo registrado correctamente",
+        costo_id=str(result.inserted_id),
+        file_id=None
+    )
+
+# === RUTA EXISTENTE PARA MULTIPART (con comprobante) ===
 @router.post("/manual")
 async def crear_costo_manual(
-    patente: str = Form(..., description="Patente del vehículo"),
-    tipo_costo: str = Form(..., description="Tipo de gasto"),
-    fecha: date = Form(..., description="Fecha del gasto (YYYY-MM-DD)"),
-    descripcion: str = Form(..., description="Descripción detallada"),
-    importe: float = Form(..., gt=0, description="Monto mayor a cero"),
-    origen: str = Form(..., regex="^(Finanzas|Mantenimiento)$", description="Colección destino"),
-    comprobante: Optional[UploadFile] = File(None, description="Comprobante opcional")
+    patente: str = Form(...),
+    tipo_costo: str = Form(...),
+    fecha: str = Form(...),
+    descripcion: str = Form(...),
+    importe: float = Form(...),
+    origen: str = Form(...),
+    comprobante: Optional[UploadFile] = File(None)
 ):
-    patente_norm = normalize_patente(patente)
-    logger.info(f"Creando costo manual para patente: {patente_norm}")
+    """
+    Registra costo manual con comprobante opcional (multipart/form-data).
+    Validación estricta equivalente a CostoManualInput (Pydantic).
+    """
+    logger.info(f"Creando costo multipart - Patente: {patente}, Archivo: {comprobante.filename if comprobante else 'None'}")
 
-    collection_name = "Mantenimiento" if origen == "Mantenimiento" else "Finanzas"
-    collection = get_db_collection(collection_name)
+    # === VALIDACIÓN MANUAL ESTRICTA (mirror de CostoManualInput) ===
+    # 1. Importe > 0 y redondeo
+    if importe <= 0:
+        logger.warning(f"Importe inválido: {importe}")
+        raise HTTPException(status_code=422, detail="Importe debe ser mayor a 0.")
+    importe = round(importe, 2)
 
-    documento = {
-        "patente": patente_norm,
+    # 2. Origen válido
+    if not re.match(r"^(Finanzas|Mantenimiento)$", origen):
+        logger.warning(f"Origen inválido: {origen}")
+        raise HTTPException(status_code=422, detail="Origen debe ser 'Finanzas' o 'Mantenimiento'.")
+
+    # 3. Parseo flexible de fecha (reutilizando safe_parse_date para consistencia)
+    try:
+        fecha_parsed = safe_parse_date(fecha)
+        if fecha_parsed.year == 1970:  # Fecha neutra indica parseo fallido
+            raise ValueError("Fecha inválida")
+    except Exception as e:
+        logger.warning(f"Fecha inválida recibida: {fecha} - Error: {e}")
+        raise HTTPException(status_code=422, detail=f"Fecha inválida: {fecha}. Usa formato válido (YYYY-MM-DD o similar).")
+
+    # 4. Normalización de patente
+    normalized_patente = normalize_patente(patente)
+    if not normalized_patente:
+        logger.warning(f"Patente inválida: {patente}")
+        raise HTTPException(status_code=400, detail="Patente inválida: debe contener caracteres alfanuméricos.")
+
+    # === SUBIDA DE COMPROBANTE (opcional) ===
+    file_id = None
+    if comprobante:
+        if comprobante.size > 50 * 1024 * 1024:
+            raise HTTPException(status_code=413, detail="Archivo demasiado grande: máximo 50MB.")
+        if comprobante.content_type not in ["application/pdf", "image/jpeg", "image/png"]:
+            raise HTTPException(status_code=400, detail="Formato no permitido: solo PDF, JPG o PNG.")
+        
+        bucket = await get_gridfs_bucket()
+        file_id = str(await bucket.upload_from_stream(comprobante.filename, await comprobante.read()))
+        logger.info(f"Comprobante subido a GridFS: file_id={file_id}")
+
+    # === INSERCIÓN EN MONGODB ===
+    costo_dict = {
+        "patente": normalized_patente,
         "tipo_costo": tipo_costo,
-        "fecha": fecha.isoformat(),
+        "fecha": fecha_parsed,  # ← Guardado como datetime (consistente con safe_parse_date)
         "descripcion": descripcion,
-        "importe": round(importe, 2),
-        "origen_manual": True,
-        "fecha_creacion": datetime.utcnow().isoformat()
+        "importe": importe,
+        "origen": origen,
+        "comprobante_file_id": file_id
     }
 
-    file_id = None
-    try:
-        if comprobante:
-            # Validaciones
-            if comprobante.content_type not in ["image/jpeg", "image/jpg", "image/png", "application/pdf"]:
-                raise HTTPException(400, "Tipo de archivo no permitido. Solo PDF, JPG, PNG")
-
-            if comprobante.size > 50 * 1024 * 1024:
-                raise HTTPException(413, "Archivo demasiado grande (máx 50MB)")
-
-            content = await comprobante.read()
-
-            # ← AQUÍ OBTENEMOS EL BUCKET DE FORMA SEGURA
-            fs = await get_gridfs_bucket()
-
-            # Subida async moderna
-            file_id = await fs.upload_from_stream(
-                filename=comprobante.filename,
-                source=content,
-                metadata={
-                    "patente": patente_norm,
-                    "tipo": "comprobante_costo",
-                    "tipo_costo": tipo_costo,
-                    "fecha": fecha.isoformat()
-                }
-            )
-            documento["comprobante_file_id"] = str(file_id)
-            logger.info(f"Comprobante subido a GridFS: {file_id}")
-
-        # Inserción
-        result = await collection.insert_one(documento)
-        logger.info(f"Costo creado: {result.inserted_id}")
-
-        return {
-            "message": "Costo creado exitosamente",
-            "costo_id": str(result.inserted_id),
-            "file_id": str(file_id) if file_id else None
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error inesperado al crear costo: {type(e).__name__}: {e}")
-        raise HTTPException(500, "Error interno al procesar el costo")
+    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
+    result = await collection.insert_one(costo_dict)
     
+    logger.info(f"Costo creado exitosamente: _id={result.inserted_id}, file_id={file_id}")
+
+    return CreateCostoResponse(
+        message="Costo registrado correctamente",
+        costo_id=str(result.inserted_id),
+        file_id=file_id
+    )
+   
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(

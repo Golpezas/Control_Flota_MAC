@@ -70,19 +70,23 @@ const VehiculoDetail: React.FC = () => {
 
         try {
             const timestamp = Date.now();
-            const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
+            const directUrl = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
+            const encodedDirectUrl = encodeURIComponent(directUrl);
 
             if (filename.toLowerCase().includes(".pdf")) {
-                setComprobantePreviewUrl(url);
+                // PDFs: Usa Google Viewer para visualización inline perfecta en iframe
+                const viewerUrl = `https://docs.google.com/gview?url=${encodedDirectUrl}&embedded=true`;
+                setComprobantePreviewUrl(viewerUrl);
             } else {
-                const response = await fetch(url, { cache: "no-store" });
+                // Imágenes: Blob como antes
+                const response = await fetch(directUrl, { cache: "no-store" });
                 if (!response.ok) throw new Error("No se pudo cargar");
                 const blob = await response.blob();
                 setComprobantePreviewUrl(URL.createObjectURL(blob));
             }
         } catch (err) {
-            console.error("Error cargando comprobante:", err);
-            alert("Error al cargar el comprobante. Intentá en 10 segundos.");
+            console.error("Error:", err);
+            alert("Error al cargar el comprobante.");
         } finally {
             setComprobanteLoading(false);
         }
