@@ -98,50 +98,40 @@ async def descargar_archivo(
     except InvalidId:
         raise HTTPException(400, "ID de archivo inválido")
 
+    bucket = await get_gridfs_bucket()
+
     try:
-        # fs es tu GridFS bucket (asumiendo que lo tienes global o inyectado)
-        grid_out = await run_in_threadpool(fs.get, object_id)
-    except GridFSNoFile:
+        grid_out = await bucket.open_download_stream(object_id)
+    except:
         raise HTTPException(404, "Archivo no encontrado")
 
-    try:
-        # Leemos todo el contenido
-        content = await run_in_threadpool(grid_out.read)
+    filename = grid_out.filename or "comprobante"
+    content_type = grid_out.content_type or "application/octet-stream"
 
-        filename = grid_out.filename or "documento"
-        content_type = grid_out.content_type or "application/octet-stream"
-
-        # FORZAMOS PREVIEW CON HEADERS ESPECÍFICOS
-        if preview:
-            disposition = "inline"
-            extra_headers = {
-                "X-Content-Type-Options": "nosniff",
-                "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
-                "Accept-Ranges": "bytes",
-            }
-        else:
-            disposition = "attachment"
-            extra_headers = {}
-
+    if preview:
+        # FORZAMOS INLINE AL MÁXIMO
+        disposition = "inline"
         headers = {
-            "Content-Disposition": f'{disposition}; filename="{filename}"',
+            "Content-Disposition": f'inline; filename="{filename}"',
             "Content-Type": content_type,
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
-            **extra_headers
+            "X-Content-Type-Options": "nosniff",
+            "Accept-Ranges": "bytes",
+        }
+    else:
+        disposition = "attachment"
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Type": content_type,
         }
 
-        return StreamingResponse(
-            BytesIO(content),
-            headers=headers,
-            media_type=content_type
-        )
-
-    except Exception as e:
-        logger.error(f"ERROR DESCARGA GRIDFS: {type(e).__name__}: {e}")
-        raise HTTPException(500, "Error al leer el archivo")
-
+    return StreamingResponse(
+        grid_out,
+        headers=headers,
+        media_type=content_type
+    )
 
 @router.delete("/eliminar/{file_id}")
 async def eliminar_archivo(file_id: str):
