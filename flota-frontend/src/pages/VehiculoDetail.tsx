@@ -74,7 +74,7 @@ const VehiculoDetail: React.FC = () => {
 
             const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) {
-                throw new Error(`Error HTTP ${response.status}`);
+                throw new Error(`Error al cargar el archivo (HTTP ${response.status})`);
             }
 
             const blob = await response.blob();
@@ -82,7 +82,7 @@ const VehiculoDetail: React.FC = () => {
             setComprobantePreviewUrl(blobUrl);
         } catch (err) {
             console.error("Error cargando comprobante:", err);
-            alert("No se pudo cargar el comprobante. Intentá refrescar la página.");
+            alert("No se pudo cargar el comprobante. Intentá refrescar o descargar manualmente.");
         } finally {
             setComprobanteLoading(false);
         }
