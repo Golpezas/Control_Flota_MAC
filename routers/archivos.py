@@ -3,6 +3,7 @@ import os
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
 from fastapi.concurrency import run_in_threadpool   # ← NUEVO IMPORT
+from gridfs.errors import NoFile as GridFSNoFile
 from pymongo import MongoClient
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -12,6 +13,7 @@ from io import BytesIO
 from datetime import datetime
 import logging
 from dependencies import normalize_patente, get_gridfs_bucket, get_db_collection  # ← Asegura imports
+import gridfs  # si usas gridfs.errors.NoFile
 
 logger = logging.getLogger(__name__)  # ← Definición clave que resuelve Pylance
 
@@ -86,43 +88,58 @@ async def subir_documento(
         logger.error(f"Error: {str(e)}")
         raise HTTPException(500, "Error al subir el documento")
 
-
 @router.get("/descargar/{file_id}")
 async def descargar_archivo(
     file_id: str,
     preview: bool = Query(False, description="True = vista previa inline")
 ):
     try:
-        # Ejecutamos en threadpool porque GridFS es bloqueante
-        grid_out = await run_in_threadpool(fs.get, ObjectId(file_id))
-        
-        # LEEMOS TODO EL ARCHIVO
+        object_id = ObjectId(file_id)
+    except InvalidId:
+        raise HTTPException(400, "ID de archivo inválido")
+
+    try:
+        # fs es tu GridFS bucket (asumiendo que lo tienes global o inyectado)
+        grid_out = await run_in_threadpool(fs.get, object_id)
+    except GridFSNoFile:
+        raise HTTPException(404, "Archivo no encontrado")
+
+    try:
+        # Leemos todo el contenido
         content = await run_in_threadpool(grid_out.read)
-        
-        # RECUPERAMOS EL NOMBRE Y TIPO ORIGINAL
+
         filename = grid_out.filename or "documento"
         content_type = grid_out.content_type or "application/octet-stream"
 
-        disposition = "inline" if preview else "attachment"
+        # FORZAMOS PREVIEW CON HEADERS ESPECÍFICOS
+        if preview:
+            disposition = "inline"
+            extra_headers = {
+                "X-Content-Type-Options": "nosniff",
+                "Content-Security-Policy": "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'",
+                "Accept-Ranges": "bytes",
+            }
+        else:
+            disposition = "attachment"
+            extra_headers = {}
 
         headers = {
             "Content-Disposition": f'{disposition}; filename="{filename}"',
-            "Content-Type": content_type,           # ← ESTO ES CLAVE
-            "Cache-Control": "no-cache",
+            "Content-Type": content_type,
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            **extra_headers
         }
 
         return StreamingResponse(
             BytesIO(content),
             headers=headers,
-            media_type=content_type                    # ← DOBLE SEGURO
+            media_type=content_type
         )
 
-    except gridfs.errors.NoFile:
-        raise HTTPException(404, "Archivo no encontrado")
-    except InvalidId:
-        raise HTTPException(400, "ID inválido")
     except Exception as e:
-        print(f"ERROR DESCARGA GRIDFS: {type(e).__name__}: {e}")
+        logger.error(f"ERROR DESCARGA GRIDFS: {type(e).__name__}: {e}")
         raise HTTPException(500, "Error al leer el archivo")
 
 
