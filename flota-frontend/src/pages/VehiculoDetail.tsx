@@ -63,7 +63,7 @@ const VehiculoDetail: React.FC = () => {
     // FUNCIONES PARA DOCUMENTOS DIGITALES (tu código original, perfecto)
     // =========================================
 
-    const abrirComprobante = async (fileId: string, filename: string) => {
+    const abrirComprobante = async (fileId: string, filename: string = "comprobante") => {
         setComprobantePreviewUrl(null);
         setComprobanteLoading(true);
         setModalComprobanteOpen(true);
@@ -73,8 +73,10 @@ const VehiculoDetail: React.FC = () => {
             const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
 
             if (filename.toLowerCase().includes(".pdf")) {
+                // PDF: URL directa → iframe lo muestra perfecto (como en documentos digitales)
                 setComprobantePreviewUrl(url);
             } else {
+                // Imagen: blob para máxima compatibilidad
                 const response = await fetch(url, { cache: "no-store" });
                 if (!response.ok) throw new Error("No se pudo cargar");
                 const blob = await response.blob();
@@ -451,8 +453,19 @@ const VehiculoDetail: React.FC = () => {
                                         {gasto.descripcion}
                                         {gasto.comprobante_file_id && (
                                             <button 
-                                                onClick={() => abrirComprobante(gasto.comprobante_file_id!, gasto.descripcion || "comprobante")}
-                                                style={{ marginLeft: '10px', fontSize: '0.8em', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                                                onClick={() => abrirComprobante(
+                                                    gasto.comprobante_file_id!, 
+                                                    gasto.descripcion ? `${gasto.descripcion}.pdf` : "comprobante.pdf"
+                                                )}
+                                                style={{ 
+                                                    marginLeft: '10px', 
+                                                    fontSize: '0.8em', 
+                                                    color: '#2563eb', 
+                                                    background: 'none', 
+                                                    border: 'none', 
+                                                    cursor: 'pointer', 
+                                                    textDecoration: 'underline' 
+                                                }}
                                             >
                                                 👁️ Ver comprobante
                                             </button>
