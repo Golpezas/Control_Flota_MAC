@@ -508,7 +508,7 @@ const VehiculoDetail: React.FC = () => {
                         transform: 'translate(-50%, -50%)',
                         width: '90%',
                         maxWidth: '900px',
-                        height: '80%',
+                        height: '85%',
                         padding: '20px',
                         borderRadius: '16px',
                         boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
@@ -523,17 +523,43 @@ const VehiculoDetail: React.FC = () => {
                 {comprobanteLoading ? (
                     <div style={{ textAlign: 'center', padding: '100px 0' }}>
                         <p>Cargando comprobante...</p>
+                        <p style={{ fontSize: '0.9em', color: '#666' }}>Puede tardar unos segundos</p>
                     </div>
                 ) : comprobantePreviewUrl ? (
-                    <iframe
-                        src={comprobantePreviewUrl || ''}
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                        title="Comprobante del Costo"
-                        allowFullScreen
-                    />
+                    <div style={{ width: '100%', height: 'calc(100% - 80px)', overflow: 'auto', background: '#f8fafc' }}>
+                        {/* Caso 1: Imágenes (PNG, JPG) → <img> */}
+                        {comprobantePreviewUrl.match(/data:image|blob:.*(png|jpg|jpeg|gif)/i) ? (
+                            <img 
+                                src={comprobantePreviewUrl}
+                                alt="Comprobante"
+                                style={{
+                                    maxWidth: '100%',
+                                    maxHeight: '100%',
+                                    objectFit: 'contain',
+                                    display: 'block',
+                                    margin: '0 auto',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                                }}
+                            />
+                        ) : (
+                            /* Caso 2: PDF o cualquier otro → <embed> (más compatible que iframe con blobs) */
+                            <embed 
+                                src={comprobantePreviewUrl}
+                                type="application/pdf"
+                                style={{
+                                    width: '100%',
+                                    height: '100%',
+                                    border: 'none',
+                                    borderRadius: '8px'
+                                }}
+                            />
+                        )}
+                    </div>
                 ) : (
-                    <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                        <p style={{ color: 'red' }}>No se pudo cargar el comprobante</p>
+                    <div style={{ textAlign: 'center', padding: '100px 0', color: '#e74c3c' }}>
+                        <p>No se pudo cargar el comprobante</p>
+                        <p style={{ fontSize: '0.9em' }}>Intentá refrescar o descargar manualmente.</p>
                     </div>
                 )}
 
@@ -544,8 +570,9 @@ const VehiculoDetail: React.FC = () => {
                             if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
                                 URL.revokeObjectURL(comprobantePreviewUrl);
                             }
+                            setComprobantePreviewUrl(null);
                         }}
-                        style={{ padding: '10px 20px', background: '#64748b', color: 'white', borderRadius: '8px' }}
+                        style={{ padding: '10px 20px', background: '#64748b', color: 'white', borderRadius: '8px', cursor: 'pointer' }}
                     >
                         Cerrar
                     </button>
