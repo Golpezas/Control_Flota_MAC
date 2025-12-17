@@ -455,7 +455,7 @@ const VehiculoDetail: React.FC = () => {
                                             <button 
                                                 onClick={() => abrirComprobante(
                                                     gasto.comprobante_file_id!, 
-                                                    gasto.descripcion ? `${gasto.descripcion}.pdf` : "comprobante.pdf"
+                                                    "comprobante.pdf"  // Forzamos .pdf para que use URL directa
                                                 )}
                                                 style={{ 
                                                     marginLeft: '10px', 
