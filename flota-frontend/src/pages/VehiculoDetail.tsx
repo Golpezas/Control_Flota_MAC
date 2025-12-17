@@ -53,11 +53,41 @@ const VehiculoDetail: React.FC = () => {
     const [loadingPreview, setLoadingPreview] = useState(false);
     const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
 
+    const [modalComprobanteOpen, setModalComprobanteOpen] = useState(false);
+    const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
+    const [comprobanteLoading, setComprobanteLoading] = useState(false);
+
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
     // FUNCIONES PARA DOCUMENTOS DIGITALES (tu código original, perfecto)
     // =========================================
+
+    const abrirComprobante = async (fileId: string, filename: string) => {
+        setComprobantePreviewUrl(null);
+        setComprobanteLoading(true);
+        setModalComprobanteOpen(true);
+
+        try {
+            const timestamp = Date.now();
+            const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
+
+            if (filename.toLowerCase().includes(".pdf")) {
+                setComprobantePreviewUrl(url);
+            } else {
+                const response = await fetch(url, { cache: "no-store" });
+                if (!response.ok) throw new Error("No se pudo cargar");
+                const blob = await response.blob();
+                setComprobantePreviewUrl(URL.createObjectURL(blob));
+            }
+        } catch (err) {
+            console.error("Error cargando comprobante:", err);
+            alert("Error al cargar el comprobante. Intentá en 10 segundos.");
+        } finally {
+            setComprobanteLoading(false);
+        }
+    };
+
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
             setArchivoNuevo(e.target.files[0]);
@@ -420,8 +450,11 @@ const VehiculoDetail: React.FC = () => {
                                     <td style={{ padding: '12px' }}>
                                         {gasto.descripcion}
                                         {gasto.comprobante_file_id && (
-                                            <button onClick={() => handleDownload(gasto.comprobante_file_id!)} style={{ marginLeft: '10px', fontSize: '0.8em', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer' }}>
-                                                📎 Ver comprobante
+                                            <button 
+                                                onClick={() => abrirComprobante(gasto.comprobante_file_id!, gasto.descripcion || "comprobante")}
+                                                style={{ marginLeft: '10px', fontSize: '0.8em', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                                            >
+                                                👁️ Ver comprobante
                                             </button>
                                         )}
                                     </td>
@@ -452,6 +485,70 @@ const VehiculoDetail: React.FC = () => {
             <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', textDecoration: 'none', fontWeight: 'bold' }}>
                 ← Volver al Listado de Vehículos
             </Link>
+
+            {/* MODAL PARA VER COMPROBANTE DE COSTO */}
+            <Modal
+                isOpen={modalComprobanteOpen}
+                onRequestClose={() => {
+                    setModalComprobanteOpen(false);
+                    if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
+                        URL.revokeObjectURL(comprobantePreviewUrl);
+                    }
+                    setComprobantePreviewUrl(null);
+                }}
+                style={{
+                    content: {
+                        top: '50%',
+                        left: '50%',
+                        right: 'auto',
+                        bottom: 'auto',
+                        marginRight: '-50%',
+                        transform: 'translate(-50%, -50%)',
+                        width: '90%',
+                        maxWidth: '900px',
+                        height: '80%',
+                        padding: '20px',
+                        borderRadius: '16px',
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
+                    }
+                }}
+                ariaHideApp={false}
+            >
+                <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#1D3557' }}>
+                    Comprobante del Costo
+                </h2>
+
+                {comprobanteLoading ? (
+                    <div style={{ textAlign: 'center', padding: '100px 0' }}>
+                        <p>Cargando comprobante...</p>
+                    </div>
+                ) : comprobantePreviewUrl ? (
+                    <iframe
+                        src={comprobantePreviewUrl}
+                        style={{ width: '100%', height: '100%', border: 'none', borderRadius: '8px' }}
+                        title="Comprobante"
+                    />
+                ) : (
+                    <div style={{ textAlign: 'center', padding: '100px 0' }}>
+                        <p style={{ color: 'red' }}>No se pudo cargar el comprobante</p>
+                    </div>
+                )}
+
+                <div style={{ textAlign: 'center', marginTop: '20px' }}>
+                    <button
+                        onClick={() => {
+                            setModalComprobanteOpen(false);
+                            if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
+                                URL.revokeObjectURL(comprobantePreviewUrl);
+                            }
+                        }}
+                        style={{ padding: '10px 20px', background: '#64748b', color: 'white', borderRadius: '8px' }}
+                    >
+                        Cerrar
+                    </button>
+                </div>
+            </Modal>    
+
         </div>
     );
 };
