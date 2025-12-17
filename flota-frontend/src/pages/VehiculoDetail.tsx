@@ -72,17 +72,19 @@ const VehiculoDetail: React.FC = () => {
             const timestamp = Date.now();
             const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
 
+            // Siempre usamos blob (como en imágenes de documentos digitales)
+            // Esto funciona perfecto para PNG, JPG y PDF
             const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) {
-                throw new Error(`Error al cargar el archivo (HTTP ${response.status})`);
+                throw new Error(`Error al cargar (HTTP ${response.status})`);
             }
-
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
             setComprobantePreviewUrl(blobUrl);
+
         } catch (err) {
             console.error("Error cargando comprobante:", err);
-            alert("No se pudo cargar el comprobante. Intentá refrescar o descargar manualmente.");
+            alert("Error al cargar el comprobante. Intentá refrescar la página.");
         } finally {
             setComprobanteLoading(false);
         }
