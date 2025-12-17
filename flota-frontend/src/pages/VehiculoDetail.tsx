@@ -524,9 +524,10 @@ const VehiculoDetail: React.FC = () => {
                     </div>
                 ) : comprobantePreviewUrl ? (
                     <iframe
-                        src={comprobantePreviewUrl}
-                        style={{ width: '100%', height: '100%', border: 'none', borderRadius: '8px' }}
-                        title="Comprobante"
+                        src={comprobantePreviewUrl || ''}
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        title="Comprobante del Costo"
+                        allowFullScreen
                     />
                 ) : (
                     <div style={{ textAlign: 'center', padding: '100px 0' }}>
