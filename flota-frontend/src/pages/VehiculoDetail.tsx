@@ -507,8 +507,8 @@ const VehiculoDetail: React.FC = () => {
                         marginRight: '-50%',
                         transform: 'translate(-50%, -50%)',
                         width: '90%',
-                        maxWidth: '900px',
-                        height: '85%',
+                        maxWidth: '1000px',
+                        height: '90%',
                         padding: '20px',
                         borderRadius: '16px',
                         boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
@@ -527,32 +527,17 @@ const VehiculoDetail: React.FC = () => {
                     </div>
                 ) : comprobantePreviewUrl ? (
                     <div style={{ width: '100%', height: 'calc(100% - 80px)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
-                        {/* Caso 1: Imagen (PNG, JPG) */}
-                        {comprobantePreviewUrl.toLowerCase().includes('png') || comprobantePreviewUrl.toLowerCase().includes('jpg') || comprobantePreviewUrl.toLowerCase().includes('jpeg') ? (
-                            <img 
-                                src={comprobantePreviewUrl}
-                                alt="Comprobante"
-                                style={{
-                                    maxWidth: '100%',
-                                    maxHeight: '100%',
-                                    objectFit: 'contain',
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                                }}
-                            />
-                        ) : (
-                            /* Caso 2: PDF (más confiable que iframe o embed) */
-                            <object 
-                                data={comprobantePreviewUrl}
-                                type="application/pdf"
-                                style={{ width: '100%', height: '100%', border: 'none' }}
-                            >
-                                <p style={{ textAlign: 'center' }}>
-                                    Tu navegador no soporta PDFs. 
-                                    <a href={comprobantePreviewUrl} download>Descargar PDF</a>
-                                </p>
-                            </object>
-                        )}
+                        <img 
+                            src={comprobantePreviewUrl}
+                            alt="Comprobante del costo"
+                            style={{
+                                maxWidth: '100%',
+                                maxHeight: '100%',
+                                objectFit: 'contain',
+                                borderRadius: '8px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                            }}
+                        />
                     </div>
                 ) : (
                     <div style={{ textAlign: 'center', padding: '100px 0', color: '#e74c3c' }}>
