@@ -8,6 +8,7 @@ import VehiculoCreatePage from './pages/VehiculoCreatePage';
 import DashboardPage from './pages/DashboardPage'; 
 // 👇 NUEVA IMPORTACIÓN
 import CostoCreatePage from './pages/CostoCreatePage'; 
+import PolizasList from './pages/PolizasList'; 
 
 // ... (resto de importaciones y definición de DashboardPage)
 
@@ -39,6 +40,12 @@ function App() {
           >
               💸 Registrar Gasto
           </Link>
+          <Link 
+              to="/polizas" 
+              style={{ color: 'white', marginRight: '30px', textDecoration: 'none', fontWeight: 'bold' }}
+          >
+              📜 Pólizas de Seguros
+          </Link>
         </nav>
       </header>
       
@@ -56,6 +63,9 @@ function App() {
           
           {/* 2. RUTA DE DETALLE: Captura el resto de patrones /vehiculos/ID */}
           <Route path="/vehiculos/:patente" element={<VehiculoDetail />} /> 
+
+          {/* RUTA DE PÓLIZAS DE SEGUROS */}
+          <Route path="/polizas" element={<PolizasList />} />
 
         </Routes>
       </main>
