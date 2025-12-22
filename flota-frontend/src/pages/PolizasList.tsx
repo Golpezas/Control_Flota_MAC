@@ -146,8 +146,8 @@ const PolizasList: React.FC = () => {
 
             <h2>Lista de Pólizas ({polizas.length})</h2>
             {loading ? <p>Cargando...</p> : polizas.length === 0 ? <p>No hay pólizas registradas.</p> : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead style={{ background: '#1D3557', color: 'white' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', backgroundColor: 'white', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                    <thead style={{ backgroundColor: '#1D3557', color: 'white' }}>
                         <tr>
                             <th style={{ padding: '15px', textAlign: 'left' }}>Empresa</th>
                             <th style={{ padding: '15px', textAlign: 'left' }}>Número de Póliza</th>
@@ -157,18 +157,50 @@ const PolizasList: React.FC = () => {
                     </thead>
                     <tbody>
                         {polizas.map(p => (
-                            <tr key={p.id} style={{ borderBottom: '1px solid #eee' }}>
-                                <td style={{ padding: '15px' }}>{p.empresa}</td>
-                                <td style={{ padding: '15px' }}><strong>{p.numero_poliza}</strong></td>
-                                <td style={{ padding: '15px' }}>{p.filename}</td>
+                            <tr key={p.id} style={{ borderBottom: '1px solid #e2e8f0', backgroundColor: '#ffffff' }}>
+                                <td style={{ padding: '15px', color: '#1e293b' }}>{p.empresa}</td>
+                                <td style={{ padding: '15px', color: '#1e293b', fontWeight: 'bold' }}>{p.numero_poliza}</td>
+                                <td style={{ padding: '15px', color: '#1e293b' }}>{p.filename}</td>
                                 <td style={{ padding: '15px', textAlign: 'center' }}>
-                                    <button onClick={() => window.open(`${API_URL}/api/archivos/descargar/${p.file_id}`, '_blank')} style={{ marginRight: '10px', background: '#2563eb', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
+                                    <button 
+                                        onClick={() => window.open(`${API_URL}/api/archivos/descargar/${p.file_id}`, '_blank')}
+                                        style={{ 
+                                            marginRight: '10px', 
+                                            background: '#2563eb', 
+                                            color: 'white', 
+                                            padding: '8px 16px', 
+                                            border: 'none', 
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
                                         Descargar
                                     </button>
-                                    <button onClick={() => editar(p)} style={{ marginRight: '10px', background: '#f59e0b', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
+                                    <button 
+                                        onClick={() => editar(p)}
+                                        style={{ 
+                                            marginRight: '10px', 
+                                            background: '#f59e0b', 
+                                            color: 'white', 
+                                            padding: '8px 16px', 
+                                            border: 'none', 
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
                                         Editar
                                     </button>
-                                    <button onClick={() => eliminar(p.id)} style={{ background: '#dc2626', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
+                                    <button 
+                                        onClick={() => eliminar(p.id)}
+                                        style={{ 
+                                            background: '#dc2626', 
+                                            color: 'white', 
+                                            padding: '8px 16px', 
+                                            border: 'none', 
+                                            borderRadius: '8px',
+                                            fontWeight: 'bold'
+                                        }}
+                                    >
                                         Eliminar
                                     </button>
                                 </td>
