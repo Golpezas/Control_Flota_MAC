@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/vehiculos';
 import { Link } from 'react-router-dom';
+import axios from 'axios';
 
 interface Poliza {
     id: string;
@@ -49,34 +50,44 @@ const PolizasList: React.FC = () => {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!form.file && !editingId) return alert("Selecciona un archivo");
+    e.preventDefault();
+    if (!form.file && !editingId) {
+        return alert("Selecciona un archivo para agregar nueva póliza");
+    }
 
-        const formData = new FormData();
-        formData.append('empresa', form.empresa);
-        formData.append('numero_poliza', form.numero_poliza);
-        if (form.file) formData.append('file', form.file);
+    const formData = new FormData();
+    formData.append('empresa', form.empresa.trim());
+    formData.append('numero_poliza', form.numero_poliza.trim());
+    if (form.file) {
+        formData.append('file', form.file);
+    }
 
-        try {
-            if (editingId) {
-                await apiClient.put(`/polizas/${editingId}`, formData);
-            } else {
-                await apiClient.post('/polizas', formData);
-            }
-            cargarPolizas();
-            setForm({ empresa: '', numero_poliza: '', file: null });
-            setEditingId(null);
-        } catch (error: unknown) {
-            console.error("Error al guardar póliza:", error);
-            let mensaje = "Error al guardar la póliza";
-
-            if (isAxiosError(error) && error.response.data.detail) {
-                mensaje = error.response.data.detail;
-            }
-
-            alert(mensaje);
+    try {
+        if (editingId) {
+            await axios.put(`${API_URL}/polizas/${editingId}`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
+        } else {
+            await axios.post(`${API_URL}/polizas`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            });
         }
-    };
+
+        cargarPolizas();
+        setForm({ empresa: '', numero_poliza: '', file: null });
+        setEditingId(null);
+        alert("Póliza guardada correctamente");
+    } catch (error: unknown) {
+        console.error("Error al guardar póliza:", error);
+        let mensaje = "Error al guardar la póliza";
+
+        if (isAxiosError(error) && error.response?.data?.detail) {
+            mensaje = error.response.data.detail;
+        }
+
+        alert(mensaje);
+    }
+};
 
     const eliminar = async (id: string) => {
         if (!confirm("¿Seguro que querés eliminar esta póliza?")) return;
