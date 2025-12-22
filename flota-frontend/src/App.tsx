@@ -21,29 +21,17 @@ function App() {
           color: 'white',
           boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
       }}>
-        <nav>
-          <Link 
-              to="/" 
-              style={{ color: 'white', marginRight: '30px', textDecoration: 'none', fontWeight: 'bold' }}
-          >
-              Inicio (Dashboard)
+        <nav style={{ display: 'flex', alignItems: 'center', gap: '40px' }}>
+          <Link to="/" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
+              🏠 Inicio (Dashboard)
           </Link>
-          <Link 
-              to="/vehiculos" 
-              style={{ color: 'white', marginRight: '30px', textDecoration: 'none', fontWeight: 'bold' }}
-          >
-              Gestión de Vehículos
+          <Link to="/vehiculos" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
+              🚛 Gestión de Vehículos
           </Link>
-          <Link 
-              to="/costos/crear" 
-              style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold' }}
-          >
+          <Link to="/costos/crear" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
               💸 Registrar Gasto
           </Link>
-          <Link 
-              to="/polizas" 
-              style={{ color: 'white', marginRight: '30px', textDecoration: 'none', fontWeight: 'bold' }}
-          >
+          <Link to="/polizas" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
               📜 Pólizas de Seguros
           </Link>
         </nav>

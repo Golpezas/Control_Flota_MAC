@@ -86,12 +86,12 @@ async def agregar_poliza(
         fecha_subida=poliza_doc["fecha_subida"]
     )
 
-@router.put("/{poliza_id}", response_model=PolizaResponse)
+@router.put("/{poliza_id}")
 async def modificar_poliza(
     poliza_id: str,
     empresa: str = Form(...),
     numero_poliza: str = Form(...),
-    file: Optional[UploadFile] = File(None)
+    file: Optional[UploadFile] = File(None)  # ← Ahora opcional
 ):
     collection = get_db_collection("polizas_seguros")
 
@@ -101,18 +101,19 @@ async def modificar_poliza(
     }
 
     if file:
+        # Validaciones
         if file.content_type not in {"application/pdf", "image/jpeg", "image/jpg", "image/png"}:
             raise HTTPException(400, "Solo PDF, JPG o PNG")
 
         bucket = await get_gridfs_bucket()
         content = await file.read()
-        file_id = await bucket.upload_from_stream(
+        new_file_id = await bucket.upload_from_stream(
             file.filename,
             content,
             metadata={"empresa": empresa, "numero_poliza": numero_poliza}
         )
         update_data["filename"] = file.filename
-        update_data["file_id"] = str(file_id)
+        update_data["file_id"] = str(new_file_id)
 
     result = await collection.update_one(
         {"_id": ObjectId(poliza_id)},
@@ -123,10 +124,14 @@ async def modificar_poliza(
         raise HTTPException(404, "Póliza no encontrada")
 
     poliza = await collection.find_one({"_id": ObjectId(poliza_id)})
-    return PolizaResponse(
-        id=str(poliza["_id"]),
-        **{k: poliza[k] for k in ["empresa", "numero_poliza", "filename", "file_id", "fecha_subida"]}
-    )
+    return {
+        "id": str(poliza["_id"]),
+        "empresa": poliza["empresa"],
+        "numero_poliza": poliza["numero_poliza"],
+        "filename": poliza["filename"],
+        "file_id": poliza["file_id"],
+        "fecha_subida": poliza["fecha_subida"]
+    }
 
 @router.delete("/{poliza_id}")
 async def eliminar_poliza(poliza_id: str):
