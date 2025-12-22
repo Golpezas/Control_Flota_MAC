@@ -396,40 +396,53 @@ const VehiculoDetail: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* ALERTAS */}
-            <div style={{ marginBottom: '30px' }}>
-                <h2 style={{ color: alertas.length > 0 ? '#E63946' : '#457B9D', fontSize: '1.5rem', fontWeight: 'bold' }}>
+            {/* ALERTAS DE VENCIMIENTO CRÍTICAS */}
+            <div style={{ marginBottom: '40px' }}>
+                <h2 style={{ 
+                    color: alertas.length > 0 ? '#E63946' : '#2d6a4f', 
+                    fontSize: '1.6rem', 
+                    fontWeight: 'bold',
+                    marginBottom: '20px'
+                }}>
                     Alertas de Vencimiento Críticas ({alertas.length})
                 </h2>
+
                 {alertas.length > 0 ? (
-                    <div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                         {alertas.map((alerta, index) => (
                             <div 
-                                key={index} 
-                                style={{ 
-                                    padding: '15px', 
-                                    background: '#fee', 
-                                    border: '2px solid #E63946', 
+                                key={index}
+                                style={{
+                                    padding: '18px',
+                                    backgroundColor: '#fff5f5',
+                                    border: `3px solid ${alerta.mensaje.includes('VENCIDO') || alerta.mensaje.includes('HOY') ? '#E63946' : '#f59e0b'}`,
                                     borderRadius: '12px',
-                                    marginBottom: '15px',
-                                    boxShadow: '0 4px 8px rgba(230,57,70,0.2)'
+                                    boxShadow: '0 6px 12px rgba(230,57,70,0.15)'
                                 }}
                             >
-                                <div style={{ fontWeight: 'bold', color: '#E63946', fontSize: '1.1em' }}>
+                                <div style={{ fontSize: '1.3em', fontWeight: 'bold', color: '#E63946', marginBottom: '10px' }}>
                                     🚨 {alerta.mensaje}
                                 </div>
-                                <div style={{ marginTop: '8px', color: '#1e293b' }}>
-                                    <strong>Patente:</strong> <strong>{alerta.patente}</strong> 
-                                    (Móvil: {alerta.movil_nro}, {alerta.descripcion_modelo})
-                                </div>
-                                <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#64748b' }}>
-                                    Vencimiento: {new Date(alerta.fecha_vencimiento).toLocaleDateString('es-AR')}
+                                <div style={{ color: '#1e293b', lineHeight: '1.6' }}>
+                                    <strong>Patente:</strong> <strong>{alerta.patente}</strong><br />
+                                    <strong>Móvil:</strong> {alerta.movil_nro || 'N/A'} - {alerta.descripcion_modelo || 'Sin modelo'}<br />
+                                    <strong>Vencimiento:</strong> {new Date(alerta.fecha_vencimiento).toLocaleDateString('es-AR')}
                                 </div>
                             </div>
                         ))}
                     </div>
                 ) : (
-                    <p style={{ color: '#2d6a4f' }}>✅ No hay alertas críticas de vencimiento.</p>
+                    <div style={{ 
+                        padding: '20px', 
+                        backgroundColor: '#f0fdf4', 
+                        border: '2px solid #22c55e', 
+                        borderRadius: '12px',
+                        color: '#166534',
+                        fontWeight: 'bold',
+                        fontSize: '1.1em'
+                    }}>
+                        ✅ No hay alertas críticas de vencimiento.
+                    </div>
                 )}
             </div>
 

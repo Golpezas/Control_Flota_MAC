@@ -107,11 +107,18 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta
                             
             if diff_days <= dias_critico:
                 prioridad: Alerta.Prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
-                print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days}")
-                mensaje = f"EXPIRADO" if diff_days <= 0 else f"Vence en {diff_days} días"
-            else:
                 
-                continue # ⬅️ Si no es crítica, salta a la siguiente iteración
+                # Mensaje más claro y urgente
+                if diff_days < 0:
+                    mensaje = f"VENCIDO hace {-diff_days} día{'s' if -diff_days > 1 else ''}"
+                elif diff_days == 0:
+                    mensaje = "VENCE HOY"
+                else:
+                    mensaje = f"Vence en {diff_days} día{'s' if diff_days > 1 else ''}"
+
+                print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days} → {mensaje}")
+            else:
+                continue
                 
             # Crear objeto Alerta
             alerta = Alerta(
