@@ -398,14 +398,39 @@ const VehiculoDetail: React.FC = () => {
 
             {/* ALERTAS */}
             <div style={{ marginBottom: '30px' }}>
-                <h2 style={{ color: alertas.length > 0 ? '#E63946' : '#457B9D' }}>
-                    Alertas ({alertas.length})
+                <h2 style={{ color: alertas.length > 0 ? '#E63946' : '#457B9D', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                    Alertas de Vencimiento Críticas ({alertas.length})
                 </h2>
-                {alertas.length > 0 ? alertas.map((alerta, index) => (
-                    <div key={index} style={{ padding: '10px', background: '#fee', border: '1px solid #E63946', marginBottom: '10px' }}>
-                        {alerta.mensaje}
+                {alertas.length > 0 ? (
+                    <div>
+                        {alertas.map((alerta, index) => (
+                            <div 
+                                key={index} 
+                                style={{ 
+                                    padding: '15px', 
+                                    background: '#fee', 
+                                    border: '2px solid #E63946', 
+                                    borderRadius: '12px',
+                                    marginBottom: '15px',
+                                    boxShadow: '0 4px 8px rgba(230,57,70,0.2)'
+                                }}
+                            >
+                                <div style={{ fontWeight: 'bold', color: '#E63946', fontSize: '1.1em' }}>
+                                    🚨 {alerta.mensaje}
+                                </div>
+                                <div style={{ marginTop: '8px', color: '#1e293b' }}>
+                                    <strong>Patente:</strong> <strong>{alerta.patente}</strong> 
+                                    (Móvil: {alerta.movil_nro}, {alerta.descripcion_modelo})
+                                </div>
+                                <div style={{ marginTop: '5px', fontSize: '0.9em', color: '#64748b' }}>
+                                    Vencimiento: {new Date(alerta.fecha_vencimiento).toLocaleDateString('es-AR')}
+                                </div>
+                            </div>
+                        ))}
                     </div>
-                )) : <p>No hay alertas críticas.</p>}
+                ) : (
+                    <p style={{ color: '#2d6a4f' }}>✅ No hay alertas críticas de vencimiento.</p>
+                )}
             </div>
 
             {/* TOTALES DE COSTOS */}
