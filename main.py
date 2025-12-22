@@ -8,6 +8,8 @@ from routers import flota
 from routers.archivos import router as archivos_router
 from routers.costos import router as costos_router
 
+from routers.polizas import router as polizas_router
+
 # Configura logging básico (mejor práctica para tracing)
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -42,6 +44,7 @@ app.add_middleware(
 app.include_router(archivos_router)
 app.include_router(flota.router, prefix="")
 app.include_router(costos_router)
+app.include_router(polizas_router)
 
 # =========================================================================
 # EVENTO DE INICIO: CONEXIÓN ASINCRÓNICA A MONGODB
