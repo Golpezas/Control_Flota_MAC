@@ -8,6 +8,7 @@ export interface DocumentoDigital {
     path_esperado?: string | null; // Ruta relativa del archivo si existe (LEGACY)
     nombre_archivo?: string | null; // Nombre real del archivo
     nombre_archivo_patron?: string | null; // Nombre esperado del archivo/tipo de documento
+    fecha_vencimiento?: string | null;
     existe_fisicamente?: boolean; // Indica si el archivo existe en el sistema de archivos (LEGACY)
     file_id?: string | null;      // NUEVO: ID de GridFS (MongoDB)
 }

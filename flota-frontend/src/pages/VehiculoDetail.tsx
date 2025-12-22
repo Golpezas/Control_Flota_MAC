@@ -57,6 +57,10 @@ const VehiculoDetail: React.FC = () => {
     const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
     const [comprobanteLoading, setComprobanteLoading] = useState(false);
 
+    const [vencimientos, setVencimientos] = useState<{ tipo: string, fecha_vencimiento: string }[]>([]);
+    const [editingVencimiento, setEditingVencimiento] = useState<string | null>(null);
+    const [newFecha, setNewFecha] = useState('');
+
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
@@ -189,11 +193,22 @@ const VehiculoDetail: React.FC = () => {
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            // 2. Alertas (del reporte general)
-            const report = await apiClient.get(`/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`);
+            // 2. Vencimientos: ahora usamos vehData (la respuesta fresca) en lugar de vehiculo (estado viejo)
+            const vencimientosData = (vehData.documentos_digitales || []).map(doc => ({
+                tipo: doc.tipo,
+                fecha_vencimiento: doc.fecha_vencimiento 
+                    ? new Date(doc.fecha_vencimiento).toLocaleDateString('es-AR') 
+                    : 'Sin fecha'
+            }));
+            setVencimientos(vencimientosData);
+
+            // 3. Alertas
+            const report = await apiClient.get(
+                `/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`
+            );
             setAlertas(report.data.alertas || []);
 
-            // 3. GASTOS UNIFICADOS (única fuente de verdad)
+            // 4. Gastos unificados
             const response = await apiClient.get(`/costos/unificado/${patente}`);
             console.log('DEBUG GASTOS UNIFICADOS:', response.data);
 
@@ -203,9 +218,15 @@ const VehiculoDetail: React.FC = () => {
             setTotalMantenimiento(data.total_mantenimiento || 0);
             setTotalMultas(data.total_multas || 0);
 
-        } catch (err: unknown) {
-            setError('Error al cargar los datos del vehículo.');
-            console.error('Error en cargarDatos:', err);
+        } catch (error: unknown) {
+            console.error("Error en cargarDatos:", error);
+            let mensaje = 'Error al cargar los datos del vehículo.';
+            
+            if (error instanceof Error) {
+                mensaje += ` ${error.message}`;
+            }
+            
+            setError(mensaje);
         } finally {
             setLoading(false);
         }
@@ -395,6 +416,70 @@ const VehiculoDetail: React.FC = () => {
                     </button>
                 </div>
             </Modal>
+
+            {/* VENCIMIENTOS DE DOCUMENTOS */}
+            <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>Vencimientos de Documentos</h2>
+                {vencimientos.length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ backgroundColor: '#1D3557', color: 'white' }}>
+                            <tr>
+                                <th style={{ padding: '15px', textAlign: 'left' }}>Documento</th>
+                                <th style={{ padding: '15px', textAlign: 'left' }}>Fecha Vencimiento</th>
+                                <th style={{ padding: '15px', textAlign: 'center' }}>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {vencimientos.map((ven, index) => (
+                                <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                    <td style={{ padding: '15px' }}>{ven.tipo.replace(/_/g, ' ')}</td>
+                                    <td style={{ padding: '15px' }}>{ven.fecha_vencimiento}</td>
+                                    <td style={{ padding: '15px', textAlign: 'center' }}>
+                                        <button onClick={() => setEditingVencimiento(ven.tipo)} style={{ background: '#f59e0b', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
+                                            Editar Fecha
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <p>No hay vencimientos configurados.</p>
+                )}
+
+                {editingVencimiento && (
+                    <div style={{ marginTop: '20px', padding: '20px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
+                        <h3>Editar Vencimiento de {editingVencimiento.replace(/_/g, ' ')}</h3>
+                        <input 
+                            type="date" 
+                            value={newFecha}
+                            onChange={(e) => setNewFecha(e.target.value)}
+                            style={{ padding: '10px', marginBottom: '10px' }}
+                        />
+                        <button 
+                            onClick={async () => {
+                                try {
+                                    await apiClient.put(`/documentacion/${patente}/${editingVencimiento}`, { 
+                                        fecha_vencimiento: new Date(newFecha).toISOString()
+                                    });
+                                    await cargarDatos();
+                                    setEditingVencimiento(null);
+                                    setNewFecha('');
+                                    alert("Fecha actualizada correctamente");
+                                } catch {
+                                    alert("Error al actualizar la fecha de vencimiento");
+                                }
+                            }} 
+                            style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                            Guardar
+                        </button>
+                        <button onClick={() => setEditingVencimiento(null)} style={{ marginLeft: '10px', background: '#64748b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px' }}>
+                            Cancelar
+                        </button>
+                    </div>
+                )}
+            </div>
 
             {/* ALERTAS DE VENCIMIENTO CRÍTICAS */}
             <div style={{ marginBottom: '40px' }}>

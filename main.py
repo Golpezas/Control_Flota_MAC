@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import flota
 from routers.archivos import router as archivos_router
 from routers.costos import router as costos_router
+from routers.documentacion import router as documentacion_router
 
 from routers.polizas import router as polizas_router
 
@@ -45,6 +46,7 @@ app.include_router(archivos_router)
 app.include_router(flota.router, prefix="")
 app.include_router(costos_router)
 app.include_router(polizas_router)
+app.include_router(documentacion_router)
 
 # =========================================================================
 # EVENTO DE INICIO: CONEXIÓN ASINCRÓNICA A MONGODB
