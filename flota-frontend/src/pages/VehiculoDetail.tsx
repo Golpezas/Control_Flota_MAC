@@ -459,7 +459,7 @@ const VehiculoDetail: React.FC = () => {
                         <button 
                             onClick={async () => {
                                 try {
-                                    await apiClient.put(`/documentacion/${patente}/${editingVencimiento}`, { 
+                                    await apiClient.put(`/vencimientos/${patente}/${editingVencimiento}`, { 
                                         fecha_vencimiento: new Date(newFecha).toISOString()
                                     });
                                     await cargarDatos();

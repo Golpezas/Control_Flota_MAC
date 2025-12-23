@@ -6,6 +6,12 @@ import math
 from bson.objectid import ObjectId
 import os
 import re
+import logging
+from pydantic import BaseModel, Field
+from dependencies import get_db_collection, normalize_patente
+from dateutil.parser import parse
+
+logger = logging.getLogger(__name__)
 
 # Importaciones de Pydantic (Asumidas si se usan modelos de Input)
 from pydantic import BaseModel, Field, ConfigDict # 🔑 NECESARIO PARA VEHICULOCREATEINPUT
@@ -140,6 +146,24 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta
 # =========================================================================
 # 2. ENDPOINTS: VEHÍCULOS (CRUD)
 # =========================================================================
+
+class VencimientoUpdate(BaseModel):
+    fecha_vencimiento: datetime = Field(..., description="Nueva fecha de vencimiento")
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate_fecha
+
+    @classmethod
+    def validate_fecha(cls, v):
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                return parse(v)
+            except Exception:
+                raise ValueError("Fecha inválida. Usa formato YYYY-MM-DD")
+        raise ValueError("Fecha debe ser string o datetime")
 
 # -------------------------------------------------------------------------
 # 2.1. Modelo de Input Local para Creación (POST)
@@ -278,6 +302,31 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
         "documentos_digitales": updated_doc.get("documentos_digitales", []),
     }
     return Vehiculo(**vehiculo_data)
+
+@router.put("/vencimientos/{patente}/{tipo_documento}")
+async def actualizar_vencimiento_digital(
+    patente: str,
+    tipo_documento: str,
+    data: VencimientoUpdate
+):
+    normalized_patente = normalize_patente(patente)
+    collection = get_db_collection("Vehiculos")
+
+    result = await collection.update_one(
+        {"_id": normalized_patente},
+        {
+            "$set": {
+                "documentos_digitales.$[elem].fecha_vencimiento": data.fecha_vencimiento
+            }
+        },
+        array_filters=[{"elem.tipo": tipo_documento}]
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(404, f"No se encontró el documento {tipo_documento} para la patente {patente}")
+
+    logger.info(f"Fecha de vencimiento actualizada en documentos_digitales: {patente} - {tipo_documento}")
+    return {"message": "Fecha de vencimiento actualizada correctamente"}
 
 # -------------------------------------------------------------------------
 # 2.4. GET /vehiculos (Listado con filtros y paginación) - CORREGIDO
