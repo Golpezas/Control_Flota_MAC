@@ -5,16 +5,20 @@ import type {
   ReporteCostosResponse, 
   VehiculoUpdateInput, 
   NewCostoInput, 
-  CreateCostoResponse,
-  DashboardResponse, 
+  DashboardResponse,
+  CreateCostoResponse, 
   VehiculoBackendResponse,
 } from './models/vehiculos';
 import type { Alerta } from './models/vehiculos';
+import type { ValidationErrorDetail } from './models/errors';  // ← Importa el tipo reutilizable
+//import type { CostoItem } from './models/vehiculos';  // ← CostoItem y NewCostoInput están aquí
+import { normalizePatente } from '../utils/data-utils';  // ← Utilidad existente (ruta relativa correcta en Vite)
+import type { AxiosRequestConfig } from 'axios';
+// API Base
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-// 🔑 CORRECCIÓN: Asegura que API_URL es exportada
-export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'; // ⬅️ DEBE tener 'export'
-
-const apiClient = axios.create({
+// EXPORTAMOS apiClient → ¡Esto resuelve el error principal!
+export const apiClient = axios.create({
     baseURL: API_BASE,
     headers: {
         'Content-Type': 'application/json',
@@ -43,11 +47,8 @@ function mapVehiculoResponse(data: VehiculoBackendResponse): Vehiculo {
         tipo_combustible: data.TIPO_COMBUSTIBLE || data.tipo_combustible || null, 
         
         documentos_digitales: data.documentos_digitales || [],
-    } as Vehiculo;
-    
-    // Log for depuration: Check if data is lost here
-    //console.log(`FRONTEND MAPEO VEHICULO: Patente=${mappedVehiculo._id}, Movil=${mappedVehiculo.nro_movil}, Año=${mappedVehiculo.anio}`);
-    
+    } as Vehiculo;  // Type assertion si es necesario
+
     return mappedVehiculo;
 }
 
@@ -102,43 +103,6 @@ export async function createVehiculo(data: VehiculoInput): Promise<Vehiculo> {
         throw new Error(`Fallo en la creación del vehículo: ${errorMessage}`);
     }
 }
-
-/**
- * Elimina un costo manual por su ID (solo los creados manualmente).
- * Usa el endpoint correcto: DELETE /costos/manual/{id}?origen=...
- */
-/*export async function deleteCostoItem(id: string, origen: 'Finanzas' | 'Mantenimiento'): Promise<void> {
-    try {
-        // RUTA CORRECTA
-        const url = `/costos/manual/${id}`;
-
-        await apiClient.delete(url, {
-            params: {
-                origen: origen  // ← obligatorio como query param
-            }
-        });
-
-        console.log(`Costo eliminado correctamente: ${id} (${origen})`);
-
-    } catch (error: unknown) {
-        let errorMessage = 'Error al eliminar el costo.';
-        
-        if (axios.isAxiosError(error) && error.response) {
-            const errorData = error.response.data as FastAPIErrorResponse;
-            const detail = errorData.detail || error.message;
-            
-            errorMessage = `No se pudo eliminar (Status: ${error.response.status}): ${detail}`;
-            
-            // Esto es clave para que veas por qué no te deja borrar los del ETL
-            if (error.response.status === 404) {
-                errorMessage = "Solo se pueden eliminar costos creados manualmente.";
-            }
-        }
-        
-        console.error("Error al eliminar costo:", error);
-        throw new Error(errorMessage);
-    }
-}*/
 
 export async function borrarGastoUniversal(
     id: string, 
@@ -348,31 +312,93 @@ export async function fetchDashboardData(): Promise<DashboardResponse> {
     }
 }
 
-// ---------------------------------------------------------------------------------
-
 /**
- * 💸 Registra un nuevo costo o gasto de forma manual. (POST /costos/crear)
- */
-export async function createCostoItem(newCosto: NewCostoInput): Promise<CreateCostoResponse> {
+ * Registra un nuevo costo manual en el backend.
+ * 
+ * Características modernas implementadas:
+ * - Normalización estricta de patente (consistencia con backend).
+ * - Validación y sanitización de importe (evita NaN, negativos o cero).
+ * - Soporte dual: JSON (actual) o multipart/form-data (futuro con comprobante GridFS).
+ * - Manejo de errores tipado y estructurado (axios + type guards).
+ * - Logging seguro solo en desarrollo.
+ * 
+ * @param newCosto - Datos del costo (normalizados internamente).
+ * @param file - Comprobante digital opcional (PDF, JPG, PNG ≤ 50MB). Si se proporciona, usa FormData.
+ * @returns CostoItem creado (alineado con modelos existentes).
+ * @throws Error con mensaje amigable para UI.
+ **/
+export async function createCostoItem(
+    newCosto: NewCostoInput,
+    file?: File | null
+): Promise<CreateCostoResponse> {
     try {
-        const dataToSend = {
-            ...newCosto,
-            // Aseguramos que 'importe' sea un número válido y positivo
-            importe: Math.max(0.01, newCosto.importe),
-        };
+        const normalizedPatente = normalizePatente(newCosto.patente);
+        if (!normalizedPatente) {
+            throw new Error('Patente inválida: debe contener caracteres alfanuméricos.');
+        }
 
-        // Utilizamos CostoItem como tipo de respuesta esperada.
-        const response = await apiClient.post<CreateCostoResponse>('/costos/manual', dataToSend);
+        const importeValidado = Math.max(0.01, Number(newCosto.importe || 0));
+        if (isNaN(importeValidado)) {
+            throw new Error('Importe inválido: debe ser un número positivo.');
+        }
 
+        let body: FormData | NewCostoInput;
+        const config: AxiosRequestConfig = {};
+        const url = file ? '/costos/manual' : '/costos/manual/json';  // ← Ruta dinámica clave
+
+        if (file) {
+            // MODO MULTIPART
+            const formData = new FormData();
+            formData.append('patente', normalizedPatente);
+            formData.append('tipo_costo', newCosto.tipo_costo);
+            formData.append('fecha', newCosto.fecha);
+            formData.append('descripcion', newCosto.descripcion);
+            formData.append('importe', importeValidado.toString());
+            formData.append('origen', newCosto.origen);
+            formData.append('comprobante', file);
+            body = formData;
+            config.headers = { 'Content-Type': undefined };  // ← Asegura boundary
+        } else {
+            // MODO JSON
+            body = {
+                patente: normalizedPatente,
+                tipo_costo: newCosto.tipo_costo,
+                fecha: newCosto.fecha,
+                descripcion: newCosto.descripcion,
+                importe: importeValidado,
+                origen: newCosto.origen,
+            };
+            config.headers = { 'Content-Type': 'application/json' };
+        }
+
+        const response = await apiClient.post<CreateCostoResponse>(url, body, config);
         return response.data;
     } catch (error: unknown) {
+        // === 4. Manejo de errores estructurado y seguro ===
         let errorMessage = 'Fallo al registrar el costo manual.';
-        if (axios.isAxiosError(error) && error.response) {
-            const errorData = error.response.data as FastAPIErrorResponse;
-            const detail = errorData.detail || (error.message as string);
 
-            errorMessage = `Fallo al crear costo (Status: ${error.response.status}): ${detail}`;
+        if (axios.isAxiosError(error)) {
+            if (error.response) {
+                const detail = (error.response.data as { detail?: string | ValidationErrorDetail[] })?.detail;
+                if (Array.isArray(detail)) {
+                    // Errores de validación Pydantic → extraer mensajes legibles
+                    errorMessage = detail.map(d => `${d.loc.join(' → ')}: ${d.msg}`).join('; ');
+                } else {
+                    errorMessage = `Error del servidor (${error.response.status}): ${detail || error.message}`;
+                }
+            } else if (error.request) {
+                errorMessage = 'Error de red: el servidor no responde.';
+            } else {
+                errorMessage = `Error de configuración: ${error.message}`;
+            }
+        } else if (error instanceof Error) {
+            errorMessage = error.message;
         }
+
+        if (import.meta.env.DEV) {
+            console.error('[createCostoItem] Error completo:', error);
+        }
+
         throw new Error(errorMessage);
     }
 }

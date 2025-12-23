@@ -8,6 +8,7 @@ export interface DocumentoDigital {
     path_esperado?: string | null; // Ruta relativa del archivo si existe (LEGACY)
     nombre_archivo?: string | null; // Nombre real del archivo
     nombre_archivo_patron?: string | null; // Nombre esperado del archivo/tipo de documento
+    fecha_vencimiento?: string | null;
     existe_fisicamente?: boolean; // Indica si el archivo existe en el sistema de archivos (LEGACY)
     file_id?: string | null;      // NUEVO: ID de GridFS (MongoDB)
 }
@@ -81,47 +82,46 @@ export interface CostoSummary {
     Finanzas: number;
 }
 /**
- * Define la estructura de un ítem de costo/gasto individual.
+ * Define la estructura de un ítem de costo/gasto individual (tal como se almacena y lista).
  */
 export interface CostoItem {
-    // 🔑 AJUSTE CRÍTICO: Usamos _id para coincidir con la clave JSON del backend
     _id: string; 
-    
-    tipo_costo: string; // Ej: 'Mantenimiento', 'Infracción', 'Gasto Seguro'
-    fecha: string; // Formato YYYY-MM-DD
+    tipo_costo: string;
+    fecha: string;
     descripcion: string;
     importe: number;
-    // Origen crucial para saber de dónde eliminar en el backend
     origen: 'Finanzas' | 'Mantenimiento';
-    // Opcional: Si el backend no envía esto, se puede quitar
-    metadata_adicional?: Record<string, unknown>; 
+    metadata_adicional?: Record<string, unknown>;
+    comprobante_file_id?: string | null;  // ← Opcional: ID del archivo en GridFS si existe
 }
 
 /**
- * Define la respuesta esperada al crear un nuevo costo manual.
- * Es un alias para el ítem de costo completo con su ID.
- * 🔑 SOLUCIÓN AL ERROR TS2724.
+ * Define la estructura de respuesta específica al crear un costo manual.
+ * Refleja exactamente el response_model de FastAPI (CreateCostoResponse).
+ * 
+ * Mejores prácticas aplicadas:
+ * - Separación clara: No reutilizar CostoItem para respuestas de creación.
+ * - Tipado opcional para file_id (null si no se subió comprobante).
+ * - Documentación inline para mantenibilidad.
  */
-export type CreateCostoResponse = CostoItem;
-
-// =================================================================
-// 🔑 INTERFAZ AÑADIDA: Para CREACIÓN (Input)
-// =================================================================
+export interface CreateCostoResponse {
+    message: string;
+    costo_id: string;
+    file_id?: string | null;  // Presente solo si se subió comprobante
+}
 
 /**
- * Define la estructura de datos para crear un nuevo costo manual.
- * Se mapea al modelo CostoManualInput de FastAPI.
+ * Input para crear un nuevo costo manual.
+ * Validado y normalizado antes de enviar al backend.
  */
-export interface NewCostoInput { // 🔑 Asegúrate de que lleva 'export'
+export interface NewCostoInput {
     patente: string;
-    tipo_costo: string; 
-    fecha: string; // Envía como string ISO o YYYY-MM-DD
+    tipo_costo: string;
+    fecha: string;
     descripcion: string;
     importe: number;
-    origen: 'Finanzas' | 'Mantenimiento'; 
+    origen: 'Finanzas' | 'Mantenimiento';
 }
-
-// ⚠️ INTERFAZ ELIMINADA: CreateCostoResponse (La API devuelve directamente CostoItem)
 
 /**
  * Define la estructura para una alerta de vencimiento.

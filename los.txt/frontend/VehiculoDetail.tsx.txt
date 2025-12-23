@@ -57,13 +57,17 @@ const VehiculoDetail: React.FC = () => {
     const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
     const [comprobanteLoading, setComprobanteLoading] = useState(false);
 
+    const [vencimientos, setVencimientos] = useState<{ tipo: string, fecha_vencimiento: string }[]>([]);
+    const [editingVencimiento, setEditingVencimiento] = useState<string | null>(null);
+    const [newFecha, setNewFecha] = useState('');
+
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
     // FUNCIONES PARA DOCUMENTOS DIGITALES (tu código original, perfecto)
     // =========================================
 
-    const abrirComprobante = async (fileId: string, filename: string = "comprobante.pdf") => {
+    const abrirComprobante = async (fileId: string) => {
         setComprobantePreviewUrl(null);
         setComprobanteLoading(true);
         setModalComprobanteOpen(true);
@@ -72,17 +76,19 @@ const VehiculoDetail: React.FC = () => {
             const timestamp = Date.now();
             const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
 
-            if (filename.toLowerCase().includes(".pdf")) {
-                setComprobantePreviewUrl(url);
-            } else {
-                const response = await fetch(url, { cache: "no-store" });
-                if (!response.ok) throw new Error("No se pudo cargar");
-                const blob = await response.blob();
-                setComprobantePreviewUrl(URL.createObjectURL(blob));
+            // Siempre usamos blob (como en imágenes de documentos digitales)
+            // Esto funciona perfecto para PNG, JPG y PDF
+            const response = await fetch(url, { cache: "no-store" });
+            if (!response.ok) {
+                throw new Error(`Error al cargar (HTTP ${response.status})`);
             }
+            const blob = await response.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            setComprobantePreviewUrl(blobUrl);
+
         } catch (err) {
             console.error("Error cargando comprobante:", err);
-            alert("Error al cargar el comprobante. Intentá en 10 segundos.");
+            alert("Error al cargar el comprobante. Intentá refrescar la página.");
         } finally {
             setComprobanteLoading(false);
         }
@@ -187,11 +193,22 @@ const VehiculoDetail: React.FC = () => {
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            // 2. Alertas (del reporte general)
-            const report = await apiClient.get(`/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`);
+            // 2. Vencimientos: ahora usamos vehData (la respuesta fresca) en lugar de vehiculo (estado viejo)
+            const vencimientosData = (vehData.documentos_digitales || []).map(doc => ({
+                tipo: doc.tipo,
+                fecha_vencimiento: doc.fecha_vencimiento 
+                    ? new Date(doc.fecha_vencimiento).toLocaleDateString('es-AR') 
+                    : 'Sin fecha'
+            }));
+            setVencimientos(vencimientosData);
+
+            // 3. Alertas
+            const report = await apiClient.get(
+                `/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`
+            );
             setAlertas(report.data.alertas || []);
 
-            // 3. GASTOS UNIFICADOS (única fuente de verdad)
+            // 4. Gastos unificados
             const response = await apiClient.get(`/costos/unificado/${patente}`);
             console.log('DEBUG GASTOS UNIFICADOS:', response.data);
 
@@ -201,9 +218,15 @@ const VehiculoDetail: React.FC = () => {
             setTotalMantenimiento(data.total_mantenimiento || 0);
             setTotalMultas(data.total_multas || 0);
 
-        } catch (err: unknown) {
-            setError('Error al cargar los datos del vehículo.');
-            console.error('Error en cargarDatos:', err);
+        } catch (error: unknown) {
+            console.error("Error en cargarDatos:", error);
+            let mensaje = 'Error al cargar los datos del vehículo.';
+            
+            if (error instanceof Error) {
+                mensaje += ` ${error.message}`;
+            }
+            
+            setError(mensaje);
         } finally {
             setLoading(false);
         }
@@ -394,16 +417,118 @@ const VehiculoDetail: React.FC = () => {
                 </div>
             </Modal>
 
-            {/* ALERTAS */}
-            <div style={{ marginBottom: '30px' }}>
-                <h2 style={{ color: alertas.length > 0 ? '#E63946' : '#457B9D' }}>
-                    Alertas ({alertas.length})
-                </h2>
-                {alertas.length > 0 ? alertas.map((alerta, index) => (
-                    <div key={index} style={{ padding: '10px', background: '#fee', border: '1px solid #E63946', marginBottom: '10px' }}>
-                        {alerta.mensaje}
+            {/* VENCIMIENTOS DE DOCUMENTOS */}
+            <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>Vencimientos de Documentos</h2>
+                {vencimientos.length > 0 ? (
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ backgroundColor: '#1D3557', color: 'white' }}>
+                            <tr>
+                                <th style={{ padding: '15px', textAlign: 'left' }}>Documento</th>
+                                <th style={{ padding: '15px', textAlign: 'left' }}>Fecha Vencimiento</th>
+                                <th style={{ padding: '15px', textAlign: 'center' }}>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {vencimientos.map((ven, index) => (
+                                <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                                    <td style={{ padding: '15px' }}>{ven.tipo.replace(/_/g, ' ')}</td>
+                                    <td style={{ padding: '15px' }}>{ven.fecha_vencimiento}</td>
+                                    <td style={{ padding: '15px', textAlign: 'center' }}>
+                                        <button onClick={() => setEditingVencimiento(ven.tipo)} style={{ background: '#f59e0b', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
+                                            Editar Fecha
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                ) : (
+                    <p>No hay vencimientos configurados.</p>
+                )}
+
+                {editingVencimiento && (
+                    <div style={{ marginTop: '20px', padding: '20px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
+                        <h3>Editar Vencimiento de {editingVencimiento.replace(/_/g, ' ')}</h3>
+                        <input 
+                            type="date" 
+                            value={newFecha}
+                            onChange={(e) => setNewFecha(e.target.value)}
+                            style={{ padding: '10px', marginBottom: '10px' }}
+                        />
+                        <button 
+                            onClick={async () => {
+                                try {
+                                    await apiClient.put(`/vencimientos/${patente}/${editingVencimiento}`, { 
+                                        fecha_vencimiento: new Date(newFecha).toISOString()
+                                    });
+                                    await cargarDatos();
+                                    setEditingVencimiento(null);
+                                    setNewFecha('');
+                                    alert("Fecha actualizada correctamente");
+                                } catch {
+                                    alert("Error al actualizar la fecha de vencimiento");
+                                }
+                            }} 
+                            style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                        >
+                            Guardar
+                        </button>
+                        <button onClick={() => setEditingVencimiento(null)} style={{ marginLeft: '10px', background: '#64748b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px' }}>
+                            Cancelar
+                        </button>
                     </div>
-                )) : <p>No hay alertas críticas.</p>}
+                )}
+            </div>
+
+            {/* ALERTAS DE VENCIMIENTO CRÍTICAS */}
+            <div style={{ marginBottom: '40px' }}>
+                <h2 style={{ 
+                    color: alertas.length > 0 ? '#E63946' : '#2d6a4f', 
+                    fontSize: '1.6rem', 
+                    fontWeight: 'bold',
+                    marginBottom: '20px'
+                }}>
+                    Alertas de Vencimiento Críticas ({alertas.length})
+                </h2>
+
+                {alertas.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {alertas.map((alerta, index) => (
+                            <div 
+                                key={index}
+                                style={{
+                                    padding: '18px',
+                                    backgroundColor: '#fff5f5',
+                                    border: `3px solid ${alerta.mensaje.includes('VENCIDO') || alerta.mensaje.includes('HOY') ? '#E63946' : '#f59e0b'}`,
+                                    borderRadius: '12px',
+                                    boxShadow: '0 6px 12px rgba(230,57,70,0.15)'
+                                }}
+                            >
+                                <div style={{ fontSize: '1.3em', fontWeight: 'bold', color: '#E63946', marginBottom: '10px' }}>
+                                    🚨 {alerta.mensaje}
+                                </div>
+                                <div style={{ color: '#1e293b', lineHeight: '1.6' }}>
+                                    <strong>Patente:</strong> <strong>{alerta.patente}</strong><br />
+                                    <strong>Móvil:</strong> {alerta.movil_nro || 'N/A'} - {alerta.descripcion_modelo || 'Sin modelo'}<br />
+                                    <strong>Vencimiento:</strong> {new Date(alerta.fecha_vencimiento).toLocaleDateString('es-AR')}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ 
+                        padding: '20px', 
+                        backgroundColor: '#f0fdf4', 
+                        border: '2px solid #22c55e', 
+                        borderRadius: '12px',
+                        color: '#166534',
+                        fontWeight: 'bold',
+                        fontSize: '1.1em'
+                    }}>
+                        ✅ No hay alertas críticas de vencimiento.
+                    </div>
+                )}
             </div>
 
             {/* TOTALES DE COSTOS */}
@@ -451,7 +576,7 @@ const VehiculoDetail: React.FC = () => {
                                         {gasto.descripcion}
                                         {gasto.comprobante_file_id && (
                                             <button 
-                                                onClick={() => abrirComprobante(gasto.comprobante_file_id!, "comprobante.pdf")}
+                                                onClick={() => abrirComprobante(gasto.comprobante_file_id!)}
                                                 style={{ marginLeft: '10px', fontSize: '0.8em', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
                                             >
                                                 👁️ Ver comprobante
@@ -505,8 +630,8 @@ const VehiculoDetail: React.FC = () => {
                         marginRight: '-50%',
                         transform: 'translate(-50%, -50%)',
                         width: '90%',
-                        maxWidth: '900px',
-                        height: '80%',
+                        maxWidth: '1000px',
+                        height: '90%',
                         padding: '20px',
                         borderRadius: '16px',
                         boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
@@ -521,17 +646,25 @@ const VehiculoDetail: React.FC = () => {
                 {comprobanteLoading ? (
                     <div style={{ textAlign: 'center', padding: '100px 0' }}>
                         <p>Cargando comprobante...</p>
+                        <p style={{ fontSize: '0.9em', color: '#666' }}>Puede tardar unos segundos</p>
                     </div>
                 ) : comprobantePreviewUrl ? (
-                    <iframe
-                        src={comprobantePreviewUrl || ''}
-                        style={{ width: '100%', height: '100%', border: 'none' }}
-                        title="Comprobante del Costo"
-                        allowFullScreen
-                    />
+                    <div style={{ width: '100%', height: 'calc(100% - 80px)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
+                        <img 
+                            src={comprobantePreviewUrl}
+                            alt="Comprobante del costo"
+                            style={{
+                                maxWidth: '100%',
+                                maxHeight: '100%',
+                                objectFit: 'contain',
+                                borderRadius: '8px',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                            }}
+                        />
+                    </div>
                 ) : (
-                    <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                        <p style={{ color: 'red' }}>No se pudo cargar el comprobante</p>
+                    <div style={{ textAlign: 'center', padding: '100px 0', color: '#e74c3c' }}>
+                        <p>No se pudo cargar el comprobante</p>
                     </div>
                 )}
 
@@ -542,6 +675,7 @@ const VehiculoDetail: React.FC = () => {
                             if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
                                 URL.revokeObjectURL(comprobantePreviewUrl);
                             }
+                            setComprobantePreviewUrl(null);
                         }}
                         style={{ padding: '10px 20px', background: '#64748b', color: 'white', borderRadius: '8px' }}
                     >

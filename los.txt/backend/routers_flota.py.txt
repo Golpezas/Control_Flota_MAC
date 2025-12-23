@@ -6,6 +6,12 @@ import math
 from bson.objectid import ObjectId
 import os
 import re
+import logging
+from pydantic import BaseModel, Field
+from dependencies import get_db_collection, normalize_patente
+from dateutil.parser import parse
+
+logger = logging.getLogger(__name__)
 
 # Importaciones de Pydantic (Asumidas si se usan modelos de Input)
 from pydantic import BaseModel, Field, ConfigDict # 🔑 NECESARIO PARA VEHICULOCREATEINPUT
@@ -107,11 +113,18 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta
                             
             if diff_days <= dias_critico:
                 prioridad: Alerta.Prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
-                print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days}")
-                mensaje = f"EXPIRADO" if diff_days <= 0 else f"Vence en {diff_days} días"
-            else:
                 
-                continue # ⬅️ Si no es crítica, salta a la siguiente iteración
+                # Mensaje más claro y urgente
+                if diff_days < 0:
+                    mensaje = f"VENCIDO hace {-diff_days} día{'s' if -diff_days > 1 else ''}"
+                elif diff_days == 0:
+                    mensaje = "VENCE HOY"
+                else:
+                    mensaje = f"Vence en {diff_days} día{'s' if diff_days > 1 else ''}"
+
+                print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days} → {mensaje}")
+            else:
+                continue
                 
             # Crear objeto Alerta
             alerta = Alerta(
@@ -133,6 +146,24 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta
 # =========================================================================
 # 2. ENDPOINTS: VEHÍCULOS (CRUD)
 # =========================================================================
+
+class VencimientoUpdate(BaseModel):
+    fecha_vencimiento: datetime = Field(..., description="Nueva fecha de vencimiento")
+
+    @classmethod
+    def __get_validators__(cls):
+        yield cls.validate_fecha
+
+    @classmethod
+    def validate_fecha(cls, v):
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            try:
+                return parse(v)
+            except Exception:
+                raise ValueError("Fecha inválida. Usa formato YYYY-MM-DD")
+        raise ValueError("Fecha debe ser string o datetime")
 
 # -------------------------------------------------------------------------
 # 2.1. Modelo de Input Local para Creación (POST)
@@ -271,6 +302,31 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
         "documentos_digitales": updated_doc.get("documentos_digitales", []),
     }
     return Vehiculo(**vehiculo_data)
+
+@router.put("/vencimientos/{patente}/{tipo_documento}")
+async def actualizar_vencimiento_digital(
+    patente: str,
+    tipo_documento: str,
+    data: VencimientoUpdate
+):
+    normalized_patente = normalize_patente(patente)
+    collection = get_db_collection("Vehiculos")
+
+    result = await collection.update_one(
+        {"_id": normalized_patente},
+        {
+            "$set": {
+                "documentos_digitales.$[elem].fecha_vencimiento": data.fecha_vencimiento
+            }
+        },
+        array_filters=[{"elem.tipo": tipo_documento}]
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(404, f"No se encontró el documento {tipo_documento} para la patente {patente}")
+
+    logger.info(f"Fecha de vencimiento actualizada en documentos_digitales: {patente} - {tipo_documento}")
+    return {"message": "Fecha de vencimiento actualizada correctamente"}
 
 # -------------------------------------------------------------------------
 # 2.4. GET /vehiculos (Listado con filtros y paginación) - CORREGIDO
@@ -461,57 +517,54 @@ async def get_reporte_vehiculo(
         origen="Mantenimiento"
     ))
 
-    # === 5. FINANZAS (infracciones + gastos manuales) ===
+    # === 5. FINANZAS (infracciones + gastos manuales) - VERSIÓN CORREGIDA ===
     db_finanzas = get_db_collection("Finanzas")
+    
+    # Traemos TODOS los registros de la patente (no filtramos por fecha en MongoDB)
     cursor_finanzas = db_finanzas.find({"patente": patente_norm})
-    # 🔑 CORRECCIÓN 4: Reemplazar iteración síncrona por to_list() asíncrono
-    docs_finanzas = await cursor_finanzas.to_list(length=None) 
+    docs_finanzas = await cursor_finanzas.to_list(length=None)
 
     for doc in docs_finanzas:
         try:
-            # --- Parseo seguro de fecha ---
-            fecha_raw = doc.get("dia") or doc.get("fecha")
-            if not fecha_raw or fecha_raw in ["N/A", "", None]:
-                continue
+            # === PARSEO DE FECHA USANDO LA MISMA FUNCIÓN QUE EN MANTENIMIENTO ===
+            fecha_iso = parse_fecha_segura(doc)
+            try:
+                fecha_dt = datetime.strptime(fecha_iso, "%Y-%m-%d")
+            except:
+                continue  # Si no se puede parsear, saltamos
 
-            if isinstance(fecha_raw, datetime):
-                fecha_dt = fecha_raw
-            else:
-                fecha_str = str(fecha_raw).strip()
-                try:
-                    # Intento de parseo (D/M/YYYY)
-                    d, m, a = re.split(r'[\/\-\.]', fecha_str)
-                    fecha_dt = datetime(int(a), int(m), int(d))
-                except:
-                    # Si falla, salta este documento
-                    continue
-
-            # --- Filtrado de fecha en Python (manteniendo la lógica original) ---
+            # === FILTRO DE RANGO DE FECHAS ===
             if not (start_dt <= fecha_dt <= end_dt):
                 continue
 
-            # --- Monto ---
+            # === MONTO ===
             monto = float(doc.get("MONTO") or doc.get("monto") or 0)
 
-            # --- Tipo usando la constante centralizada ---
+            # === DETERMINAR SI ES MULTA ===
+            motivo = str(doc.get("motivo") or doc.get("MOTIVO") or "").upper()
             tipo_registro = doc.get("tipo_registro", "").upper()
-            if tipo_registro == "INFRACCION":
+
+            if any(palabra in motivo for palabra in ["MULTA", "INFRACCION", "EXCESO", "VELOCIDAD", "VIA PROHIBIDA"]):
                 total_infracciones += monto
-                tipo_final = "Infracción" 
+                tipo_final = "Multa"
+            elif tipo_registro == "INFRACCION":
+                total_infracciones += monto
+                tipo_final = "Multa"
             else:
                 tipo_final = doc.get("tipo_costo", "Otros")
 
+            # === AGREGAR A LA LISTA ===
             costos_list.append(CostoItem(
                 _id=str(doc["_id"]),
-                tipo=TIPO_POR_ORIGEN.get(tipo_final, tipo_final),
-                fecha=fecha_dt.strftime("%Y-%m-%d"),
-                descripcion=(doc.get("motivo") or doc.get("ACTA") or "Sin descripción")[:100],
+                tipo=tipo_final,
+                fecha=fecha_iso,
+                descripcion=(doc.get("motivo") or doc.get("ACTA") or "Gasto financiero")[:100],
                 importe=monto,
                 origen="Finanzas"
             ))
 
         except Exception as e:
-            print(f"Error procesando Finanzas {doc.get('_id')}: {e}")
+            print(f"Error procesando registro Finanzas {doc.get('_id')}: {e}")
             continue
 
     # === 6. Ordenar por fecha descendente ===
@@ -606,7 +659,7 @@ async def get_dashboard_data():
 # 4. ENDPOINTS: GESTIÓN DE COSTOS MANUALES (CRUD) - CORREGIDO
 # =========================================================================
 
-@router.post("/costos/manual", response_model=CostoItem, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo costo manual.")
+"""@router.post("/costos/manual", response_model=CostoItem, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo costo manual.")
 async def create_costo_manual(costo: CostoManualInput):
     collection_name = costo.origen 
     collection = get_db_collection(collection_name)
@@ -654,7 +707,7 @@ async def create_costo_manual(costo: CostoManualInput):
         importe=costo.importe,
         origen=collection_name,
         metadata_adicional=None 
-    )
+    )"""
 
 @router.delete("/costos/manual/{id}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina cualquier costo por ID (modo limpieza total)")
 async def delete_costo_manual(

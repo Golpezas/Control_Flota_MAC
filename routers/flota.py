@@ -60,61 +60,52 @@ MEDIA_ROOT = "C:/Users/Antonio/Documents/Projects/Control_Flota"
 # 🔑 CORRECCIÓN 1: La función DEBE ser asíncrona (async)
 async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
     """
-    Consulta la colección Documentacion y genera alertas para documentos
+    Consulta la colección Vehiculos → documentos_digitales y genera alertas para documentos
     cuyo vencimiento está dentro de 'dias_tolerancia' o ya expiró.
     """
-    db_documentacion = get_db_collection("Documentacion")
     db_vehiculos = get_db_collection("Vehiculos")
     alertas: List[Alerta] = []
 
-    # 1. Obtener la metadata de todos los vehículos (para modelo, nro_movil)
-    # 🔑 CORRECCIÓN 2: Usar await + .to_list() para convertir el cursor a lista
+    # 1. Obtener todos los vehículos
     cursor_vehiculos = db_vehiculos.find({}, 
-        {'_id': 1, 'descripcion_modelo': 1, 'nro_movil': 1})
+        {'_id': 1, 'descripcion_modelo': 1, 'nro_movil': 1, 'documentos_digitales': 1})
     
     vehiculos_list = await cursor_vehiculos.to_list(length=None)
 
-    vehiculos_metadata = {
-        doc['_id']: doc for doc in vehiculos_list
-    }
-    
-    # 2. Iterar por cada tipo de documento de vencimiento configurado
-    for doc_type, config in VENCIMIENTO_MAP.items():
-    
-        # 3. Consulta MongoDB para documentos de este tipo con fecha de vencimiento NO nula
-        # 🔑 CORRECCIÓN 3: Almacenar el cursor
-        cursor_documentos = db_documentacion.find({
-            "tipo_documento": doc_type,
-            "fecha_vencimiento": {"$ne": None} 
-        })
-        
-        # 🔑 CORRECCIÓN 4: Convertir el cursor a lista de forma asíncrona
-        documentos_list = await cursor_documentos.to_list(length=None) 
+    # 2. Iterar por cada vehículo
+    for veh in vehiculos_list:
+        patente = veh.get('_id')
+        movil_nro = veh.get('nro_movil')
+        descripcion_modelo = veh.get('descripcion_modelo')
 
-        # 4. Procesar documentos y generar alertas
-        for doc in documentos_list: # ⬅️ Usamos la lista de Python (ya esperada)
-            patente = doc.get("patente")
-            vehiculo_meta = vehiculos_metadata.get(patente)
-            doc_type = doc.get("tipo_documento", "DOCUMENTO_DESCONOCIDO") # Usar doc_type
+        documentos_digitales = veh.get('documentos_digitales', [])
 
-            # Convertir la fecha de BSON a Python datetime
-            fecha_vencimiento_mongo = doc.get("fecha_vencimiento") # Fecha original de MongoDB
-            fecha_vencimiento = safe_mongo_date_to_datetime(fecha_vencimiento_mongo)
+        # 3. Procesar cada documento digital del vehículo
+        for doc in documentos_digitales:
+            tipo = doc.get("tipo")
+            fecha_vencimiento_str = doc.get("fecha_vencimiento")
 
-            if not fecha_vencimiento or patente is None:
-                
-                continue
+            if not fecha_vencimiento_str:
+                continue  # No tiene fecha → no alerta
 
-            # Calcular la diferencia en días
-            diff_days = (fecha_vencimiento - datetime.now()).days
-            
-            # 🔑 LOG DEPURACIÓN: Mostrar la diferencia calculada y el umbral
+            try:
+                fecha_vencimiento = parse(fecha_vencimiento_str)
+            except Exception:
+                continue  # Fecha inválida → skip
+
+            # Calcular diferencia en días
+            today = datetime.now().date()
+            fecha_ven_date = fecha_vencimiento.date()
+            diff_days = (fecha_ven_date - today).days
+
+            # Umbral crítico (usa VENCIMIENTO_MAP si existe, o default)
+            config = next((cfg for key, cfg in VENCIMIENTO_MAP.items() if key in tipo), {})
             dias_critico = config.get("dias_critico", dias_tolerancia)
-                            
+
             if diff_days <= dias_critico:
                 prioridad: Alerta.Prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
                 
-                # Mensaje más claro y urgente
+                # Mensaje claro y urgente
                 if diff_days < 0:
                     mensaje = f"VENCIDO hace {-diff_days} día{'s' if -diff_days > 1 else ''}"
                 elif diff_days == 0:
@@ -123,24 +114,21 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta
                     mensaje = f"Vence en {diff_days} día{'s' if diff_days > 1 else ''}"
 
                 print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days} → {mensaje}")
-            else:
-                continue
-                
-            # Crear objeto Alerta
-            alerta = Alerta(
-                patente=patente,
-                tipo_documento=doc_type,
-                nombre_legible=config['nombre_legible'],
-                fecha_vencimiento=fecha_vencimiento.strftime('%Y-%m-%d'),
-                dias_restantes=diff_days,
-                mensaje=mensaje,
-                prioridad=prioridad,
-                movil_nro=vehiculo_meta.get('nro_movil') if vehiculo_meta else None,
-                descripcion_modelo=vehiculo_meta.get('descripcion_modelo') if vehiculo_meta else None
-            )
-            alertas.append(alerta)
-    
-    # 5. Ordenar: Críticas primero, luego por menos días restantes.
+
+                alerta = Alerta(
+                    patente=patente,
+                    tipo_documento=tipo,
+                    nombre_legible=config.get('nombre_legible', tipo.replace('_', ' ')),
+                    fecha_vencimiento=fecha_vencimiento.strftime('%Y-%m-%d'),
+                    dias_restantes=diff_days,
+                    mensaje=mensaje,
+                    prioridad=prioridad,
+                    movil_nro=movil_nro,
+                    descripcion_modelo=descripcion_modelo
+                )
+                alertas.append(alerta)
+
+    # 5. Ordenar: Críticas primero, luego por menos días restantes
     return sorted(alertas, key=lambda a: (a.prioridad != 'CRÍTICA', a.dias_restantes))
 
 # =========================================================================
