@@ -16,17 +16,19 @@ import {
 import CostoForm from '../components/CostoForm';
 import axios from 'axios';
 import { normalizePatente } from '../utils/data-utils';
+import type { GastoUnificado } from '../api/models/gastos';
 
 // Interface unificada para gastos (compatible con backend actualizado)
-interface GastoUnificado {
+/*interface GastoUnificado {
     id: string;
-    fecha: string;
+    patente?: string;  // ← Opcional
     tipo: string;
+    fecha: string;
     descripcion: string;
     importe: number;
     origen: 'mantenimiento' | 'finanzas';
     comprobante_file_id?: string;
-}
+}*/
 
 // Componente auxiliar
 const DetailItem: React.FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
@@ -61,6 +63,8 @@ const VehiculoDetail: React.FC = () => {
     const [editingVencimiento, setEditingVencimiento] = useState<string | null>(null);
     const [newFecha, setNewFecha] = useState('');
 
+    const [editingGasto, setEditingGasto] = useState<GastoUnificado | null>(null);
+    
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
@@ -180,8 +184,19 @@ const VehiculoDetail: React.FC = () => {
     };
 
     // =========================================
+    // FUNCIONES PARA EDITAR GASTOS
+    // =========================================
+    
+    const editarGasto = (gasto: GastoUnificado) => {
+        setEditingGasto(gasto);
+        // Opcional: scroll al formulario
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    };
+
+    // =========================================
     // CARGA DE DATOS
     // =========================================
+
     const cargarDatos = useCallback(async () => {
         if (!patente) return;
 
@@ -262,7 +277,7 @@ const VehiculoDetail: React.FC = () => {
             {/* INFORMACIÓN BÁSICA */}
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
-                <DetailItem label="Patente Original" value={vehiculo.patente_original} />
+                {/*<DetailItem label="Patente Original" value={vehiculo.patente_original} />*/}
                 <DetailItem label="Nº Móvil" value={vehiculo.nro_movil} />
                 <DetailItem label="Modelo" value={vehiculo.descripcion_modelo} />
                 <DetailItem label="Año" value={vehiculo.anio} />
@@ -587,8 +602,24 @@ const VehiculoDetail: React.FC = () => {
                                         ${gasto.importe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                     </td>
                                     <td style={{ padding: '12px', textAlign: 'center' }}>
-                                        <button onClick={() => handleBorrarGasto(gasto.id, gasto.origen)}
-                                            style={{ background: '#dc3545', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer' }}>
+                                        <button 
+                                            onClick={() => editarGasto(gasto)}
+                                            style={{ 
+                                                background: '#f59e0b', 
+                                                color: 'white', 
+                                                padding: '8px 16px', 
+                                                border: 'none', 
+                                                borderRadius: '8px', 
+                                                cursor: 'pointer', 
+                                                marginRight: '10px'
+                                            }}
+                                        >
+                                            Editar
+                                        </button>
+                                        <button 
+                                            onClick={() => handleBorrarGasto(gasto.id, gasto.origen)}
+                                            style={{ background: '#dc3545', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
+                                        >
                                             Borrar
                                         </button>
                                     </td>
@@ -601,10 +632,19 @@ const VehiculoDetail: React.FC = () => {
                 )}
             </div>
 
-            {/* AGREGAR COSTO */}
+            {/* SECCIÓN PARA AGREGAR O EDITAR COSTO */}
             <div style={{ marginTop: '30px' }}>
-                <h2 style={{ color: '#457B9D' }}>Agregar Nuevo Costo</h2>
-                <CostoForm initialPatente={patente} onSuccess={cargarDatos} />
+                <h2 style={{ color: '#457B9D' }}>
+                    {editingGasto ? 'Editar Costo' : 'Agregar Nuevo Costo'}
+                </h2>
+                <CostoForm 
+                    initialPatente={patente || ''}
+                    initialGasto={editingGasto}
+                    onSuccess={() => {
+                        cargarDatos();
+                        setEditingGasto(null);
+                    }}
+                />
             </div>
 
             <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', textDecoration: 'none', fontWeight: 'bold' }}>

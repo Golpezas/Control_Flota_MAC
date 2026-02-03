@@ -125,9 +125,18 @@ const CostoForm = ({ initialPatente, initialGasto, onSuccess }: CostoFormProps) 
                 formDataToSend.append('descripcion', formData.descripcion);
                 formDataToSend.append('importe', formData.importe.toString());
                 formDataToSend.append('origen', formData.origen);
-                if (file) formDataToSend.append('comprobante', file);
+                
+                // Solo agregamos el archivo si el usuario seleccionó uno nuevo
+                if (file) {
+                    formDataToSend.append('comprobante', file);
+                }
 
-                await apiClient.put(`/costos/manual/${initialGasto.id}`, formDataToSend);
+                // 🔥 CORRECCIÓN AQUÍ: Agregamos la configuración de headers
+                await apiClient.put(`/costos/manual/${initialGasto.id}`, formDataToSend, {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                    },
+                });
             } else {
                 // Creación: tu función original
                 await createCostoItem(formData, file || null);

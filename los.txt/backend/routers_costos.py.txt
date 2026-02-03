@@ -260,7 +260,73 @@ async def crear_costo_manual(
         costo_id=str(result.inserted_id),
         file_id=file_id
     )
-   
+
+# =================================================================
+# ENDPOINT: EDITAR COSTO MANUAL (reemplazo de comprobante si viene nuevo)
+# =================================================================
+
+@router.put("/manual/{gasto_id}")
+async def editar_gasto_manual(
+    gasto_id: str,
+    patente: str = Form(...),
+    tipo_costo: str = Form(...),
+    fecha: str = Form(...),
+    descripcion: str = Form(...),
+    importe: float = Form(...),
+    origen: str = Form(...),
+    comprobante: Optional[UploadFile] = File(None)
+):
+    """
+    Edita un gasto manual existente (reemplaza comprobante si se sube nuevo).
+    """
+    normalized_patente = normalize_patente(patente)
+
+    # Validaciones (igual que en crear)
+    if importe <= 0:
+        raise HTTPException(422, "Importe debe ser mayor a 0")
+    importe = round(importe, 2)
+
+    if not re.match(r"^(Finanzas|Mantenimiento)$", origen):
+        raise HTTPException(422, "Origen inválido")
+
+    try:
+        fecha_parsed = safe_parse_date(fecha)
+    except:
+        raise HTTPException(422, "Fecha inválida")
+
+    # Buscar el gasto
+    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
+    gasto_existente = await collection.find_one({"_id": ObjectId(gasto_id)})
+
+    if not gasto_existente:
+        raise HTTPException(404, "Gasto no encontrado")
+
+    # Subir nuevo comprobante si viene
+    file_id = gasto_existente.get("comprobante_file_id")
+    if comprobante:
+        bucket = await get_gridfs_bucket()
+        file_id = await bucket.upload_from_stream(comprobante.filename, await comprobante.read())
+
+    update_data = {
+        "patente": normalized_patente,
+        "tipo_costo": tipo_costo,
+        "fecha": fecha_parsed,
+        "descripcion": descripcion,
+        "importe": importe,
+        "origen": origen,
+        "comprobante_file_id": file_id
+    }
+
+    result = await collection.update_one(
+        {"_id": ObjectId(gasto_id)},
+        {"$set": update_data}
+    )
+
+    if result.modified_count == 0:
+        raise HTTPException(500, "No se pudo actualizar")
+
+    return {"message": "Gasto actualizado correctamente"}
+
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")
 async def borrar_gasto_universal(

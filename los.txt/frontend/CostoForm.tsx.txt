@@ -5,9 +5,24 @@ import type { NewCostoInput } from '../api/models/vehiculos';
 import { createCostoItem } from '../api/vehiculos';  // ← Esta función debe actualizarse para aceptar FormData | NewCostoInput (ver nota al final)
 import { normalizePatente } from '../utils/data-utils.ts';
 import type { FastAPIErrorResponse, ValidationErrorDetail } from '../api/models/errors';  // Ajusta path
+import { apiClient } from '../api/vehiculos';  // ← NUEVO: para PUT en edición
+import type { GastoUnificado } from '../api/models/gastos';
+
+// Definición para edición (nuevo)
+/*interface GastoUnificado {
+    id: string;
+    patente: string;
+    tipo: string;
+    fecha: string;
+    descripcion: string;
+    importe: number;
+    origen: string;
+    comprobante_file_id?: string;
+} */
 
 interface CostoFormProps {
     initialPatente?: string; 
+    initialGasto?: GastoUnificado | null;  // ← NUEVO: para edición
     onSuccess: () => void;
 }
 
@@ -24,7 +39,7 @@ const defaultFormData: NewCostoInput = {
  * Formulario para registrar costos manuales, con soporte para comprobante digital opcional.
  * @param {CostoFormProps} props - Propiedades del componente.
  */
-const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
+const CostoForm = ({ initialPatente, initialGasto, onSuccess }: CostoFormProps) => {
     const [formData, setFormData] = useState<NewCostoInput>(defaultFormData);
     const [isLoading, setIsLoading] = useState(false);
     const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -33,12 +48,37 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
     // Prellenar patente si se proporciona (y actualizar origen basado en tipo)
     useEffect(() => {
         if (initialPatente) {
+            setFormData(prev => ({ 
+                ...prev, 
+                patente: normalizePatente(initialPatente) 
+            }));
+        }
+    }, [initialPatente]);
+
+    // Prellenar si es edición
+    useEffect(() => {
+        if (initialGasto) {
+            const origenCapitalizado = initialGasto.origen === 'mantenimiento' 
+                ? 'Mantenimiento' 
+                : initialGasto.origen === 'finanzas' 
+                ? 'Finanzas' 
+                : 'Mantenimiento';  // fallback
+
+            setFormData({
+                patente: initialGasto.patente || normalizePatente(initialPatente || ''),
+                tipo_costo: initialGasto.tipo || 'Reparación Menor',
+                fecha: initialGasto.fecha.split('T')[0] || '',
+                descripcion: initialGasto.descripcion || '',
+                importe: initialGasto.importe || 0,
+                origen: origenCapitalizado
+            });
+        } else if (initialPatente) {
             setFormData(prev => ({
                 ...prev,
                 patente: normalizePatente(initialPatente),
             }));
         }
-    }, [initialPatente]);
+    }, [initialGasto, initialPatente]);
 
     const tipoCostoOptions = [
         'Reparación Menor', 'Reparación Mayor', 'Neumáticos', 'Batería', 'Service General',
@@ -64,9 +104,6 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         setFile(selectedFile);
     };
 
-    /**
-    ** Maneja el envío del formulario con validación completa y llamada a API.
-    **/
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsLoading(true);
@@ -79,28 +116,43 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
         }
 
         try {
-            const response = await createCostoItem(formData, file || null);  // ← Asegura null si no file
+            if (initialGasto) {
+                // Edición: PUT
+                const formDataToSend = new FormData();
+                formDataToSend.append('patente', formData.patente);
+                formDataToSend.append('tipo_costo', formData.tipo_costo);
+                formDataToSend.append('fecha', formData.fecha);
+                formDataToSend.append('descripcion', formData.descripcion);
+                formDataToSend.append('importe', formData.importe.toString());
+                formDataToSend.append('origen', formData.origen);
+                if (file) formDataToSend.append('comprobante', file);
+
+                await apiClient.put(`/costos/manual/${initialGasto.id}`, formDataToSend);
+            } else {
+                // Creación: tu función original
+                await createCostoItem(formData, file || null);
+            }
 
             setStatusMessage(
-                response.file_id
-                    ? `✅ Costo registrado! ID: ${response.costo_id} | 📎 Comprobante subido`
-                    : `✅ Costo registrado correctamente! ID: ${response.costo_id}`
+                file 
+                    ? `✅ Costo ${initialGasto ? 'actualizado' : 'registrado'}! Comprobante subido`
+                    : `✅ Costo ${initialGasto ? 'actualizado' : 'registrado'} correctamente!`
             );
+
             setFormData(defaultFormData);
             setFile(null);
             onSuccess();
         } catch (err) {
-            const error = err as AxiosError<FastAPIErrorResponse>;  // Tipado preciso
+            const error = err as AxiosError<FastAPIErrorResponse>;
             let errorMsg = 'Error desconocido al registrar el costo.';
 
             if (error.response) {
                 const details = error.response.data?.detail;
 
                 if (Array.isArray(details)) {
-                    // details: ValidationErrorDetail[] (de FastAPI/Pydantic)
                     errorMsg = details
                         .map((d: ValidationErrorDetail) => 
-                            `${d.loc.join(' → ')}: ${d.msg} (${d.type})`  // Formato legible: "body → importe: Valor debe ser >0 (value_error)"
+                            `${d.loc.join(' → ')}: ${d.msg} (${d.type})`
                         )
                         .join('; ');
                 } else if (typeof details === 'string') {
@@ -126,7 +178,7 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
     return (
         <div style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '8px', background: '#fff' }}>
             <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
-                💸 Registrar Nuevo Gasto Manual ({formData.origen})
+                💸 {initialGasto ? 'Editar Gasto Manual' : 'Registrar Nuevo Gasto Manual'} ({formData.origen})
             </h3>
             
             {statusMessage && (
@@ -134,9 +186,9 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
                     padding: '10px', 
                     borderRadius: '5px', 
                     marginBottom: '15px',
-                    backgroundColor: statusMessage.startsWith('✅') || statusMessage.startsWith('📎') ? '#d4edda' : '#f8d7da',
-                    color: statusMessage.startsWith('✅') || statusMessage.startsWith('📎') ? '#155724' : '#721c24',
-                    border: `1px solid ${statusMessage.startsWith('✅') || statusMessage.startsWith('📎') ? '#c3e6cb' : '#f5c6cb'}`
+                    backgroundColor: statusMessage.startsWith('✅') ? '#d4edda' : '#f8d7da',
+                    color: statusMessage.startsWith('✅') ? '#155724' : '#721c24',
+                    border: `1px solid ${statusMessage.startsWith('✅') ? '#c3e6cb' : '#f5c6cb'}`
                 }}>
                     {statusMessage}
                 </p>
@@ -244,7 +296,7 @@ const CostoForm = ({ initialPatente, onSuccess }: CostoFormProps) => {
                         cursor: 'pointer'
                     }}
                 >
-                    {isLoading ? 'Registrando...' : '💾 Guardar Gasto'}
+                    {isLoading ? 'Guardando...' : initialGasto ? 'Actualizar Gasto' : 'Guardar Gasto'}
                 </button>
 
             </form>
