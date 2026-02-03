@@ -169,8 +169,9 @@ export async function updateVehiculo(patente: string, data: VehiculoUpdateInput)
     try {
         const url = `/vehiculos/${patente}`;
 
-        // Usamos VehiculoBackendResponse para tipar correctamente lo que recibimos
-        const response = await apiClient.put<VehiculoBackendResponse>(url, data);
+        // ✅ CORRECCIÓN: Cambiamos .put() por .patch()
+        // El backend (@router.patch) espera este método HTTP.
+        const response = await apiClient.patch<VehiculoBackendResponse>(url, data);
 
         // APLICAR CORRECCIÓN: Mapear el vehículo actualizado
         const updatedVehiculo = mapVehiculoResponse(response.data);
@@ -181,6 +182,7 @@ export async function updateVehiculo(patente: string, data: VehiculoUpdateInput)
         let errorMessage = 'Error desconocido al actualizar vehículo.';
         if (axios.isAxiosError(error) && error.response) {
             const errorData = error.response.data as FastAPIErrorResponse;
+            // A veces el backend envía el detalle directo o dentro de un objeto
             const detail = errorData.detail || (error.message as string);
             errorMessage = `Fallo al actualizar (Status: ${error.response.status}): ${detail}`;
         }
