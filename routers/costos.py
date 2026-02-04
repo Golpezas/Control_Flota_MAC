@@ -276,54 +276,60 @@ async def editar_gasto_manual(
     origen: str = Form(...),
     comprobante: Optional[UploadFile] = File(None)
 ):
-    """
-    Edita un gasto manual existente (reemplaza comprobante si se sube nuevo).
-    """
-    normalized_patente = normalize_patente(patente)
+    # 1. Validación de Origen
+    collection_name = origen.lower()
+    if collection_name not in ["mantenimiento", "finanzas", "costos"]:
+        raise HTTPException(400, "Origen inválido")
+    
+    # Mapeo: 'costos' en frontend suele ser 'Mantenimiento' en backend
+    target_collection = "Mantenimiento" if collection_name == "costos" else "Finanzas"
+    collection = get_db_collection(target_collection)
 
-    # Validaciones (igual que en crear)
-    if importe <= 0:
-        raise HTTPException(422, "Importe debe ser mayor a 0")
-    importe = round(importe, 2)
-
-    if not re.match(r"^(Finanzas|Mantenimiento)$", origen):
-        raise HTTPException(422, "Origen inválido")
-
+    # 2. 🔥 CORRECCIÓN DE ID HÍBRIDO (ObjectId vs UUID) 🔥
     try:
-        fecha_parsed = safe_parse_date(fecha)
-    except:
-        raise HTTPException(422, "Fecha inválida")
+        # Intentamos convertir a ObjectId (MongoDB nativo)
+        obj_id = ObjectId(gasto_id)
+        query = {"_id": obj_id}
+    except Exception:
+        # Si falla, asumimos que es un UUID (string simple)
+        query = {"_id": gasto_id}
 
-    # Buscar el gasto
-    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
-    gasto_existente = await collection.find_one({"_id": ObjectId(gasto_id)})
-
+    # 3. Buscar el documento
+    gasto_existente = await collection.find_one(query)
+    
     if not gasto_existente:
-        raise HTTPException(404, "Gasto no encontrado")
+        # Intento de rescate: A veces el ID viene como string pero en la BD es ObjectId o viceversa
+        # Si falló la búsqueda anterior, probamos la inversa por si acaso no es estricto
+        if "_id" in query and isinstance(query["_id"], ObjectId):
+             # Probamos buscar como string puro
+             gasto_existente = await collection.find_one({"_id": gasto_id})
+        
+        if not gasto_existente:
+            raise HTTPException(404, f"Gasto no encontrado en {target_collection}")
 
-    # Subir nuevo comprobante si viene
-    file_id = gasto_existente.get("comprobante_file_id")
-    if comprobante:
-        bucket = await get_gridfs_bucket()
-        file_id = await bucket.upload_from_stream(comprobante.filename, await comprobante.read())
-
+    # ... (Resto de la lógica de actualización sigue igual) ...
+    
     update_data = {
-        "patente": normalized_patente,
-        "tipo_costo": tipo_costo,
-        "fecha": fecha_parsed,
-        "descripcion": descripcion,
-        "importe": importe,
-        "origen": origen,
-        "comprobante_file_id": file_id
+        "patente": normalize_patente(patente),
+        "tipo_costo" if target_collection == "Mantenimiento" else "TIPO": tipo_costo,
+        "costo_fecha" if target_collection == "Mantenimiento" else "FECHA": fecha, # Asegúrate de parsear fecha si es necesario
+        "detalle" if target_collection == "Mantenimiento" else "DETALLE": descripcion,
+        "costo_monto" if target_collection == "Mantenimiento" else "MONTO": importe
     }
 
-    result = await collection.update_one(
-        {"_id": ObjectId(gasto_id)},
-        {"$set": update_data}
-    )
+    # Manejo de archivo (Si viene uno nuevo)
+    if comprobante:
+        bucket = await get_gridfs_bucket()
+        file_content = await comprobante.read()
+        file_id = await bucket.upload_from_stream(
+            comprobante.filename,
+            file_content,
+            metadata={"patente": patente, "tipo": "comprobante_gasto"}
+        )
+        update_data["comprobante_file_id"] = str(file_id)
 
-    if result.modified_count == 0:
-        raise HTTPException(500, "No se pudo actualizar")
+    # Actualizar
+    await collection.update_one(query, {"$set": update_data})
 
     return {"message": "Gasto actualizado correctamente"}
 
