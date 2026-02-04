@@ -18,17 +18,15 @@ import axios from 'axios';
 import { normalizePatente } from '../utils/data-utils';
 import type { GastoUnificado } from '../api/models/gastos';
 
-// Interface unificada para gastos (compatible con backend actualizado)
-/*interface GastoUnificado {
-    id: string;
-    patente?: string;  // ← Opcional
-    tipo: string;
-    fecha: string;
-    descripcion: string;
-    importe: number;
-    origen: 'mantenimiento' | 'finanzas';
-    comprobante_file_id?: string;
-}*/
+type VehiculoConLegacy = Vehiculo & {
+    ANIO?: number;
+    COLOR?: string;
+    NRO_MOVIL?: string;
+    DESCRIPCION_MODELO?: string;
+    MODELO?: string;
+    TIPO_COMBUSTIBLE?: string;
+    _id?: string; // Por si acaso
+};
 
 // Componente auxiliar
 const DetailItem: React.FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
@@ -268,6 +266,9 @@ const VehiculoDetail: React.FC = () => {
     if (error) return <div style={{ color: 'red' }}>❌ {error}</div>;
     if (!vehiculo) return <div>No se encontró el vehículo.</div>;
 
+    // ✅ CORRECCIÓN: Casteamos a nuestro tipo seguro en lugar de usar 'any'
+    const v = vehiculo as VehiculoConLegacy;
+
     return (
         <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
             <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
@@ -277,13 +278,35 @@ const VehiculoDetail: React.FC = () => {
             {/* INFORMACIÓN BÁSICA */}
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
-                {/*<DetailItem label="Patente Original" value={vehiculo.patente_original} />*/}
-                <DetailItem label="Nº Móvil" value={vehiculo.nro_movil} />
-                <DetailItem label="Modelo" value={vehiculo.descripcion_modelo} />
-                <DetailItem label="Año" value={vehiculo.anio} />
-                <DetailItem label="Color" value={vehiculo.color} />
-                <DetailItem label="Combustible" value={vehiculo.tipo_combustible} />
-                <DetailItem label="Activo" value={vehiculo.activo ? 'Sí' : 'No'} />
+                
+                <DetailItem 
+                    label="Nº Móvil" 
+                    value={v.nro_movil || v.NRO_MOVIL} 
+                />
+                <DetailItem 
+                    label="Modelo" 
+                    value={
+                        v.descripcion_modelo || 
+                        v.DESCRIPCION_MODELO || 
+                        v.MODELO 
+                    } 
+                />
+                <DetailItem 
+                    label="Año" 
+                    value={v.anio || v.ANIO} 
+                />
+                <DetailItem 
+                    label="Color" 
+                    value={v.color || v.COLOR} 
+                />
+                <DetailItem 
+                    label="Combustible" 
+                    value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} 
+                />
+                <DetailItem 
+                    label="Activo" 
+                    value={v.activo ? 'Sí' : 'No'} 
+                />
             </div>
 
             {/* DOCUMENTOS DIGITALES (tu código original completo) */}
