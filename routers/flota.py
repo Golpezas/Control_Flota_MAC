@@ -172,60 +172,71 @@ class VehiculoCreateInput(BaseModel):
 # -------------------------------------------------------------------------
 @router.post("/vehiculos", response_model=Vehiculo, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo vehículo en el sistema.")
 async def create_vehiculo(data: VehiculoCreateInput):
+    # [LOG 1] Ver qué datos llegan realmente desde el Frontend
+    logger.info(f"🚀 CREATE VEHICULO - Payload Recibido: {data.model_dump()}")
+    
     db_vehiculos = get_db_collection("Vehiculos")
     patente_normalizada = normalize_patente(data.patente)
     
-    # 🔑 CORRECCIÓN 1: Usar await con find_one
+    # Verificación de existencia
     if await db_vehiculos.find_one({"_id": patente_normalizada}):
+        logger.warning(f"⚠️ Intento de crear duplicado: {patente_normalizada}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Ya existe un vehículo con la patente {data.patente.upper()}."
         )
     
-    # Preparar el documento, mapeando a los campos de MongoDB (UPPERCASE)
+    # Preparar el documento (Mapeo a DB UPPERCASE)
     vehiculo_doc = {
         "_id": patente_normalizada,
         "patente_original": data.patente.upper(),
         "activo": data.activo,
         "ANIO": data.anio,
         "COLOR": data.color,
-        # Nota: 'data.modelo' no existe en VehiculoCreateInput, asumiendo que es un error de copy-paste.
-        # Si 'modelo' es un campo que necesitas, debe estar en VehiculoCreateInput.
-        # Por ahora lo dejo, pero lo comento para recordatorio:
-        # "MODELO": data.modelo, 
         "DESCRIPCION_MODELO": data.descripcion_modelo,
         "NRO_MOVIL": data.nro_movil,
         "TIPO_COMBUSTIBLE": data.tipo_combustible,
-        "documentos_digitales": [], # Inicializar lista vacía
-        "tipo_registro": "MANUAL_CREADO", # Marcador
+        "documentos_digitales": [],
+        "tipo_registro": "MANUAL_CREADO",
     }
     
+    # [LOG 2] Ver qué vamos a insertar exactamente en Mongo
+    logger.info(f"💾 Insertando en Mongo: {vehiculo_doc}")
+    
     try:
-        # 🔑 CORRECCIÓN 2: Usar await con insert_one
         await db_vehiculos.insert_one(vehiculo_doc)
     except Exception as e:
+        logger.error(f"❌ Error al insertar en Mongo: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al insertar: {str(e)}")
     
-    # Mapeo de vuelta para la respuesta Pydantic (snake_case)
-    # 🔑 CORRECCIÓN 3: Usar await con find_one
+    # Recuperar documento insertado
     new_vehiculo = await db_vehiculos.find_one({"_id": patente_normalizada})
     
-    if not new_vehiculo: # Protección extra
+    if not new_vehiculo:
+        logger.error("❌ Vehículo insertado pero no encontrado en find_one posterior.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Vehículo insertado pero no encontrado inmediatamente después.")
 
+    # [LOG 3] Ver qué recuperamos de Mongo
+    logger.info(f"🔍 Recuperado de Mongo: {new_vehiculo}")
+
+    # Mapeo manual de vuelta para Pydantic (DB Uppercase -> Model Lowercase)
+    # IMPORTANTE: Aquí verificamos si 'new_vehiculo' tiene los datos esperados
     vehiculo_data = {
-        # Usamos "patente" para mapear al _id (esto asume que el alias en dependencies.py está correcto)
         "patente": new_vehiculo.get("_id"), 
         "patente_original": new_vehiculo.get("patente_original"),
         "activo": new_vehiculo.get("activo", False),
         "anio": new_vehiculo.get("ANIO"),
         "color": new_vehiculo.get("COLOR"),
-        "modelo": new_vehiculo.get("MODELO"), 
+        "modelo": new_vehiculo.get("MODELO") or new_vehiculo.get("descripcion_modelo") or new_vehiculo.get("DESCRIPCION_MODELO"), 
         "descripcion_modelo": new_vehiculo.get("DESCRIPCION_MODELO"),
         "nro_movil": new_vehiculo.get("NRO_MOVIL"),
         "tipo_combustible": new_vehiculo.get("TIPO_COMBUSTIBLE"),
         "documentos_digitales": new_vehiculo.get("documentos_digitales", []),
     }
+    
+    # [LOG 4] Ver el diccionario final antes de pasar a Pydantic
+    logger.info(f"📤 Respuesta preparada para Pydantic: {vehiculo_data}")
+
     return Vehiculo(**vehiculo_data)
 
 # -------------------------------------------------------------------------
