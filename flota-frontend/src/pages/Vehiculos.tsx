@@ -13,12 +13,11 @@ const VehiculoTableRow: React.FC<{
 }> = ({ v, index, handleDelete }) => {
   const canPerformAction = !!v._id;
   
-  // AL YA ESTAR DEFINIDOS EN LA INTERFAZ, YA NO NECESITAMOS 'as any'
   const modelo = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Sin Modelo';
   const anio = v.anio || v.ANIO || 'N/A';
   const color = v.color || v.COLOR || 'N/A';
   const nro_movil = v.nro_movil || v.NRO_MOVIL || 'N/A';
-  const combustible = v.tipo_combustible || v.TIPO_COMBUSTIBLE || 'N/A';
+  // Eliminamos Combustible de la fila para alinear con el encabezado
 
   return (
     <tr
@@ -41,43 +40,48 @@ const VehiculoTableRow: React.FC<{
           </span>
       </td>
       <td style={{ padding: '15px' }}>{color}</td>
-      <td style={{ padding: '15px' }}>{combustible}</td>
+      
+      {/* Columna ACTIVO alineada correctamente */}
       <td style={{ padding: '15px', textAlign: 'center' }}>
-        {v.activo ? <span style={{color: '#166534', fontWeight: 'bold'}}>Sí</span> : <span style={{color: '#dc2626', fontWeight: 'bold'}}>No</span>}
+        {v.activo ? (
+            <span style={{color: '#166534', backgroundColor: '#dcfce7', padding: '4px 8px', borderRadius: '6px', fontSize: '0.85em', fontWeight: 'bold'}}>Sí</span> 
+        ) : (
+            <span style={{color: '#dc2626', backgroundColor: '#fee2e2', padding: '4px 8px', borderRadius: '6px', fontSize: '0.85em', fontWeight: 'bold'}}>No</span>
+        )}
       </td>
 
       <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-        {/* Botón Detalle */}
-        <Link to={`/vehiculos/${v._id}`} style={{ marginRight: '10px', textDecoration: 'none' }}>
-          <button
-            style={{ padding: '8px 12px', cursor: 'pointer', border: '1px solid #A8DADC', backgroundColor: '#F1FAEE', borderRadius: '4px', color: '#1D3557' }}
-            disabled={!canPerformAction}
-            title={!canPerformAction ? 'ID Requerido' : 'Detalle'}
-          >
-            Detalle
-          </button>
-        </Link>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+            {/* Botón Detalle (Ojo) */}
+            <Link to={`/vehiculos/${v._id}`} title="Ver Detalle" style={{ textDecoration: 'none' }}>
+                <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }}
+                    disabled={!canPerformAction}
+                >
+                    👁️
+                </button>
+            </Link>
 
-        {/* Botón Editar */}
-        <Link to={`/vehiculos/editar/${v._id}`} style={{ marginRight: '10px', textDecoration: 'none' }}>
-          <button
-            style={{ padding: '8px 12px', cursor: 'pointer', border: '1px solid #457B9D', backgroundColor: '#457B9D', color: 'white', borderRadius: '4px' }}
-            disabled={!canPerformAction}
-            title={!canPerformAction ? 'ID Requerido' : 'Editar'}
-          >
-            Editar
-          </button>
-        </Link>
+            {/* Botón Editar (Lápiz) */}
+            <Link to={`/vehiculos/editar/${v._id}`} title="Editar" style={{ textDecoration: 'none' }}>
+                <button
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }}
+                    disabled={!canPerformAction}
+                >
+                    ✏️
+                </button>
+            </Link>
 
-        {/* Botón Eliminar */}
-        <button
-          onClick={() => handleDelete(v._id, String(nro_movil))}
-          style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: canPerformAction ? '#E63946' : 'gray', color: 'white', border: 'none', borderRadius: '4px' }}
-          disabled={!canPerformAction}
-          title={!canPerformAction ? 'ID Requerido para Eliminar' : 'Eliminar'}
-        >
-          Eliminar
-        </button>
+            {/* Botón Eliminar (Basura) */}
+            <button
+                onClick={() => handleDelete(v._id, String(nro_movil))}
+                title="Eliminar"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }}
+                disabled={!canPerformAction}
+            >
+                🗑️
+            </button>
+        </div>
       </td>
     </tr>
   );
@@ -86,8 +90,6 @@ const VehiculoTableRow: React.FC<{
 // --- Componente de Tarjeta Simple (Modo Lista) ---
 const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undefined, nro_movil: string | null) => void }> = ({ v, handleDelete }) => {
     const canPerformAction = !!v._id;
-    
-    // SIN 'as any' - TypeScript ahora reconoce estas propiedades
     const modelo = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Sin Modelo';
     const anio = v.anio || v.ANIO || 'N/A';
     const nro_movil = v.nro_movil || v.NRO_MOVIL || 'N/A';
@@ -114,22 +116,13 @@ const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undef
                     Móvil: {nro_movil} | Modelo: {modelo} ({anio})
                 </p>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '15px' }}>
                 <Link to={`/vehiculos/editar/${v._id}`} style={{ textDecoration: 'none' }}>
-                    <button
-                        title="Editar"
-                        style={{ padding: '8px 12px', cursor: 'pointer', border: 'none', backgroundColor: canPerformAction ? '#457B9D' : 'gray', color: 'white', borderRadius: '4px' }}
-                        disabled={!canPerformAction}
-                    >
+                    <button title="Editar" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em' }} disabled={!canPerformAction}>
                         ✏️
                     </button>
                 </Link>
-                <button
-                    title="Eliminar"
-                    onClick={() => handleDelete(v._id, String(nro_movil))}
-                    style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: canPerformAction ? '#E63946' : 'gray', color: 'white', border: 'none', borderRadius: '4px' }}
-                    disabled={!canPerformAction}
-                >
+                <button title="Eliminar" onClick={() => handleDelete(v._id, String(nro_movil))} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em' }} disabled={!canPerformAction}>
                     🗑️
                 </button>
             </div>
@@ -191,7 +184,6 @@ const Vehiculos: React.FC = () => {
         const modelos = vehiculos.map(v => 
             v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO
         ).filter(Boolean);
-        // Hacemos cast a string[] porque filter(Boolean) ya eliminó nulos
         return Array.from(new Set(modelos as string[])).sort();
     }, [vehiculos]);
 
@@ -205,21 +197,15 @@ const Vehiculos: React.FC = () => {
     // --- LÓGICA DE FILTRADO UNIFICADA ---
     const filteredVehiculos = useMemo(() => {
         return vehiculos.filter(v => {
-            // 1. Filtro de Texto (Buscador general)
             const lowerCaseSearch = searchTerm.toLowerCase();
-            
-            // Acceso seguro a propiedades sin 'as any'
             const id = (v._id || '').toLowerCase();
             const movil = String(v.nro_movil || v.NRO_MOVIL || '').toLowerCase();
             const modeloText = String(v.descripcion_modelo || v.DESCRIPCION_MODELO || '').toLowerCase();
-            
             const matchesSearch = !searchTerm || id.includes(lowerCaseSearch) || movil.includes(lowerCaseSearch) || modeloText.includes(lowerCaseSearch);
 
-            // 2. Filtro de Modelo
             const m = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO;
             const matchesModelo = filterModelo ? m === filterModelo : true;
 
-            // 3. Filtro de Año
             const a = v.anio || v.ANIO;
             const matchesAnio = filterAnio ? String(a) === String(filterAnio) : true;
 
@@ -246,18 +232,16 @@ const Vehiculos: React.FC = () => {
                 </div>
             )}
 
-            {/* --- BARRA DE FILTROS AVANZADOS --- */}
+            {/* --- BARRA DE FILTROS --- */}
             <div style={{ 
                 backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0',
                 marginBottom: '25px', display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
             }}>
-                {/* Contador */}
                 <div style={{ flex: '1 1 100%', marginBottom: '10px', fontSize: '1.1em', color: '#457B9D' }}>
                     📊 Mostrando <strong>{filteredVehiculos.length}</strong> vehículos 
                     {(filterModelo || filterAnio || searchTerm) ? ' (filtrados)' : ' (total)'}
                 </div>
 
-                {/* Filtro Modelo */}
                 <div style={{ flex: '1 1 250px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Modelo:</label>
                     <select 
@@ -270,7 +254,6 @@ const Vehiculos: React.FC = () => {
                     </select>
                 </div>
 
-                {/* Filtro Año */}
                 <div style={{ flex: '1 1 150px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Año:</label>
                     <select 
@@ -283,7 +266,6 @@ const Vehiculos: React.FC = () => {
                     </select>
                 </div>
 
-                {/* Buscador Texto */}
                 <div style={{ flex: '2 1 300px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Buscar:</label>
                     <input
@@ -295,7 +277,6 @@ const Vehiculos: React.FC = () => {
                     />
                 </div>
 
-                {/* Botones de Acción */}
                 <div style={{ display: 'flex', gap: '10px' }}>
                     {(filterModelo || filterAnio || searchTerm) && (
                         <button 
