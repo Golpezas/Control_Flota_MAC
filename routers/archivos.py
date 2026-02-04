@@ -2,7 +2,7 @@
 import os
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, status, Query
 from fastapi.responses import StreamingResponse
-from fastapi.concurrency import run_in_threadpool   # ← NUEVO IMPORT
+from fastapi.concurrency import run_in_threadpool
 from gridfs.errors import NoFile as GridFSNoFile
 from pymongo import MongoClient
 from bson import ObjectId
@@ -12,16 +12,17 @@ import gridfs.errors
 from io import BytesIO
 from datetime import datetime
 import logging
-from dependencies import normalize_patente, get_gridfs_bucket, get_db_collection  # ← Asegura imports
-import gridfs  # si usas gridfs.errors.NoFile
+from dependencies import normalize_patente, get_gridfs_bucket, get_db_collection
+import gridfs
 
-logger = logging.getLogger(__name__)  # ← Definición clave que resuelve Pylance
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/archivos", tags=["Archivos Digitales"])
 
+# Nota: Es mejor usar get_db_collection de dependencies, pero mantenemos tu init global por ahora si te funciona
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client["MacSeguridadFlota"]
-fs = gridfs.GridFS(db)  # Instancia global
+fs = gridfs.GridFS(db)
 
 @router.post("/subir-documento", status_code=status.HTTP_201_CREATED)
 async def subir_documento(
@@ -42,6 +43,13 @@ async def subir_documento(
         raise HTTPException(413, "Archivo muy grande")
 
     try:
+        # 1. Verificar si el vehículo existe antes de subir nada
+        vehiculos_collection = get_db_collection("Vehiculos")
+        vehiculo = await vehiculos_collection.find_one({"_id": normalized_patente})
+        if not vehiculo:
+            raise HTTPException(404, f"Vehículo {normalized_patente} no encontrado")
+
+        # 2. Subir archivo a GridFS
         content = await file.read()
         bucket = await get_gridfs_bucket()
         file_id = await bucket.upload_from_stream(
@@ -56,26 +64,45 @@ async def subir_documento(
 
         logger.info(f"Documento {tipo} subido a GridFS: file_id={file_id}")
 
-        # === ACTUALIZAR EL VEHÍCULO EN LA COLECCIÓN ===
-        vehiculos_collection = get_db_collection("Vehiculos")  # Cambia si tu colección tiene otro nombre
-
-        result = await vehiculos_collection.update_one(
-            {"_id": normalized_patente},
+        # === 3. LÓGICA DE ACTUALIZACIÓN DEL ARRAY (CORREGIDA) ===
+        
+        # INTENTO A: Actualizar si ya existe el tipo en el array
+        # Usamos el operador posicional $ para actualizar el elemento que coincida
+        result_update = await vehiculos_collection.update_one(
+            {
+                "_id": normalized_patente, 
+                "documentos_digitales.tipo": tipo  # Busca si existe este tipo específico dentro del array
+            },
             {
                 "$set": {
-                    "documentos_digitales.$[doc].file_id": str(file_id),
-                    "documentos_digitales.$[doc].nombre_archivo": file.filename,
-                    "documentos_digitales.$[doc].existe_fisicamente": True
+                    "documentos_digitales.$.file_id": str(file_id),
+                    "documentos_digitales.$.nombre_archivo": file.filename,
+                    "documentos_digitales.$.fecha_subida": datetime.utcnow(),
+                    "documentos_digitales.$.existe_fisicamente": True
                 }
-            },
-            array_filters=[{"doc.tipo": tipo}]
+            }
         )
 
-        if result.modified_count == 0:
-            logger.warning(f"No se encontró el tipo {tipo} en documentos_digitales de {normalized_patente}")
-            # Opcional: si no existe, podrías crearlo con $push, pero por ahora asumimos que ya está definido
+        # INTENTO B: Si no se modificó nada (matched_count == 0), significa que no existía. Lo agregamos (PUSH).
+        if result_update.matched_count == 0:
+            logger.info(f"Tipo {tipo} no existía en {normalized_patente}. Creando nueva entrada...")
+            
+            nuevo_doc = {
+                "tipo": tipo,
+                "file_id": str(file_id),
+                "nombre_archivo": file.filename,
+                "path_esperado": None,
+                "existe_fisicamente": True,
+                "fecha_subida": datetime.utcnow(),
+                "fecha_vencimiento": None # Se llenará después desde el frontend si aplica
+            }
+            
+            await vehiculos_collection.update_one(
+                {"_id": normalized_patente},
+                {"$push": {"documentos_digitales": nuevo_doc}}
+            )
 
-        logger.info(f"Vehículo actualizado: {result.modified_count} documentos modificados")
+        logger.info(f"Vehículo {normalized_patente} actualizado correctamente.")
 
         return {
             "message": "Documento subido correctamente",
@@ -86,7 +113,7 @@ async def subir_documento(
 
     except Exception as e:
         logger.error(f"Error: {str(e)}")
-        raise HTTPException(500, "Error al subir el documento")
+        raise HTTPException(500, f"Error al subir el documento: {str(e)}")
 
 @router.get("/descargar/{file_id}")
 async def descargar_archivo(
@@ -106,10 +133,13 @@ async def descargar_archivo(
         raise HTTPException(404, "Archivo no encontrado")
 
     filename = grid_out.filename or "comprobante"
-    content_type = grid_out.content_type or "application/octet-stream"
+    content_type = grid_out.metadata.get("content_type") if grid_out.metadata else None
+    
+    # Fallback si GridFS no guardó el content_type
+    if not content_type:
+         content_type = "application/pdf" if filename.lower().endswith(".pdf") else "image/jpeg"
 
     if preview:
-        # FORZAMOS INLINE AL MÁXIMO
         disposition = "inline"
         headers = {
             "Content-Disposition": f'inline; filename="{filename}"',
