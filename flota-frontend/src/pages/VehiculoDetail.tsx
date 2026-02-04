@@ -14,7 +14,7 @@ import {
     apiClient 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
-import axios from 'axios';
+import axios from 'axios'; // Se usa para isAxiosError
 import { normalizePatente } from '../utils/data-utils';
 import type { GastoUnificado } from '../api/models/gastos';
 
@@ -25,12 +25,10 @@ type VehiculoConLegacy = Vehiculo & {
     DESCRIPCION_MODELO?: string;
     MODELO?: string;
     TIPO_COMBUSTIBLE?: string;
-    _id?: string; // Por si acaso
+    _id?: string;
 };
 
-// =================================================================
-// CONFIGURACIÓN: LISTA DE DOCUMENTOS QUE SIEMPRE DEBEN APARECER
-// =================================================================
+// Configuración de documentos estándar
 const DOCUMENTOS_ESTANDAR = [
     { tipo: 'TITULO_AUTOMOTOR', label: 'TÍTULO AUTOMOTOR' },
     { tipo: 'CEDULA_VERDE', label: 'CÉDULA VERDE DIGITAL' },
@@ -50,9 +48,12 @@ const VehiculoDetail: React.FC = () => {
     const { patente } = useParams<{ patente: string }>();
     const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
     const [gastosUnificados, setGastosUnificados] = useState<GastoUnificado[]>([]);
+    
+    // Totales financieros
     const [totalGeneral, setTotalGeneral] = useState(0);
     const [totalMantenimiento, setTotalMantenimiento] = useState(0);
     const [totalMultas, setTotalMultas] = useState(0);
+    
     const [alertas, setAlertas] = useState<Alerta[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -68,143 +69,19 @@ const VehiculoDetail: React.FC = () => {
     const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
     const [comprobanteLoading, setComprobanteLoading] = useState(false);
 
-    const [vencimientos, setVencimientos] = useState<{ tipo: string, fecha_vencimiento: string }[]>([]);
-    const [editingVencimiento, setEditingVencimiento] = useState<string | null>(null);
-    const [newFecha, setNewFecha] = useState('');
+    // ESTADO SIMPLE PARA EDICIÓN DE FECHA SEGURO
+    const [isEditingSeguro, setIsEditingSeguro] = useState(false);
+    const [fechaSeguro, setFechaSeguro] = useState('');
 
     const [editingGasto, setEditingGasto] = useState<GastoUnificado | null>(null);
     
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
-    // FUNCIONES PARA DOCUMENTOS DIGITALES
-    // =========================================
-
-    const abrirComprobante = async (fileId: string) => {
-        setComprobantePreviewUrl(null);
-        setComprobanteLoading(true);
-        setModalComprobanteOpen(true);
-
-        try {
-            const timestamp = Date.now();
-            const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
-            const response = await fetch(url, { cache: "no-store" });
-            if (!response.ok) {
-                throw new Error(`Error al cargar (HTTP ${response.status})`);
-            }
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            setComprobantePreviewUrl(blobUrl);
-
-        } catch (err) {
-            console.error("Error cargando comprobante:", err);
-            alert("Error al cargar el comprobante. Intentá refrescar la página.");
-        } finally {
-            setComprobanteLoading(false);
-        }
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files && e.target.files[0]) {
-            setArchivoNuevo(e.target.files[0]);
-        }
-    };
-
-    const handleDownload = (fileId: string) => {
-        window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
-    };
-
-    // Aceptamos un objeto parcial para cuando el documento no existe aún
-    const abrirModalDocumento = async (doc: DocumentoDigital | { tipo: string }) => {
-        setDocSeleccionado(doc as DocumentoDigital);
-        setPreviewUrl(null);
-        setLoadingPreview(true);
-        setArchivoNuevo(null);
-
-        // Si NO tiene file_id (es nuevo o pendiente), solo abrimos el modal para subir
-        if (!('file_id' in doc) || !doc.file_id) {
-            setLoadingPreview(false);
-            setModalIsOpen(true);
-            return;
-        }
-
-        try {
-            const timestamp = Date.now();
-            const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
-
-            if (doc.nombre_archivo?.toLowerCase().includes(".pdf")) {
-                setPreviewUrl(url);
-            } else {
-                const response = await fetch(url, { cache: "no-store" });
-                if (!response.ok) throw new Error("No se pudo cargar");
-                const blob = await response.blob();
-                setPreviewUrl(URL.createObjectURL(blob));
-            }
-        } catch (err) {
-            console.error("Error cargando vista previa:", err);
-            alert("Error al cargar el documento. Reintentá en 10 segundos.");
-        } finally {
-            setLoadingPreview(false);
-        }
-
-        setModalIsOpen(true);
-    };
-
-    const subirDocumento = async () => {
-        if (!docSeleccionado || !archivoNuevo || !vehiculo) {
-            alert("Faltan datos: selecciona documento y archivo.");
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append("patente", normalizePatente(vehiculo._id));
-        formData.append("tipo", docSeleccionado.tipo);
-        formData.append("file", archivoNuevo);
-
-        try {
-            const response = await apiClient.post("/api/archivos/subir-documento", formData, {
-                headers: {
-                    "Content-Type": "multipart/form-data",
-                },
-                timeout: 60000,
-            });
-
-            console.log("Subida exitosa:", response.data);
-            alert(`✅ Documento "${docSeleccionado.tipo.replace(/_/g, " ")}" subido correctamente`);
-
-            setModalIsOpen(false);
-            setArchivoNuevo(null);
-            await cargarDatos(); 
-
-        } catch (error: unknown) {
-            console.error("Error subiendo documento:", error);
-            let msg = "Error al subir el documento.";
-            if (axios.isAxiosError(error) && error.response) {
-                msg += ` (Status: ${error.response.status})`;
-                if (error.response.data?.detail) {
-                    msg += ` - ${JSON.stringify(error.response.data.detail)}`;
-                }
-            }
-            alert(`❌ ${msg} Reintentá o verifica el archivo.`);
-        }
-    };
-
-    // =========================================
-    // FUNCIONES PARA EDITAR GASTOS
-    // =========================================
-    
-    const editarGasto = (gasto: GastoUnificado) => {
-        setEditingGasto(gasto);
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-    };
-
-    // =========================================
     // CARGA DE DATOS
     // =========================================
-
     const cargarDatos = useCallback(async () => {
         if (!patente) return;
-
         setLoading(true);
         setError(null);
 
@@ -213,25 +90,14 @@ const VehiculoDetail: React.FC = () => {
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            // 2. Vencimientos
-            const vencimientosData = (vehData.documentos_digitales || []).map(doc => ({
-                tipo: doc.tipo,
-                fecha_vencimiento: doc.fecha_vencimiento 
-                    ? new Date(doc.fecha_vencimiento).toLocaleDateString('es-AR') 
-                    : 'Sin fecha'
-            }));
-            setVencimientos(vencimientosData);
-
-            // 3. Alertas
+            // 2. Alertas
             const report = await apiClient.get(
                 `/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`
             );
             setAlertas(report.data.alertas || []);
 
-            // 4. Gastos unificados
+            // 3. Gastos unificados
             const response = await apiClient.get(`/costos/unificado/${patente}`);
-            console.log('DEBUG GASTOS UNIFICADOS:', response.data);
-
             const data = response.data;
             setGastosUnificados(data.gastos || []);
             setTotalGeneral(data.total_general || 0);
@@ -240,12 +106,8 @@ const VehiculoDetail: React.FC = () => {
 
         } catch (error: unknown) {
             console.error("Error en cargarDatos:", error);
-            let mensaje = 'Error al cargar los datos del vehículo.';
-            
-            if (error instanceof Error) {
-                mensaje += ` ${error.message}`;
-            }
-            
+            let mensaje = 'Error al cargar los datos.';
+            if (error instanceof Error) mensaje += ` ${error.message}`;
             setError(mensaje);
         } finally {
             setLoading(false);
@@ -256,22 +118,126 @@ const VehiculoDetail: React.FC = () => {
         cargarDatos();
     }, [cargarDatos]);
 
+    // =========================================
+    // FUNCIONES DOCUMENTOS
+    // =========================================
+    const handleDownload = (fileId: string) => {
+        window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
+    };
+
+    const abrirModalDocumento = async (doc: DocumentoDigital | { tipo: string }) => {
+        setDocSeleccionado(doc as DocumentoDigital);
+        setPreviewUrl(null);
+        setLoadingPreview(true);
+        setArchivoNuevo(null);
+
+        if (!('file_id' in doc) || !doc.file_id) {
+            setLoadingPreview(false);
+            setModalIsOpen(true);
+            return;
+        }
+
+        try {
+            const timestamp = Date.now();
+            const url = `${API_URL}/api/archivos/descargar/${doc.file_id}?preview=true&t=${timestamp}`;
+            
+            if (doc.nombre_archivo?.toLowerCase().includes(".pdf")) {
+                setPreviewUrl(url);
+            } else {
+                const response = await fetch(url, { cache: "no-store" });
+                if (!response.ok) throw new Error("No se pudo cargar");
+                const blob = await response.blob();
+                setPreviewUrl(URL.createObjectURL(blob));
+            }
+        } catch (err) {
+            console.error("Error preview:", err); // Usamos 'err'
+        } finally {
+            setLoadingPreview(false);
+        }
+        setModalIsOpen(true);
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files && e.target.files[0]) setArchivoNuevo(e.target.files[0]);
+    };
+
+    const subirDocumento = async () => {
+        if (!docSeleccionado || !archivoNuevo || !vehiculo) return;
+
+        const formData = new FormData();
+        formData.append("patente", normalizePatente(vehiculo._id));
+        formData.append("tipo", docSeleccionado.tipo);
+        formData.append("file", archivoNuevo);
+
+        try {
+            await apiClient.post("/api/archivos/subir-documento", formData, {
+                headers: { "Content-Type": "multipart/form-data" },
+                timeout: 60000,
+            });
+            alert(`✅ Documento subido correctamente`);
+            setModalIsOpen(false);
+            setArchivoNuevo(null);
+            await cargarDatos(); 
+        } catch (error) {
+            console.error("Error al subir:", error); // Usamos 'error'
+            let msg = "Error al subir.";
+            if (axios.isAxiosError(error) && error.response?.data?.detail) {
+                msg += ` ${JSON.stringify(error.response.data.detail)}`;
+            }
+            alert(`❌ ${msg}`);
+        }
+    };
+
+    // =========================================
+    // FUNCIONES COMPROBANTES COSTOS
+    // =========================================
+    const abrirComprobante = async (fileId: string) => {
+        setComprobantePreviewUrl(null);
+        setComprobanteLoading(true);
+        setModalComprobanteOpen(true);
+        try {
+            const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true`;
+            const response = await fetch(url);
+            const blob = await response.blob();
+            setComprobantePreviewUrl(URL.createObjectURL(blob));
+        } catch (err) {
+            console.error("Error abriendo comprobante", err);
+        } finally {
+            setComprobanteLoading(false);
+        }
+    };
+
+    const editarGasto = (gasto: GastoUnificado) => {
+        setEditingGasto(gasto);
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    };
+
     const handleBorrarGasto = async (id: string, origen: 'mantenimiento' | 'finanzas') => {
+        if(!confirm("¿Estás seguro de eliminar este gasto?")) return;
         try {
             const coleccion = origen === 'mantenimiento' ? 'costos' : 'finanzas';
             await borrarGastoUniversal(id, coleccion);
             await cargarDatos();
-        } catch (err: unknown) {
-            console.error('Error borrando gasto:', err);
+        } catch (err) {
+            console.error(err); // Usamos 'err'
             alert("Error al borrar el gasto");
         }
     };
 
-    if (loading) return <div>Cargando datos del vehículo... ⏳</div>;
-    if (error) return <div style={{ color: 'red' }}>❌ {error}</div>;
-    if (!vehiculo) return <div>No se encontró el vehículo.</div>;
+    // =========================================
+    // RENDER
+    // =========================================
+    if (loading) return <div>Cargando... ⏳</div>;
+    // Utilizamos la variable 'error' aquí
+    if (error) return <div style={{ color: 'red', padding: '20px' }}>❌ {error}</div>;
+    if (!vehiculo) return <div>No encontrado.</div>;
 
     const v = vehiculo as VehiculoConLegacy;
+
+    // Buscamos ESPECÍFICAMENTE el documento de seguro
+    const seguroDoc = (v.documentos_digitales || []).find(
+        d => d.tipo === 'SEGURO' || d.tipo === 'POLIZA_SEGURO_DIGITAL'
+    );
 
     return (
         <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
@@ -279,45 +245,39 @@ const VehiculoDetail: React.FC = () => {
                 Detalle del Vehículo: {vehiculo._id}
             </h1>
 
-            {/* INFORMACIÓN BÁSICA */}
+            {/* 1. INFORMACIÓN BÁSICA */}
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
-                
-                <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
-                <DetailItem label="Modelo" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.MODELO } />
-                <DetailItem label="Año" value={v.anio || v.ANIO} />
-                <DetailItem label="Color" value={v.color || v.COLOR} />
-                <DetailItem label="Combustible" value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} />
-                <DetailItem label="Activo" value={v.activo ? 'Sí' : 'No'} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
+                    <DetailItem label="Modelo" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.MODELO } />
+                    <DetailItem label="Año" value={v.anio || v.ANIO} />
+                    <DetailItem label="Color" value={v.color || v.COLOR} />
+                    <DetailItem label="Combustible" value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} />
+                    <DetailItem label="Activo" value={v.activo ? 'Sí' : 'No'} />
+                </div>
             </div>
 
-            {/* SECCIÓN DOCUMENTOS DIGITALES (MEJORADA) */}
+            {/* 2. DOCUMENTOS DIGITALES (CHECKLIST) */}
             <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>
                     Documentos Digitales
                 </h2>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    {/* Renderizamos siempre la lista estándar */}
                     {DOCUMENTOS_ESTANDAR.map((itemEstandar) => {
-                        // Buscamos si el vehículo ya tiene este documento subido
                         const docExistente = (v.documentos_digitales || []).find(
                             d => d.tipo.toUpperCase() === itemEstandar.tipo || 
                                  d.tipo.toUpperCase().replace(/_/g, ' ') === itemEstandar.label
                         );
-
                         const tieneArchivo = !!docExistente?.file_id;
 
                         return (
                             <div key={itemEstandar.tipo} style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center', 
-                                padding: '16px', 
-                                backgroundColor: 'white',
-                                borderRadius: '8px',
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                                padding: '16px', backgroundColor: 'white', borderRadius: '8px',
                                 border: '1px solid #e2e8f0',
-                                borderLeft: `5px solid ${tieneArchivo ? '#059669' : '#ef4444'}` // Verde si hay, Rojo si falta
+                                borderLeft: `5px solid ${tieneArchivo ? '#059669' : '#ef4444'}`
                             }}>
                                 <div>
                                     <strong style={{ color: '#1e293b', fontSize: '1.1em', display: 'block' }}>
@@ -326,298 +286,143 @@ const VehiculoDetail: React.FC = () => {
                                     <span style={{ fontSize: '0.85em', color: tieneArchivo ? '#059669' : '#ef4444' }}>
                                         {tieneArchivo ? '✅ Documento cargado' : '❌ Pendiente de carga'}
                                     </span>
-                                    {docExistente?.fecha_vencimiento && (
-                                        <span style={{ fontSize: '0.85em', color: '#666', marginLeft: '10px' }}>
-                                            (Vence: {new Date(docExistente.fecha_vencimiento).toLocaleDateString('es-AR')})
-                                        </span>
-                                    )}
                                 </div>
-
                                 <div style={{ display: 'flex', gap: '10px' }}>
                                     {tieneArchivo && (
-                                        <button 
-                                            onClick={() => handleDownload(docExistente!.file_id!)}
-                                            style={{ 
-                                                padding: '8px 12px', 
-                                                backgroundColor: '#3b82f6', 
-                                                color: 'white', 
-                                                border: 'none', 
-                                                borderRadius: '6px', 
-                                                cursor: 'pointer' 
-                                            }}
-                                            title="Descargar"
-                                        >
+                                        <button onClick={() => handleDownload(docExistente!.file_id!)} style={{ padding: '8px 12px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
                                             📥
                                         </button>
                                     )}
-
-                                    <button 
-                                        onClick={() => abrirModalDocumento(docExistente || { tipo: itemEstandar.tipo })}
-                                        style={{
-                                            padding: '8px 16px',
-                                            backgroundColor: tieneArchivo ? '#d97706' : '#ef4444',
-                                            color: 'white',
-                                            border: 'none',
-                                            borderRadius: '6px',
-                                            cursor: 'pointer',
-                                            fontWeight: 'bold',
-                                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                                        }}
-                                    >
-                                        {tieneArchivo ? "Reemplazar" : "SUBIR DOCUMENTO 📤"}
+                                    <button onClick={() => abrirModalDocumento(docExistente || { tipo: itemEstandar.tipo })} style={{ padding: '8px 16px', backgroundColor: tieneArchivo ? '#d97706' : '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                        {tieneArchivo ? "Reemplazar" : "SUBIR"}
                                     </button>
                                 </div>
                             </div>
                         );
                     })}
-                    
-                    {/* Botón extra para "Otros" documentos no estándar */}
-                    <div style={{ marginTop: '15px', textAlign: 'right' }}>
-                         <button 
-                            onClick={() => abrirModalDocumento({ tipo: 'OTRO_DOCUMENTO' })}
-                            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
-                         >
-                            + Subir otro tipo de documento
-                         </button>
-                    </div>
                 </div>
             </div>
 
-            {/* MODAL PARA SUBIR / REVISAR DOCUMENTO */}
-            <Modal
-                isOpen={modalIsOpen}
-                onRequestClose={() => {
-                    setModalIsOpen(false);
-                    if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-                    setPreviewUrl(null);
-                }}
-                style={{
-                    content: {
-                        backgroundColor: 'white',
-                        color: 'black',
-                        maxWidth: '80%',
-                        maxHeight: '80%',
-                        top: '50%',
-                        left: '50%',
-                        right: 'auto',
-                        bottom: 'auto',
-                        marginRight: '-50%',
-                        transform: 'translate(-50%, -50%)',
-                        padding: '32px',
-                        borderRadius: '16px',
-                        boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
-                        overflowY: 'auto'
-                    }
-                }}
-                ariaHideApp={false}
-            >
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '24px', textAlign: 'center' }}>
-                    {docSeleccionado?.tipo.replace(/_/g, " ").toUpperCase() || "Documento"}
+            {/* 3. VENCIMIENTO DE PÓLIZA DE SEGURO (SECCIÓN RENOVADA) */}
+            <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', border: '2px solid #457B9D', marginTop: '32px', boxShadow: '0 4px 10px rgba(69, 123, 157, 0.2)' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1D3557', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    📅 Vencimiento de Póliza de Seguro
                 </h2>
 
-                {loadingPreview ? (
-                    <div style={{ textAlign: 'center', padding: '80px 0' }}>
-                        <div className="spinner-documento"></div>
-                        <p style={{ color: '#475569', fontSize: '1.125rem', marginTop: '16px' }}>Cargando documento...</p>
-                        <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Puede tardar unos segundos (Render Free)</p>
+                {!seguroDoc ? (
+                    <div style={{ padding: '15px', backgroundColor: '#fff3cd', color: '#856404', borderRadius: '8px', border: '1px solid #ffeeba' }}>
+                        ⚠️ <strong>Atención:</strong> Para establecer la fecha de vencimiento, primero debes subir el documento <strong>PÓLIZA SEGURO DIGITAL</strong> en la sección de arriba.
                     </div>
-                ) : previewUrl ? (
-                    docSeleccionado?.nombre_archivo?.toLowerCase().includes(".pdf") ? (
-                        <iframe
-                            src={previewUrl}
-                            style={{ width: '100%', height: '500px', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                            title="Vista previa PDF"
-                        />
-                    ) : (
-                        <img
-                            src={previewUrl}
-                            alt="Vista previa"
-                            style={{ maxWidth: '100%', height: 'auto', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', margin: '0 auto', display: 'block' }}
-                        />
-                    )
                 ) : (
-                    <div style={{ textAlign: 'center', padding: '80px 0' }}>
-                        <p style={{ color: '#ef4444', fontSize: '1.125rem', fontWeight: 'medium' }}>
-                            {docSeleccionado?.file_id ? "No se pudo cargar el documento" : "Seleccione un archivo para subir"}
-                        </p>
-                    </div>
-                )}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+                        
+                        {/* Visualización de la fecha */}
+                        <div>
+                            <span style={{ display: 'block', fontSize: '0.9em', color: '#666' }}>Fecha Actual:</span>
+                            <strong style={{ fontSize: '1.4em', color: seguroDoc.fecha_vencimiento ? '#1D3557' : '#E63946' }}>
+                                {seguroDoc.fecha_vencimiento 
+                                    ? new Date(seguroDoc.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+                                    : 'Sin fecha asignada'}
+                            </strong>
+                        </div>
 
-                <div style={{ marginTop: '32px' }}>
-                    <input
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handleFileChange}
-                        style={{ display: 'block', width: '100%', fontSize: '0.875rem', color: '#475569' }}
-                        className="file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 cursor-pointer"
-                    />
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '40px' }}>
-                    <button
-                        onClick={() => {
-                            setModalIsOpen(false);
-                            if (previewUrl && previewUrl.startsWith("blob:")) URL.revokeObjectURL(previewUrl);
-                            setPreviewUrl(null);
-                        }}
-                        style={{ padding: '12px 24px', backgroundColor: '#64748b', color: 'white', borderRadius: '12px', cursor: 'pointer', transition: 'background-color 0.3s', fontWeight: 'bold' }}
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={subirDocumento}
-                        disabled={!archivoNuevo}
-                        style={{
-                            padding: '12px 32px',
-                            borderRadius: '12px',
-                            fontWeight: 'bold',
-                            transition: 'background-color 0.3s',
-                            backgroundColor: archivoNuevo ? '#059669' : '#d1d5db',
-                            color: archivoNuevo ? 'white' : '#9ca3af',
-                            cursor: archivoNuevo ? 'pointer' : 'not-allowed',
-                        }}
-                    >
-                        {docSeleccionado?.file_id ? "Reemplazar Documento" : "Subir Documento"}
-                    </button>
-                </div>
-            </Modal>
-
-            {/* VENCIMIENTOS DE DOCUMENTOS */}
-            <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>Vencimientos de Documentos</h2>
-                {vencimientos.length > 0 ? (
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead style={{ backgroundColor: '#1D3557', color: 'white' }}>
-                            <tr>
-                                <th style={{ padding: '15px', textAlign: 'left' }}>Documento</th>
-                                <th style={{ padding: '15px', textAlign: 'left' }}>Fecha Vencimiento</th>
-                                <th style={{ padding: '15px', textAlign: 'center' }}>Acciones</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {vencimientos.map((ven, index) => (
-                                <tr key={index} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                                    <td style={{ padding: '15px' }}>{ven.tipo.replace(/_/g, ' ')}</td>
-                                    <td style={{ padding: '15px' }}>{ven.fecha_vencimiento}</td>
-                                    <td style={{ padding: '15px', textAlign: 'center' }}>
-                                        <button onClick={() => setEditingVencimiento(ven.tipo)} style={{ background: '#f59e0b', color: 'white', padding: '8px 16px', border: 'none', borderRadius: '8px' }}>
-                                            Editar Fecha
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                ) : (
-                    <p>No hay vencimientos configurados.</p>
-                )}
-
-                {editingVencimiento && (
-                    <div style={{ marginTop: '20px', padding: '20px', background: '#fff', borderRadius: '12px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
-                        <h3>Editar Vencimiento de {editingVencimiento.replace(/_/g, ' ')}</h3>
-                        <input 
-                            type="date" 
-                            value={newFecha}
-                            onChange={(e) => setNewFecha(e.target.value)}
-                            style={{ padding: '10px', marginBottom: '10px' }}
-                        />
-                        <button 
-                            onClick={async () => {
-                                try {
-                                    await apiClient.put(`/vencimientos/${patente}/${editingVencimiento}`, { 
-                                        fecha_vencimiento: new Date(newFecha).toISOString()
-                                    });
-                                    await cargarDatos();
-                                    setEditingVencimiento(null);
-                                    setNewFecha('');
-                                    alert("Fecha actualizada correctamente");
-                                } catch {
-                                    alert("Error al actualizar la fecha de vencimiento");
-                                }
-                            }} 
-                            style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-                        >
-                            Guardar
-                        </button>
-                        <button onClick={() => setEditingVencimiento(null)} style={{ marginLeft: '10px', background: '#64748b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '8px' }}>
-                            Cancelar
-                        </button>
-                    </div>
-                )}
-            </div>
-
-            {/* ALERTAS DE VENCIMIENTO CRÍTICAS */}
-            <div style={{ marginBottom: '40px' }}>
-                <h2 style={{ 
-                    color: alertas.length > 0 ? '#E63946' : '#2d6a4f', 
-                    fontSize: '1.6rem', 
-                    fontWeight: 'bold',
-                    marginBottom: '20px'
-                }}>
-                    Alertas de Vencimiento Críticas ({alertas.length})
-                </h2>
-
-                {alertas.length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                        {alertas.map((alerta, index) => (
-                            <div 
-                                key={index}
-                                style={{
-                                    padding: '18px',
-                                    backgroundColor: '#fff5f5',
-                                    border: `3px solid ${alerta.mensaje.includes('VENCIDO') || alerta.mensaje.includes('HOY') ? '#E63946' : '#f59e0b'}`,
-                                    borderRadius: '12px',
-                                    boxShadow: '0 6px 12px rgba(230,57,70,0.15)'
-                                }}
-                            >
-                                <div style={{ fontSize: '1.3em', fontWeight: 'bold', color: '#E63946', marginBottom: '10px' }}>
-                                    🚨 {alerta.mensaje}
-                                </div>
-                                <div style={{ color: '#1e293b', lineHeight: '1.6' }}>
-                                    <strong>Patente:</strong> <strong>{alerta.patente}</strong><br />
-                                    <strong>Móvil:</strong> {alerta.movil_nro || 'N/A'} - {alerta.descripcion_modelo || 'Sin modelo'}<br />
-                                    <strong>Vencimiento:</strong> {new Date(alerta.fecha_vencimiento).toLocaleDateString('es-AR')}
-                                </div>
+                        {/* Formulario de Edición */}
+                        {isEditingSeguro ? (
+                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                <input 
+                                    type="date" 
+                                    value={fechaSeguro}
+                                    onChange={(e) => setFechaSeguro(e.target.value)}
+                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                                />
+                                <button 
+                                    onClick={async () => {
+                                        try {
+                                            await apiClient.put(`/vencimientos/${patente}/${seguroDoc.tipo}`, { 
+                                                fecha_vencimiento: new Date(fechaSeguro).toISOString()
+                                            });
+                                            await cargarDatos();
+                                            setIsEditingSeguro(false);
+                                            alert("Fecha de póliza actualizada correctamente");
+                                        } catch (err) {
+                                            console.error(err);
+                                            alert("Error al actualizar la fecha.");
+                                        }
+                                    }}
+                                    style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                                >
+                                    Guardar
+                                </button>
+                                <button onClick={() => setIsEditingSeguro(false)} style={{ background: '#64748b', color: 'white', padding: '10px', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                                    ❌
+                                </button>
                             </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div style={{ 
-                        padding: '20px', 
-                        backgroundColor: '#f0fdf4', 
-                        border: '2px solid #22c55e', 
-                        borderRadius: '12px', 
-                        color: '#166534', 
-                        fontWeight: 'bold', 
-                        fontSize: '1.1em' 
-                    }}>
-                        ✅ No hay alertas críticas de vencimiento.
+                        ) : (
+                            <button 
+                                onClick={() => {
+                                    setIsEditingSeguro(true);
+                                    if (seguroDoc.fecha_vencimiento) {
+                                        setFechaSeguro(new Date(seguroDoc.fecha_vencimiento).toISOString().split('T')[0]);
+                                    }
+                                }}
+                                style={{ background: '#f59e0b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                            >
+                                ✏️ Modificar Vencimiento
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
 
-            {/* TOTALES DE COSTOS */}
-            <div style={{ marginBottom: '30px' }}>
-                <h2 style={{ color: '#457B9D', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                    Reporte de Costos (Todos los registros)
-                </h2>
-                <p><strong>Total General:</strong> ${totalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                <p><strong>Mantenimiento:</strong> ${totalMantenimiento.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-                <p><strong>Infracciones:</strong> ${totalMultas.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
-            </div>
+            {/* 4. ALERTAS (Si existen) */}
+            {alertas.length > 0 && (
+                <div style={{ marginTop: '40px' }}>
+                    <h2 style={{ color: '#E63946', fontSize: '1.6rem', fontWeight: 'bold', marginBottom: '20px' }}>
+                        ⚠️ Alertas Activas
+                    </h2>
+                    {alertas.map((alerta, index) => (
+                        <div key={index} style={{ padding: '15px', backgroundColor: '#fff5f5', borderLeft: '5px solid #E63946', marginBottom: '10px', borderRadius: '4px' }}>
+                            <strong>{alerta.mensaje}</strong>
+                        </div>
+                    ))}
+                </div>
+            )}
 
-            {/* HISTORIAL DE COSTOS */}
-            <div style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'white' }}>
-                <h2 style={{ padding: '15px', backgroundColor: '#1D3557', color: 'white' }}>
-                    Historial de Costos ({gastosUnificados.length})
-                </h2>
-                {gastosUnificados.length > 0 ? (
+            {/* 5. HISTORIAL DE COSTOS Y FORMULARIO */}
+            <div style={{ marginTop: '40px' }}>
+                <h2 style={{ color: '#457B9D', borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Historial de Costos</h2>
+                
+                {/* AQUI UTILIZAMOS LOS TOTALES QUE DABAN ERROR
+                   Los mostramos como un resumen antes de la tabla
+                */}
+                <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Total General</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#1D3557' }}>
+                            ${totalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
+                    </div>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Mantenimiento</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#2d6a4f' }}>
+                            ${totalMantenimiento.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
+                    </div>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Infracciones</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#E63946' }}>
+                            ${totalMultas.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'white', marginBottom: '30px' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead style={{ backgroundColor: '#f8f9fa' }}>
                             <tr>
-                                <th style={{ padding: '12px', textAlign: 'left' }}>Fecha</th>
-                                <th style={{ padding: '12px', textAlign: 'left' }}>Tipo</th>
-                                <th style={{ padding: '12px', textAlign: 'left' }}>Descripción</th>
+                                <th style={{ padding: '12px' }}>Fecha</th>
+                                <th style={{ padding: '12px' }}>Tipo</th>
+                                <th style={{ padding: '12px' }}>Descripción</th>
                                 <th style={{ padding: '12px', textAlign: 'right' }}>Importe</th>
                                 <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
                             </tr>
@@ -627,153 +432,58 @@ const VehiculoDetail: React.FC = () => {
                                 <tr key={gasto.id} style={{ borderBottom: '1px solid #eee' }}>
                                     <td style={{ padding: '12px' }}>{gasto.fecha.split('T')[0]}</td>
                                     <td style={{ padding: '12px' }}>
-                                        <span style={{ 
-                                            padding: '4px 8px', 
-                                            borderRadius: '12px', 
-                                            backgroundColor: gasto.tipo.toLowerCase().includes('multa') ? '#fee' : '#e6f4ea',
-                                            color: gasto.tipo.toLowerCase().includes('multa') ? '#c1121f' : '#2d6a4f',
-                                            fontWeight: 'bold'
-                                        }}>
+                                        <span style={{ padding: '4px 8px', borderRadius: '12px', backgroundColor: '#e6f4ea', color: '#2d6a4f', fontSize: '0.9em', fontWeight: 'bold' }}>
                                             {gasto.tipo}
                                         </span>
                                     </td>
                                     <td style={{ padding: '12px' }}>
                                         {gasto.descripcion}
                                         {gasto.comprobante_file_id && (
-                                            <button 
-                                                onClick={() => abrirComprobante(gasto.comprobante_file_id!)}
-                                                style={{ marginLeft: '10px', fontSize: '0.8em', color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                                            >
-                                                👁️ Ver comprobante
-                                            </button>
+                                            <button onClick={() => abrirComprobante(gasto.comprobante_file_id!)} style={{ marginLeft: '10px', border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer' }}>👁️</button>
                                         )}
                                     </td>
-                                    <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>
-                                        ${gasto.importe.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                    </td>
+                                    <td style={{ padding: '12px', textAlign: 'right' }}>${gasto.importe.toLocaleString('es-AR')}</td>
                                     <td style={{ padding: '12px', textAlign: 'center' }}>
-                                        <button 
-                                            onClick={() => editarGasto(gasto)}
-                                            style={{ 
-                                                background: '#f59e0b', 
-                                                color: 'white', 
-                                                padding: '8px 16px', 
-                                                border: 'none', 
-                                                borderRadius: '8px', 
-                                                cursor: 'pointer', 
-                                                marginRight: '10px'
-                                            }}
-                                        >
-                                            Editar
-                                        </button>
-                                        <button 
-                                            onClick={() => handleBorrarGasto(gasto.id, gasto.origen)}
-                                            style={{ background: '#dc3545', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer' }}
-                                        >
-                                            Borrar
-                                        </button>
+                                        <button onClick={() => editarGasto(gasto)} style={{ marginRight: '5px', border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => handleBorrarGasto(gasto.id, gasto.origen)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'red' }}>🗑️</button>
                                     </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                ) : (
-                    <div style={{ padding: '20px', textAlign: 'center' }}>No hay costos registrados.</div>
-                )}
-            </div>
+                    {gastosUnificados.length === 0 && <div style={{ padding: '20px', textAlign: 'center' }}>No hay costos registrados.</div>}
+                </div>
 
-            {/* SECCIÓN PARA AGREGAR O EDITAR COSTO */}
-            <div style={{ marginTop: '30px' }}>
-                <h2 style={{ color: '#457B9D' }}>
-                    {editingGasto ? 'Editar Costo' : 'Agregar Nuevo Costo'}
-                </h2>
+                <h2 style={{ color: '#457B9D' }}>{editingGasto ? 'Editar Costo' : 'Agregar Nuevo Costo'}</h2>
                 <CostoForm 
                     initialPatente={patente || ''}
                     initialGasto={editingGasto}
-                    onSuccess={() => {
-                        cargarDatos();
-                        setEditingGasto(null);
-                    }}
+                    onSuccess={() => { cargarDatos(); setEditingGasto(null); }}
                 />
             </div>
 
-            <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', textDecoration: 'none', fontWeight: 'bold' }}>
-                ← Volver al Listado de Vehículos
-            </Link>
+            <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', fontWeight: 'bold', textDecoration: 'none' }}>← Volver al Listado</Link>
 
-            {/* MODAL PARA VER COMPROBANTE DE COSTO */}
-            <Modal
-                isOpen={modalComprobanteOpen}
-                onRequestClose={() => {
-                    setModalComprobanteOpen(false);
-                    if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
-                        URL.revokeObjectURL(comprobantePreviewUrl);
-                    }
-                    setComprobantePreviewUrl(null);
-                }}
-                style={{
-                    content: {
-                        top: '50%',
-                        left: '50%',
-                        right: 'auto',
-                        bottom: 'auto',
-                        marginRight: '-50%',
-                        transform: 'translate(-50%, -50%)',
-                        width: '90%',
-                        maxWidth: '1000px',
-                        height: '90%',
-                        padding: '20px',
-                        borderRadius: '16px',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.3)'
-                    }
-                }}
-                ariaHideApp={false}
-            >
-                <h2 style={{ textAlign: 'center', marginBottom: '20px', color: '#1D3557' }}>
-                    Comprobante del Costo
-                </h2>
-
-                {comprobanteLoading ? (
-                    <div style={{ textAlign: 'center', padding: '100px 0' }}>
-                        <p>Cargando comprobante...</p>
-                        <p style={{ fontSize: '0.9em', color: '#666' }}>Puede tardar unos segundos</p>
-                    </div>
-                ) : comprobantePreviewUrl ? (
-                    <div style={{ width: '100%', height: 'calc(100% - 80px)', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#f8fafc' }}>
-                        <img 
-                            src={comprobantePreviewUrl}
-                            alt="Comprobante del costo"
-                            style={{
-                                maxWidth: '100%',
-                                maxHeight: '100%',
-                                objectFit: 'contain',
-                                borderRadius: '8px',
-                                boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
-                            }}
-                        />
-                    </div>
-                ) : (
-                    <div style={{ textAlign: 'center', padding: '100px 0', color: '#e74c3c' }}>
-                        <p>No se pudo cargar el comprobante</p>
-                    </div>
-                )}
-
-                <div style={{ textAlign: 'center', marginTop: '20px' }}>
-                    <button
-                        onClick={() => {
-                            setModalComprobanteOpen(false);
-                            if (comprobantePreviewUrl && comprobantePreviewUrl.startsWith("blob:")) {
-                                URL.revokeObjectURL(comprobantePreviewUrl);
-                            }
-                            setComprobantePreviewUrl(null);
-                        }}
-                        style={{ padding: '10px 20px', background: '#64748b', color: 'white', borderRadius: '8px' }}
-                    >
-                        Cerrar
-                    </button>
+            {/* MODALES */}
+            <Modal isOpen={modalIsOpen} onRequestClose={() => setModalIsOpen(false)} ariaHideApp={false} style={{ content: { maxWidth: '600px', margin: 'auto', borderRadius: '12px' } }}>
+                <h2 style={{textAlign: 'center'}}>{docSeleccionado?.tipo}</h2>
+                {loadingPreview ? <p style={{textAlign: 'center'}}>Cargando...</p> : previewUrl ? <iframe src={previewUrl} style={{width:'100%', height:'400px'}} /> : <p style={{textAlign: 'center'}}>Sube un archivo</p>}
+                <input type="file" onChange={handleFileChange} style={{marginTop:'20px', width: '100%'}} />
+                <div style={{marginTop:'20px', display:'flex', justifyContent:'flex-end', gap:'10px'}}>
+                    <button onClick={() => setModalIsOpen(false)} style={{padding:'10px', background:'#ccc', border:'none', borderRadius:'6px', cursor:'pointer'}}>Cancelar</button>
+                    <button onClick={subirDocumento} disabled={!archivoNuevo} style={{padding:'10px 20px', background:'#059669', color:'white', border:'none', borderRadius:'6px', cursor:'pointer'}}>Subir</button>
                 </div>
-            </Modal>    
+            </Modal>
 
+            <Modal isOpen={modalComprobanteOpen} onRequestClose={() => setModalComprobanteOpen(false)} ariaHideApp={false} style={{ content: { maxWidth: '800px', margin: 'auto' } }}>
+                {/* AQUI UTILIZAMOS comprobanteLoading */}
+                {comprobanteLoading ? (
+                    <p style={{textAlign: 'center', padding: '20px'}}>Cargando comprobante...</p>
+                ) : (
+                    comprobantePreviewUrl && <img src={comprobantePreviewUrl} style={{width: '100%'}} alt="Comprobante"/>
+                )}
+                <button onClick={() => setModalComprobanteOpen(false)} style={{marginTop:'20px', padding:'10px', width:'100%'}}>Cerrar</button>
+            </Modal>
         </div>
     );
 };
