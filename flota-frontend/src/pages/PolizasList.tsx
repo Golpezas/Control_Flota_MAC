@@ -1,3 +1,5 @@
+// src/pages/PolizasList.tsx
+
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/vehiculos';
 import { Link } from 'react-router-dom';
@@ -50,44 +52,44 @@ const PolizasList: React.FC = () => {
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.file && !editingId) {
-        return alert("Selecciona un archivo para agregar nueva póliza");
-    }
-
-    const formData = new FormData();
-    formData.append('empresa', form.empresa.trim());
-    formData.append('numero_poliza', form.numero_poliza.trim());
-    if (form.file) {
-        formData.append('file', form.file);
-    }
-
-    try {
-        if (editingId) {
-            await axios.put(`${API_URL}/polizas/${editingId}`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
-        } else {
-            await axios.post(`${API_URL}/polizas`, formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            });
+        e.preventDefault();
+        if (!form.file && !editingId) {
+            return alert("Selecciona un archivo para agregar nueva póliza");
         }
 
-        cargarPolizas();
-        setForm({ empresa: '', numero_poliza: '', file: null });
-        setEditingId(null);
-        alert("Póliza guardada correctamente");
-    } catch (error: unknown) {
-        console.error("Error al guardar póliza:", error);
-        let mensaje = "Error al guardar la póliza";
-
-        if (isAxiosError(error) && error.response?.data?.detail) {
-            mensaje = error.response.data.detail;
+        const formData = new FormData();
+        formData.append('empresa', form.empresa.trim());
+        formData.append('numero_poliza', form.numero_poliza.trim());
+        if (form.file) {
+            formData.append('file', form.file);
         }
 
-        alert(mensaje);
-    }
-};
+        try {
+            if (editingId) {
+                await axios.put(`${API_URL}/polizas/${editingId}`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+            } else {
+                await axios.post(`${API_URL}/polizas`, formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+            }
+
+            cargarPolizas();
+            setForm({ empresa: '', numero_poliza: '', file: null });
+            setEditingId(null);
+            alert("Póliza guardada correctamente");
+        } catch (error: unknown) {
+            console.error("Error al guardar póliza:", error);
+            let mensaje = "Error al guardar la póliza";
+
+            if (isAxiosError(error) && error.response?.data?.detail) {
+                mensaje = error.response.data.detail;
+            }
+
+            alert(mensaje);
+        }
+    };
 
     const eliminar = async (id: string) => {
         if (!confirm("¿Seguro que querés eliminar esta póliza?")) return;
@@ -103,6 +105,8 @@ const PolizasList: React.FC = () => {
     const editar = (p: Poliza) => {
         setForm({ empresa: p.empresa, numero_poliza: p.numero_poliza, file: null });
         setEditingId(p.id);
+        // Scroll hacia el formulario
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     return (
@@ -135,10 +139,10 @@ const PolizasList: React.FC = () => {
                         required={!editingId}
                         style={{ padding: '10px' }}
                     />
-                    <button type="submit" style={{ padding: '10px 20px', background: '#059669', color: 'white', border: 'none', borderRadius: '8px' }}>
+                    <button type="submit" style={{ padding: '10px 20px', background: '#059669', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
                         {editingId ? 'Actualizar' : 'Agregar'}
                     </button>
-                    {editingId && <button type="button" onClick={() => { setEditingId(null); setForm({empresa: '', numero_poliza: '', file: null}); }} style={{ marginLeft: '10px' }}>
+                    {editingId && <button type="button" onClick={() => { setEditingId(null); setForm({empresa: '', numero_poliza: '', file: null}); }} style={{ marginLeft: '10px', padding: '10px 20px', background: '#64748b', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>
                         Cancelar
                     </button>}
                 </form>
@@ -162,47 +166,56 @@ const PolizasList: React.FC = () => {
                                 <td style={{ padding: '15px', color: '#1e293b', fontWeight: 'bold' }}>{p.numero_poliza}</td>
                                 <td style={{ padding: '15px', color: '#1e293b' }}>{p.filename}</td>
                                 <td style={{ padding: '15px', textAlign: 'center' }}>
-                                    <button 
-                                        onClick={() => window.open(`${API_URL}/api/archivos/descargar/${p.file_id}`, '_blank')}
-                                        style={{ 
-                                            marginRight: '10px', 
-                                            background: '#2563eb', 
-                                            color: 'white', 
-                                            padding: '8px 16px', 
-                                            border: 'none', 
-                                            borderRadius: '8px',
-                                            fontWeight: 'bold'
-                                        }}
-                                    >
-                                        Descargar
-                                    </button>
-                                    <button 
-                                        onClick={() => editar(p)}
-                                        style={{ 
-                                            marginRight: '10px', 
-                                            background: '#f59e0b', 
-                                            color: 'white', 
-                                            padding: '8px 16px', 
-                                            border: 'none', 
-                                            borderRadius: '8px',
-                                            fontWeight: 'bold'
-                                        }}
-                                    >
-                                        Editar
-                                    </button>
-                                    <button 
-                                        onClick={() => eliminar(p.id)}
-                                        style={{ 
-                                            background: '#dc2626', 
-                                            color: 'white', 
-                                            padding: '8px 16px', 
-                                            border: 'none', 
-                                            borderRadius: '8px',
-                                            fontWeight: 'bold'
-                                        }}
-                                    >
-                                        Eliminar
-                                    </button>
+                                    {/* CAMBIO DE BOTONES A ICONOS */}
+                                    <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+                                        <button 
+                                            onClick={() => window.open(`${API_URL}/api/archivos/descargar/${p.file_id}`, '_blank')}
+                                            title="Descargar Póliza"
+                                            style={{ 
+                                                background: 'none', 
+                                                border: 'none', 
+                                                cursor: 'pointer', 
+                                                fontSize: '1.3em',
+                                                transition: 'transform 0.2s'
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            📥
+                                        </button>
+                                        
+                                        <button 
+                                            onClick={() => editar(p)}
+                                            title="Editar Póliza"
+                                            style={{ 
+                                                background: 'none', 
+                                                border: 'none', 
+                                                cursor: 'pointer', 
+                                                fontSize: '1.3em',
+                                                transition: 'transform 0.2s'
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            ✏️
+                                        </button>
+
+                                        <button 
+                                            onClick={() => eliminar(p.id)}
+                                            title="Eliminar Póliza"
+                                            style={{ 
+                                                background: 'none', 
+                                                border: 'none', 
+                                                cursor: 'pointer', 
+                                                fontSize: '1.3em',
+                                                transition: 'transform 0.2s'
+                                            }}
+                                            onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                            onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
