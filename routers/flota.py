@@ -383,16 +383,52 @@ async def get_vehiculos(
         print(f"ERROR EN LIST_VEHICULOS: {str(e)}") 
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
-@router.get("/vehiculos/{patente}", response_model=Vehiculo, summary="Obtiene un vehículo por patente.")
+@router.get("/vehiculos/{patente}", response_model=Vehiculo, summary="Obtiene el detalle de un vehículo.")
 async def get_vehiculo_by_patente(patente: str):
-    """Obtiene los detalles de un vehículo usando su patente."""
-    patente_norm = normalize_patente(patente)
     db_vehiculos = get_db_collection("Vehiculos")
-    # 🔑 CORRECCIÓN 4: Usar await con find_one
-    vehiculo = await db_vehiculos.find_one({"_id": patente_norm}) 
+    patente_norm = normalize_patente(patente)
+
+    # Buscar por _id (patente normalizada)
+    vehiculo = await db_vehiculos.find_one({"_id": patente_norm})
+
     if not vehiculo:
-        raise HTTPException(status_code=404, detail=f"Vehículo con patente {patente} no encontrado.")
-    return vehiculo
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Vehículo con patente {patente_norm} no encontrado"
+        )
+
+    # --- MAPEO MANUAL DE SEGURIDAD (Upper -> Lower) ---
+    # Esto garantiza que aunque en Mongo esté como 'ANIO', 'COLOR', 
+    # la API devuelva 'anio', 'color' que es lo que el Frontend espera.
+    
+    vehiculo_data = {
+        "patente": vehiculo.get("_id"),
+        "patente_original": vehiculo.get("patente_original"),
+        "activo": vehiculo.get("activo", True),
+        
+        # Prioridad: Minúscula (nuevo) -> Mayúscula (legacy) -> None
+        "anio": vehiculo.get("anio") or vehiculo.get("ANIO"),
+        "color": vehiculo.get("color") or vehiculo.get("COLOR"),
+        "nro_movil": vehiculo.get("nro_movil") or vehiculo.get("NRO_MOVIL"),
+        "tipo_combustible": vehiculo.get("tipo_combustible") or vehiculo.get("TIPO_COMBUSTIBLE"),
+        
+        # El modelo es tramposo, a veces es 'MODELO', 'descripcion_modelo', etc.
+        "modelo": (
+            vehiculo.get("modelo") or 
+            vehiculo.get("descripcion_modelo") or 
+            vehiculo.get("DESCRIPCION_MODELO") or 
+            vehiculo.get("MODELO")
+        ),
+        "descripcion_modelo": (
+            vehiculo.get("descripcion_modelo") or 
+            vehiculo.get("DESCRIPCION_MODELO") or 
+            vehiculo.get("MODELO")
+        ),
+        
+        "documentos_digitales": vehiculo.get("documentos_digitales", [])
+    }
+
+    return Vehiculo(**vehiculo_data)
 
 @router.delete("/vehiculos/{patente}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina un vehículo y sus registros asociados.")
 async def delete_vehiculo(patente: str):

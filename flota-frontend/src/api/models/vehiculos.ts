@@ -22,19 +22,23 @@ export interface VehiculoBackendResponse {
   patente_original?: string | null;
   activo?: boolean;
 
+  // Campos Legacy (Mayúsculas)
   ANIO?: number | null;
   COLOR?: string | null;
   DESCRIPCION_MODELO?: string | null;
+  MODELO?: string | null;              // 👈 AGREGADA: Para evitar el error TS(2339)
   NRO_MOVIL?: string | number | null;
   TIPO_COMBUSTIBLE?: string | null;
 
+  // Campos Modernos (Minúsculas)
   anio?: number | null;
   color?: string | null;
   descripcion_modelo?: string | null;
-  nro_movil?: string | null;
+  modelo?: string | null;              // 👈 AGREGADA: Para evitar el error TS(2339)
+  nro_movil?: string | number | null; // (Ajusté este para coincidir con el de arriba por seguridad)
   tipo_combustible?: string | null;
 
-  documentos_digitales?: DocumentoDigital[];   // ← acá lo usamos;
+  documentos_digitales?: DocumentoDigital[]; 
 }
 
 export interface Vehiculo {

@@ -29,25 +29,38 @@ interface FastAPIErrorResponse {
     detail?: string;
 }
 
-// 🔑 FUNCIÓN DE MAPEO ACTUALIZADA: Eliminando el 'as any'
+// 🔑 FUNCIÓN DE MAPEO ACTUALIZADA
 function mapVehiculoResponse(data: VehiculoBackendResponse): Vehiculo { 
     const mappedVehiculo: Vehiculo = {
+        // Aseguramos que _id y patente tengan valor (redundancia por seguridad)
         _id: data._id || data.patente || '', 
+        patente: data.patente || data._id || '', 
         patente_original: data.patente_original ?? data.patente ?? null, 
         activo: data.activo ?? false, 
         
-        // 🔑 CORRECCIÓN DE MAYÚSCULAS/MINÚSCULAS
-        anio: data.ANIO || data.anio || null,  // Fallback both cases
+        // 🔑 CORRECCIÓN ROBUSTA: Intenta todas las variantes posibles
+        anio: data.ANIO || data.anio || null,
         color: data.COLOR || data.color || null,
-        descripcion_modelo: data.DESCRIPCION_MODELO || data.descripcion_modelo || null,
         
-        // 🚨 NRO_MOVIL se convierte a string por si viene como número
-        nro_movil: (data.NRO_MOVIL !== undefined && data.NRO_MOVIL !== null) ? String(data.NRO_MOVIL) : (data.nro_movil || null),
+        // 🚨 MEJORA CRÍTICA AQUÍ: 
+        // A veces Mongo trae 'MODELO' y otras 'DESCRIPCION_MODELO'. Leemos ambas.
+        descripcion_modelo: (
+            data.DESCRIPCION_MODELO || 
+            data.descripcion_modelo || 
+            data.MODELO || 
+            data.modelo || 
+            null
+        ),
+        
+        // Tu lógica para nro_movil es excelente, la mantenemos:
+        nro_movil: (data.NRO_MOVIL !== undefined && data.NRO_MOVIL !== null) 
+            ? String(data.NRO_MOVIL) 
+            : (data.nro_movil || null),
         
         tipo_combustible: data.TIPO_COMBUSTIBLE || data.tipo_combustible || null, 
         
         documentos_digitales: data.documentos_digitales || [],
-    } as Vehiculo;  // Type assertion si es necesario
+    } as Vehiculo;
 
     return mappedVehiculo;
 }
