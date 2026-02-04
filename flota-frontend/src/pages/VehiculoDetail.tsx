@@ -28,6 +28,17 @@ type VehiculoConLegacy = Vehiculo & {
     _id?: string; // Por si acaso
 };
 
+// =================================================================
+// CONFIGURACIÓN: LISTA DE DOCUMENTOS QUE SIEMPRE DEBEN APARECER
+// =================================================================
+const DOCUMENTOS_ESTANDAR = [
+    { tipo: 'TITULO_AUTOMOTOR', label: 'TÍTULO AUTOMOTOR' },
+    { tipo: 'CEDULA_VERDE', label: 'CÉDULA VERDE DIGITAL' },
+    { tipo: 'SEGURO', label: 'PÓLIZA SEGURO DIGITAL' },
+    { tipo: 'VTV', label: 'VTV' },
+    { tipo: 'GNC', label: 'OBLEA GNC' }
+];
+
 // Componente auxiliar
 const DetailItem: React.FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
     <div style={{ borderBottom: '1px dotted #ccc', padding: '5px 0' }}>
@@ -66,7 +77,7 @@ const VehiculoDetail: React.FC = () => {
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
-    // FUNCIONES PARA DOCUMENTOS DIGITALES (tu código original, perfecto)
+    // FUNCIONES PARA DOCUMENTOS DIGITALES
     // =========================================
 
     const abrirComprobante = async (fileId: string) => {
@@ -77,9 +88,6 @@ const VehiculoDetail: React.FC = () => {
         try {
             const timestamp = Date.now();
             const url = `${API_URL}/api/archivos/descargar/${fileId}?preview=true&t=${timestamp}`;
-
-            // Siempre usamos blob (como en imágenes de documentos digitales)
-            // Esto funciona perfecto para PNG, JPG y PDF
             const response = await fetch(url, { cache: "no-store" });
             if (!response.ok) {
                 throw new Error(`Error al cargar (HTTP ${response.status})`);
@@ -106,13 +114,15 @@ const VehiculoDetail: React.FC = () => {
         window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
     };
 
-    const abrirModalDocumento = async (doc: DocumentoDigital) => {
-        setDocSeleccionado(doc);
+    // Aceptamos un objeto parcial para cuando el documento no existe aún
+    const abrirModalDocumento = async (doc: DocumentoDigital | { tipo: string }) => {
+        setDocSeleccionado(doc as DocumentoDigital);
         setPreviewUrl(null);
         setLoadingPreview(true);
         setArchivoNuevo(null);
 
-        if (!doc.file_id) {
+        // Si NO tiene file_id (es nuevo o pendiente), solo abrimos el modal para subir
+        if (!('file_id' in doc) || !doc.file_id) {
             setLoadingPreview(false);
             setModalIsOpen(true);
             return;
@@ -152,10 +162,9 @@ const VehiculoDetail: React.FC = () => {
         formData.append("file", archivoNuevo);
 
         try {
-            // FORZAMOS EL HEADER CORRECTO (esto es clave)
             const response = await apiClient.post("/api/archivos/subir-documento", formData, {
                 headers: {
-                    "Content-Type": "multipart/form-data",  // ← FORZAMOS (Axios a veces lo pierde)
+                    "Content-Type": "multipart/form-data",
                 },
                 timeout: 60000,
             });
@@ -165,11 +174,10 @@ const VehiculoDetail: React.FC = () => {
 
             setModalIsOpen(false);
             setArchivoNuevo(null);
-            await cargarDatos();  // Refresca la lista de documentos
+            await cargarDatos(); 
 
         } catch (error: unknown) {
             console.error("Error subiendo documento:", error);
-
             let msg = "Error al subir el documento.";
             if (axios.isAxiosError(error) && error.response) {
                 msg += ` (Status: ${error.response.status})`;
@@ -187,7 +195,6 @@ const VehiculoDetail: React.FC = () => {
     
     const editarGasto = (gasto: GastoUnificado) => {
         setEditingGasto(gasto);
-        // Opcional: scroll al formulario
         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
     };
 
@@ -206,7 +213,7 @@ const VehiculoDetail: React.FC = () => {
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            // 2. Vencimientos: ahora usamos vehData (la respuesta fresca) en lugar de vehiculo (estado viejo)
+            // 2. Vencimientos
             const vencimientosData = (vehData.documentos_digitales || []).map(doc => ({
                 tipo: doc.tipo,
                 fecha_vencimiento: doc.fecha_vencimiento 
@@ -249,10 +256,8 @@ const VehiculoDetail: React.FC = () => {
         cargarDatos();
     }, [cargarDatos]);
 
-    // Corrección del error de tipos: origen debe coincidir con la función
     const handleBorrarGasto = async (id: string, origen: 'mantenimiento' | 'finanzas') => {
         try {
-            // La función espera "costos" para mantenimiento y "finanzas" para multas
             const coleccion = origen === 'mantenimiento' ? 'costos' : 'finanzas';
             await borrarGastoUniversal(id, coleccion);
             await cargarDatos();
@@ -266,7 +271,6 @@ const VehiculoDetail: React.FC = () => {
     if (error) return <div style={{ color: 'red' }}>❌ {error}</div>;
     if (!vehiculo) return <div>No se encontró el vehículo.</div>;
 
-    // ✅ CORRECCIÓN: Casteamos a nuestro tipo seguro en lugar de usar 'any'
     const v = vehiculo as VehiculoConLegacy;
 
     return (
@@ -279,78 +283,104 @@ const VehiculoDetail: React.FC = () => {
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
                 
-                <DetailItem 
-                    label="Nº Móvil" 
-                    value={v.nro_movil || v.NRO_MOVIL} 
-                />
-                <DetailItem 
-                    label="Modelo" 
-                    value={
-                        v.descripcion_modelo || 
-                        v.DESCRIPCION_MODELO || 
-                        v.MODELO 
-                    } 
-                />
-                <DetailItem 
-                    label="Año" 
-                    value={v.anio || v.ANIO} 
-                />
-                <DetailItem 
-                    label="Color" 
-                    value={v.color || v.COLOR} 
-                />
-                <DetailItem 
-                    label="Combustible" 
-                    value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} 
-                />
-                <DetailItem 
-                    label="Activo" 
-                    value={v.activo ? 'Sí' : 'No'} 
-                />
+                <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
+                <DetailItem label="Modelo" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.MODELO } />
+                <DetailItem label="Año" value={v.anio || v.ANIO} />
+                <DetailItem label="Color" value={v.color || v.COLOR} />
+                <DetailItem label="Combustible" value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} />
+                <DetailItem label="Activo" value={v.activo ? 'Sí' : 'No'} />
             </div>
 
-            {/* DOCUMENTOS DIGITALES (tu código original completo) */}
+            {/* SECCIÓN DOCUMENTOS DIGITALES (MEJORADA) */}
             <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>Documentos Digitales</h2>
-                {vehiculo?.documentos_digitales == null || vehiculo.documentos_digitales.length === 0 ? (
-                    <p style={{ color: '#475569', fontStyle: 'italic' }}>No hay documentos configurados para este vehículo.</p>
-                ) : (
-                    vehiculo.documentos_digitales.map((doc, index) => {
-                        const tieneArchivo = !!doc.file_id;
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>
+                    Documentos Digitales
+                </h2>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {/* Renderizamos siempre la lista estándar */}
+                    {DOCUMENTOS_ESTANDAR.map((itemEstandar) => {
+                        // Buscamos si el vehículo ya tiene este documento subido
+                        const docExistente = (v.documentos_digitales || []).find(
+                            d => d.tipo.toUpperCase() === itemEstandar.tipo || 
+                                 d.tipo.toUpperCase().replace(/_/g, ' ') === itemEstandar.label
+                        );
+
+                        const tieneArchivo = !!docExistente?.file_id;
+
                         return (
-                            <div key={index} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 0', borderBottom: '1px solid #e2e8f0' }}>
-                                <strong style={{ color: '#1e293b' }}>
-                                    {doc.tipo.replace(/_/g, " ").toUpperCase()}:
-                                </strong>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{
-                                        fontWeight: 'bold',
-                                        fontSize: '0.875rem',
-                                        padding: '4px 12px',
-                                        borderRadius: '9999px',
-                                        backgroundColor: tieneArchivo ? '#d1fae5' : '#fee2e2',
-                                        color: tieneArchivo ? '#059669' : '#ef4444',
-                                    }}>
-                                        {tieneArchivo ? "Subido" : "Falta"}
+                            <div key={itemEstandar.tipo} style={{ 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                alignItems: 'center', 
+                                padding: '16px', 
+                                backgroundColor: 'white',
+                                borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                borderLeft: `5px solid ${tieneArchivo ? '#059669' : '#ef4444'}` // Verde si hay, Rojo si falta
+                            }}>
+                                <div>
+                                    <strong style={{ color: '#1e293b', fontSize: '1.1em', display: 'block' }}>
+                                        {itemEstandar.label}
+                                    </strong>
+                                    <span style={{ fontSize: '0.85em', color: tieneArchivo ? '#059669' : '#ef4444' }}>
+                                        {tieneArchivo ? '✅ Documento cargado' : '❌ Pendiente de carga'}
                                     </span>
+                                    {docExistente?.fecha_vencimiento && (
+                                        <span style={{ fontSize: '0.85em', color: '#666', marginLeft: '10px' }}>
+                                            (Vence: {new Date(docExistente.fecha_vencimiento).toLocaleDateString('es-AR')})
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                     {tieneArchivo && (
-                                        <button onClick={() => handleDownload(doc.file_id!)} style={{ padding: '8px 16px', backgroundColor: '#2563eb', color: 'white', borderRadius: '8px' }}>
-                                            Descargar {doc.nombre_archivo ? `(${doc.nombre_archivo})` : ""}
+                                        <button 
+                                            onClick={() => handleDownload(docExistente!.file_id!)}
+                                            style={{ 
+                                                padding: '8px 12px', 
+                                                backgroundColor: '#3b82f6', 
+                                                color: 'white', 
+                                                border: 'none', 
+                                                borderRadius: '6px', 
+                                                cursor: 'pointer' 
+                                            }}
+                                            title="Descargar"
+                                        >
+                                            📥
                                         </button>
                                     )}
-                                    <button onClick={() => abrirModalDocumento(doc)} style={{
-                                        padding: '8px 16px',
-                                        backgroundColor: tieneArchivo ? '#d97706' : '#dc2626',
-                                        color: 'white',
-                                        borderRadius: '8px'
-                                    }}>
-                                        {tieneArchivo ? "Revisar / Reemplazar" : "Subir"}
+
+                                    <button 
+                                        onClick={() => abrirModalDocumento(docExistente || { tipo: itemEstandar.tipo })}
+                                        style={{
+                                            padding: '8px 16px',
+                                            backgroundColor: tieneArchivo ? '#d97706' : '#ef4444',
+                                            color: 'white',
+                                            border: 'none',
+                                            borderRadius: '6px',
+                                            cursor: 'pointer',
+                                            fontWeight: 'bold',
+                                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                                        }}
+                                    >
+                                        {tieneArchivo ? "Reemplazar" : "SUBIR DOCUMENTO 📤"}
                                     </button>
                                 </div>
                             </div>
                         );
-                    })
-                )}
+                    })}
+                    
+                    {/* Botón extra para "Otros" documentos no estándar */}
+                    <div style={{ marginTop: '15px', textAlign: 'right' }}>
+                         <button 
+                            onClick={() => abrirModalDocumento({ tipo: 'OTRO_DOCUMENTO' })}
+                            style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
+                         >
+                            + Subir otro tipo de documento
+                         </button>
+                    </div>
+                </div>
             </div>
 
             {/* MODAL PARA SUBIR / REVISAR DOCUMENTO */}
@@ -407,8 +437,9 @@ const VehiculoDetail: React.FC = () => {
                     )
                 ) : (
                     <div style={{ textAlign: 'center', padding: '80px 0' }}>
-                        <p style={{ color: '#ef4444', fontSize: '1.125rem', fontWeight: 'medium' }}>No se pudo cargar el documento</p>
-                        <p style={{ color: '#475569', marginTop: '12px' }}>Intentá de nuevo en 10 segundos</p>
+                        <p style={{ color: '#ef4444', fontSize: '1.125rem', fontWeight: 'medium' }}>
+                            {docSeleccionado?.file_id ? "No se pudo cargar el documento" : "Seleccione un archivo para subir"}
+                        </p>
                     </div>
                 )}
 
@@ -430,8 +461,6 @@ const VehiculoDetail: React.FC = () => {
                             setPreviewUrl(null);
                         }}
                         style={{ padding: '12px 24px', backgroundColor: '#64748b', color: 'white', borderRadius: '12px', cursor: 'pointer', transition: 'background-color 0.3s', fontWeight: 'bold' }}
-                        onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#475569')}
-                        onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#64748b')}
                     >
                         Cancelar
                     </button>
@@ -447,8 +476,6 @@ const VehiculoDetail: React.FC = () => {
                             color: archivoNuevo ? 'white' : '#9ca3af',
                             cursor: archivoNuevo ? 'pointer' : 'not-allowed',
                         }}
-                        onMouseOver={(e) => archivoNuevo && (e.currentTarget.style.backgroundColor = '#047857')}
-                        onMouseOut={(e) => archivoNuevo && (e.currentTarget.style.backgroundColor = '#059669')}
                     >
                         {docSeleccionado?.file_id ? "Reemplazar Documento" : "Subir Documento"}
                     </button>
@@ -559,10 +586,10 @@ const VehiculoDetail: React.FC = () => {
                         padding: '20px', 
                         backgroundColor: '#f0fdf4', 
                         border: '2px solid #22c55e', 
-                        borderRadius: '12px',
-                        color: '#166534',
-                        fontWeight: 'bold',
-                        fontSize: '1.1em'
+                        borderRadius: '12px', 
+                        color: '#166534', 
+                        fontWeight: 'bold', 
+                        fontSize: '1.1em' 
                     }}>
                         ✅ No hay alertas críticas de vencimiento.
                     </div>
