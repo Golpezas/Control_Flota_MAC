@@ -1,4 +1,4 @@
-// src/pages/VehiculoCreatePage.tsx
+/// src/pages/VehiculoCreatePage.tsx
 
 import React from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -7,9 +7,15 @@ import VehiculoForm from '../components/VehiculoForm.tsx';
 const VehiculoCreatePage: React.FC = () => {
     const navigate = useNavigate();
     
-    // Al crearse con éxito, redirigimos al listado principal.
-    const handleSuccess = () => {
-        navigate('/vehiculos');
+    // 3. Recibimos la patente y redirigimos al detalle
+    const handleSuccess = (patente?: string) => {
+        if (patente) {
+            // ✅ Redirige al detalle para poder subir documentos inmediatamente
+            navigate(`/vehiculos/${patente}`);
+        } else {
+            // Fallback: si por alguna razón no hay patente, vuelve al listado
+            navigate('/vehiculos');
+        }
     };
 
     return (
@@ -18,7 +24,6 @@ const VehiculoCreatePage: React.FC = () => {
                 ➕ Crear Nuevo Vehículo
             </h1>
             
-            {/* El formulario se renderiza sin initialData ni isEditMode, activando el modo CREACIÓN */}
             <VehiculoForm 
                 onSuccess={handleSuccess}
             />

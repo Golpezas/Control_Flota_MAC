@@ -29,25 +29,38 @@ interface FastAPIErrorResponse {
     detail?: string;
 }
 
-// 🔑 FUNCIÓN DE MAPEO ACTUALIZADA: Eliminando el 'as any'
+// 🔑 FUNCIÓN DE MAPEO ACTUALIZADA
 function mapVehiculoResponse(data: VehiculoBackendResponse): Vehiculo { 
     const mappedVehiculo: Vehiculo = {
+        // Aseguramos que _id y patente tengan valor (redundancia por seguridad)
         _id: data._id || data.patente || '', 
+        patente: data.patente || data._id || '', 
         patente_original: data.patente_original ?? data.patente ?? null, 
         activo: data.activo ?? false, 
         
-        // 🔑 CORRECCIÓN DE MAYÚSCULAS/MINÚSCULAS
-        anio: data.ANIO || data.anio || null,  // Fallback both cases
+        // 🔑 CORRECCIÓN ROBUSTA: Intenta todas las variantes posibles
+        anio: data.ANIO || data.anio || null,
         color: data.COLOR || data.color || null,
-        descripcion_modelo: data.DESCRIPCION_MODELO || data.descripcion_modelo || null,
         
-        // 🚨 NRO_MOVIL se convierte a string por si viene como número
-        nro_movil: (data.NRO_MOVIL !== undefined && data.NRO_MOVIL !== null) ? String(data.NRO_MOVIL) : (data.nro_movil || null),
+        // 🚨 MEJORA CRÍTICA AQUÍ: 
+        // A veces Mongo trae 'MODELO' y otras 'DESCRIPCION_MODELO'. Leemos ambas.
+        descripcion_modelo: (
+            data.DESCRIPCION_MODELO || 
+            data.descripcion_modelo || 
+            data.MODELO || 
+            data.modelo || 
+            null
+        ),
+        
+        // Tu lógica para nro_movil es excelente, la mantenemos:
+        nro_movil: (data.NRO_MOVIL !== undefined && data.NRO_MOVIL !== null) 
+            ? String(data.NRO_MOVIL) 
+            : (data.nro_movil || null),
         
         tipo_combustible: data.TIPO_COMBUSTIBLE || data.tipo_combustible || null, 
         
         documentos_digitales: data.documentos_digitales || [],
-    } as Vehiculo;  // Type assertion si es necesario
+    } as Vehiculo;
 
     return mappedVehiculo;
 }
@@ -169,8 +182,9 @@ export async function updateVehiculo(patente: string, data: VehiculoUpdateInput)
     try {
         const url = `/vehiculos/${patente}`;
 
-        // Usamos VehiculoBackendResponse para tipar correctamente lo que recibimos
-        const response = await apiClient.put<VehiculoBackendResponse>(url, data);
+        // ✅ CORRECCIÓN: Cambiamos .put() por .patch()
+        // El backend (@router.patch) espera este método HTTP.
+        const response = await apiClient.patch<VehiculoBackendResponse>(url, data);
 
         // APLICAR CORRECCIÓN: Mapear el vehículo actualizado
         const updatedVehiculo = mapVehiculoResponse(response.data);
@@ -181,6 +195,7 @@ export async function updateVehiculo(patente: string, data: VehiculoUpdateInput)
         let errorMessage = 'Error desconocido al actualizar vehículo.';
         if (axios.isAxiosError(error) && error.response) {
             const errorData = error.response.data as FastAPIErrorResponse;
+            // A veces el backend envía el detalle directo o dentro de un objeto
             const detail = errorData.detail || (error.message as string);
             errorMessage = `Fallo al actualizar (Status: ${error.response.status}): ${detail}`;
         }

@@ -28,13 +28,13 @@ type VehiculoConLegacy = Vehiculo & {
     _id?: string;
 };
 
-// Configuración de documentos estándar
+// Configuración de documentos estándar – ACTUALIZADA según pedido del cliente
 const DOCUMENTOS_ESTANDAR = [
-    { tipo: 'TITULO_AUTOMOTOR', label: 'TÍTULO AUTOMOTOR' },
-    { tipo: 'CEDULA_VERDE', label: 'CÉDULA VERDE DIGITAL' },
-    { tipo: 'SEGURO', label: 'PÓLIZA SEGURO DIGITAL' },
-    { tipo: 'VTV', label: 'VTV' },
-    { tipo: 'GNC', label: 'OBLEA GNC' }
+  { tipo: 'TITULO_AUTOMOTOR',     label: 'TÍTULO AUTOMOTOR' },
+  { tipo: 'CEDULA_VERDE',         label: 'CÉDULA VERDE DIGITAL' },
+  { tipo: 'SEGURO',               label: 'PÓLIZA SEGURO DIGITAL' },
+  { tipo: 'FACTURA_VEHICULO',     label: 'FACTURA VEHÍCULO' }     // NUEVO – sin vencimiento
+  // Eliminados: 'VTV' y 'GNC'
 ];
 
 // Componente auxiliar
@@ -69,11 +69,11 @@ const VehiculoDetail: React.FC = () => {
     const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
     const [comprobanteLoading, setComprobanteLoading] = useState(false);
 
-    // ESTADO SIMPLE PARA EDICIÓN DE FECHA SEGURO
-    const [isEditingSeguro, setIsEditingSeguro] = useState(false);
-    const [fechaSeguro, setFechaSeguro] = useState('');
-
+    // Estados para edición de vencimientos
     const [editingGasto, setEditingGasto] = useState<GastoUnificado | null>(null);
+   
+    const [editingVencimientos, setEditingVencimientos] = useState<Record<string, boolean>>({});
+    const [fechasVencimiento, setFechasVencimiento] = useState<Record<string, string>>({});
     
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -117,6 +117,23 @@ const VehiculoDetail: React.FC = () => {
     useEffect(() => {
         cargarDatos();
     }, [cargarDatos]);
+
+    useEffect(() => {
+        if (!vehiculo) return;
+
+        const fechasIniciales: Record<string, string> = {};
+        (vehiculo.documentos_digitales || []).forEach(doc => {
+            if (doc.fecha_vencimiento) {
+            const fechaISO = new Date(doc.fecha_vencimiento).toISOString().split('T')[0];
+            if (doc.tipo.includes('SEGURO') || doc.tipo === 'Poliza_Detalle') {
+                fechasIniciales['SEGURO'] = fechaISO;
+            } else if (doc.tipo === 'VTV') {
+                fechasIniciales['VTV'] = fechaISO;
+            }
+            }
+        });
+        setFechasVencimiento(fechasIniciales);
+    }, [vehiculo]);  // Dependencia correcta: vehiculo
 
     // =========================================
     // FUNCIONES DOCUMENTOS
@@ -224,6 +241,26 @@ const VehiculoDetail: React.FC = () => {
         }
     };
 
+    const guardarVencimiento = async (tipoFrontend: string) => {
+        const fecha = fechasVencimiento[tipoFrontend];
+        if (!fecha || !vehiculo) return;
+
+        // Mapeo del tipo frontend → tipo que espera el backend
+        const tipoBackend = tipoFrontend === 'SEGURO' ? 'Poliza_Detalle' : tipoFrontend;
+
+        try {
+            await apiClient.put(`/documentacion/${patente}/${tipoBackend}`, {
+            fecha_vencimiento: new Date(fecha).toISOString()
+            });
+            alert(`Fecha de ${tipoFrontend} actualizada correctamente`);
+            setEditingVencimientos(prev => ({ ...prev, [tipoFrontend]: false }));
+            await cargarDatos();
+        } catch (err) {
+            console.error("Error al guardar vencimiento:", err);
+            alert("Error al actualizar la fecha.");
+        }
+    };
+
     // =========================================
     // RENDER
     // =========================================
@@ -235,9 +272,9 @@ const VehiculoDetail: React.FC = () => {
     const v = vehiculo as VehiculoConLegacy;
 
     // Buscamos ESPECÍFICAMENTE el documento de seguro
-    const seguroDoc = (v.documentos_digitales || []).find(
+    /*const seguroDoc = (v.documentos_digitales || []).find(
         d => d.tipo === 'SEGURO' || d.tipo === 'POLIZA_SEGURO_DIGITAL'
-    );
+    );*/
 
     return (
         <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
@@ -303,75 +340,72 @@ const VehiculoDetail: React.FC = () => {
                 </div>
             </div>
 
-            {/* 3. VENCIMIENTO DE PÓLIZA DE SEGURO (SECCIÓN RENOVADA) */}
+            {/* 3. VENCIMIENTOS CRÍTICOS – ACTUALIZADO */}
             <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', border: '2px solid #457B9D', marginTop: '32px', boxShadow: '0 4px 10px rgba(69, 123, 157, 0.2)' }}>
-                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1D3557', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    📅 Vencimiento de Póliza de Seguro
-                </h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1D3557', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                📅 Vencimientos Críticos
+            </h2>
 
-                {!seguroDoc ? (
-                    <div style={{ padding: '15px', backgroundColor: '#fff3cd', color: '#856404', borderRadius: '8px', border: '1px solid #ffeeba' }}>
-                        ⚠️ <strong>Atención:</strong> Para establecer la fecha de vencimiento, primero debes subir el documento <strong>PÓLIZA SEGURO DIGITAL</strong> en la sección de arriba.
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
-                        
-                        {/* Visualización de la fecha */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {[
+                { key: 'SEGURO', label: 'Póliza de Seguro' },
+                { key: 'VTV', label: 'VTV' }
+                ].map(({ key, label }) => {
+                const doc = (v.documentos_digitales || []).find(
+                    d => d.tipo.toUpperCase().includes(key.toUpperCase()) || d.tipo === (key === 'SEGURO' ? 'Poliza_Detalle' : key)
+                );
+
+                const fechaRaw = fechasVencimiento[key] || doc?.fecha_vencimiento;
+                const fechaStr = fechaRaw
+                    ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+                    : 'Sin fecha asignada';
+
+                const isEditing = editingVencimientos[key];
+
+                return (
+                    <div key={key} style={{ padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                         <div>
-                            <span style={{ display: 'block', fontSize: '0.9em', color: '#666' }}>Fecha Actual:</span>
-                            <strong style={{ fontSize: '1.4em', color: seguroDoc.fecha_vencimiento ? '#1D3557' : '#E63946' }}>
-                                {seguroDoc.fecha_vencimiento 
-                                    ? new Date(seguroDoc.fecha_vencimiento).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
-                                    : 'Sin fecha asignada'}
-                            </strong>
+                        <strong style={{ fontSize: '1.1em', color: '#1D3557' }}>{label}</strong>
+                        <div style={{ marginTop: '5px', fontSize: '1.2em', fontWeight: 'bold', color: fechaStr.includes('Sin') ? '#E63946' : '#059669' }}>
+                            {fechaStr}
+                        </div>
                         </div>
 
-                        {/* Formulario de Edición */}
-                        {isEditingSeguro ? (
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                                <input 
-                                    type="date" 
-                                    value={fechaSeguro}
-                                    onChange={(e) => setFechaSeguro(e.target.value)}
-                                    style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
-                                />
-                                <button 
-                                    onClick={async () => {
-                                        try {
-                                            await apiClient.put(`/vencimientos/${patente}/${seguroDoc.tipo}`, { 
-                                                fecha_vencimiento: new Date(fechaSeguro).toISOString()
-                                            });
-                                            await cargarDatos();
-                                            setIsEditingSeguro(false);
-                                            alert("Fecha de póliza actualizada correctamente");
-                                        } catch (err) {
-                                            console.error(err);
-                                            alert("Error al actualizar la fecha.");
-                                        }
-                                    }}
-                                    style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-                                >
-                                    Guardar
-                                </button>
-                                <button onClick={() => setIsEditingSeguro(false)} style={{ background: '#64748b', color: 'white', padding: '10px', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
-                                    ❌
-                                </button>
-                            </div>
-                        ) : (
-                            <button 
-                                onClick={() => {
-                                    setIsEditingSeguro(true);
-                                    if (seguroDoc.fecha_vencimiento) {
-                                        setFechaSeguro(new Date(seguroDoc.fecha_vencimiento).toISOString().split('T')[0]);
-                                    }
-                                }}
-                                style={{ background: '#f59e0b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                        {isEditing ? (
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                            type="date"
+                            value={fechasVencimiento[key] || ''}
+                            onChange={(e) => setFechasVencimiento(prev => ({ ...prev, [key]: e.target.value }))}
+                            style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', minWidth: '180px' }}
+                            />
+                            <button
+                            onClick={() => guardarVencimiento(key)}
+                            style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
                             >
-                                ✏️ Modificar Vencimiento
+                            Guardar
                             </button>
+                            <button
+                            onClick={() => setEditingVencimientos(prev => ({ ...prev, [key]: false }))}
+                            style={{ background: '#64748b', color: 'white', padding: '10px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                            Cancelar
+                            </button>
+                        </div>
+                        ) : (
+                        <button
+                            onClick={() => setEditingVencimientos(prev => ({ ...prev, [key]: true }))}
+                            style={{ background: '#f59e0b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            ✏️ Modificar
+                        </button>
                         )}
                     </div>
-                )}
+                    </div>
+                );
+                })}
+            </div>
             </div>
 
             {/* 4. ALERTAS (Si existen) */}

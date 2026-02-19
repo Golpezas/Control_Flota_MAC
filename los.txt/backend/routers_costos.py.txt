@@ -276,56 +276,80 @@ async def editar_gasto_manual(
     origen: str = Form(...),
     comprobante: Optional[UploadFile] = File(None)
 ):
-    """
-    Edita un gasto manual existente (reemplaza comprobante si se sube nuevo).
-    """
-    normalized_patente = normalize_patente(patente)
+    # 1. Definir colecciones posibles
+    coll_mantenimiento = get_db_collection("Mantenimiento")
+    coll_finanzas = get_db_collection("Finanzas")
+    
+    # Determinar colección primaria según lo que dice el frontend
+    if origen.lower() == "finanzas":
+        primary_coll = coll_finanzas
+        primary_name = "Finanzas"
+        secondary_coll = coll_mantenimiento
+        secondary_name = "Mantenimiento"
+    else:
+        primary_coll = coll_mantenimiento
+        primary_name = "Mantenimiento"
+        secondary_coll = coll_finanzas
+        secondary_name = "Finanzas"
 
-    # Validaciones (igual que en crear)
-    if importe <= 0:
-        raise HTTPException(422, "Importe debe ser mayor a 0")
-    importe = round(importe, 2)
-
-    if not re.match(r"^(Finanzas|Mantenimiento)$", origen):
-        raise HTTPException(422, "Origen inválido")
-
+    # 2. Lógica de ID Híbrido (ObjectId vs String)
     try:
-        fecha_parsed = safe_parse_date(fecha)
+        obj_id = ObjectId(gasto_id)
+        query_obj = {"_id": obj_id}
     except:
-        raise HTTPException(422, "Fecha inválida")
+        query_obj = {"_id": gasto_id}
 
-    # Buscar el gasto
-    collection = get_db_collection("Mantenimiento" if origen == "Mantenimiento" else "Finanzas")
-    gasto_existente = await collection.find_one({"_id": ObjectId(gasto_id)})
+    # 3. BÚSQUEDA INTELIGENTE (Primary -> Secondary)
+    collection = primary_coll
+    target_name = primary_name
+    
+    gasto = await collection.find_one(query_obj)
+    
+    if not gasto:
+        # Si no está en la primaria, buscamos en la secundaria (Fallback)
+        logger.info(f"Gasto {gasto_id} no encontrado en {primary_name}. Buscando en {secondary_name}...")
+        collection = secondary_coll
+        target_name = secondary_name
+        gasto = await collection.find_one(query_obj)
+    
+    if not gasto:
+        # Si sigue sin aparecer, realmente no existe
+        raise HTTPException(404, f"Gasto no encontrado en ninguna colección (ID: {gasto_id})")
 
-    if not gasto_existente:
-        raise HTTPException(404, "Gasto no encontrado")
+    # 4. Preparar datos de actualización (Mapeo dinámico según donde lo encontramos)
+    # Si encontramos el gasto en Finanzas, usamos campos MAYÚSCULAS. Si es Mant, minúsculas.
+    if target_name == "Finanzas":
+        update_data = {
+            "PATENTE": normalize_patente(patente),
+            "TIPO": tipo_costo,
+            "FECHA": fecha, # Asume formato compatible o string
+            "DETALLE": descripcion,
+            "MONTO": importe
+        }
+    else: # Mantenimiento
+        update_data = {
+            "patente": normalize_patente(patente),
+            "tipo_costo": tipo_costo,
+            "costo_fecha": fecha,
+            "detalle": descripcion,
+            "costo_monto": importe
+        }
 
-    # Subir nuevo comprobante si viene
-    file_id = gasto_existente.get("comprobante_file_id")
+    # 5. Manejo de archivo (Si viene uno nuevo)
     if comprobante:
         bucket = await get_gridfs_bucket()
-        file_id = await bucket.upload_from_stream(comprobante.filename, await comprobante.read())
+        file_content = await comprobante.read()
+        file_id = await bucket.upload_from_stream(
+            comprobante.filename,
+            file_content,
+            metadata={"patente": patente, "tipo": "comprobante_gasto"}
+        )
+        update_data["comprobante_file_id"] = str(file_id)
 
-    update_data = {
-        "patente": normalized_patente,
-        "tipo_costo": tipo_costo,
-        "fecha": fecha_parsed,
-        "descripcion": descripcion,
-        "importe": importe,
-        "origen": origen,
-        "comprobante_file_id": file_id
-    }
+    # 6. Ejecutar Actualización
+    await collection.update_one(query_obj, {"$set": update_data})
 
-    result = await collection.update_one(
-        {"_id": ObjectId(gasto_id)},
-        {"$set": update_data}
-    )
-
-    if result.modified_count == 0:
-        raise HTTPException(500, "No se pudo actualizar")
-
-    return {"message": "Gasto actualizado correctamente"}
+    return {"message": f"Gasto actualizado correctamente en {target_name}"}
 
 # ==================== BORRADO UNIVERSAL (CORREGIDO PARA IDs HÍBRIDOS) ====================
 @router.delete("/universal/{gasto_id}")

@@ -61,12 +61,35 @@ class UpdateMonto(BaseModel):
     monto: float
     motivo: Optional[str] = None
 
-# Mapeo de vencimientos
+# =========================================================================
+# Mapeo de vencimientos – ACTUALIZADO
+# =========================================================================
+
 VENCIMIENTO_MAP = {
-    'Poliza_Detalle': {'nombre_legible': 'Póliza de Seguro', 'dias_critico': 15},
-    'VTV': {'nombre_legible': 'Verificación Técnica Vehicular (VTV)', 'dias_critico': 30},
-    'GAS': {'nombre_legible': 'Oblea GNC', 'dias_critico': 30},
-    'TARJ YPF': {'nombre_legible': 'Tarjeta YPF', 'dias_critico': 15},
+    'Poliza_Detalle': {
+        'nombre_legible': 'Póliza de Seguro',
+        'dias_critico': 15
+    },
+    'VTV': {
+        'nombre_legible': 'Verificación Técnica Vehicular (VTV)',
+        'dias_critico': 30
+    },
+    # 'GAS' → ELIMINADO completamente (Oblea GNC)
+    'TARJ YPF': {  # se mantiene si lo usabas, si no lo podés quitar después
+        'nombre_legible': 'Tarjeta YPF',
+        'dias_critico': 15
+    }
+    # NO agregamos FacturaVehiculo aquí porque NO tiene vencimiento
+}
+
+# Nueva constante: tipos de documentos que PUEDEN tener archivo subido
+# Esto lo usaremos en el frontend y en validaciones de subida
+TIPOS_DOCUMENTOS_SUBIBLES = {
+    'TituloAutomotor',       # TÍTULO AUTOMOTOR
+    'CedulaVerde',           # CÉDULA VERDE DIGITAL
+    'Poliza_Detalle',        # PÓLIZA SEGURO DIGITAL
+    'FacturaVehiculo'        # NUEVO: FACTURA VEHÍCULO
+    # Importante: 'VTV' y 'GAS' NO están aquí → no se podrán subir archivos para ellos
 }
 
 # Configuración de base para modelos con campos numéricos
@@ -158,10 +181,19 @@ class DocumentoDigital(BaseModel):
     nombre_archivo_patron: Optional[str] = None
     path_patron_ejemplo: Optional[str] = None
     existe_fisicamente: Optional[bool] = False
-    file_id: Optional[str] = None   # ← ESTA LÍNEA ES LA QUE FALTABA
+    file_id: Optional[str] = None
+    fecha_vencimiento: Optional[datetime] = None  # ← ya lo tenías, lo dejamos
 
-    class Config:
-        extra = "allow"  # Permite campos extras si vienen de Mongo
+    model_config = ConfigDict(extra="allow")  # mantenemos allow para no romper legacy
+
+    @field_validator('tipo')
+    @classmethod
+    def validar_tipo(cls, v: str) -> str:
+        # Solo advertimos si es un tipo que no debería subirse archivo
+        if v not in TIPOS_DOCUMENTOS_SUBIBLES and v in ['VTV', 'GAS']:
+            # No raise error para no romper datos existentes, solo log o advertencia
+            print(f"Advertencia: tipo '{v}' no debería tener archivo subido (solo vencimiento)")
+        return v
 
 class Alerta(BaseModel):
     patente: str
