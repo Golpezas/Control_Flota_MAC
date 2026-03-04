@@ -87,31 +87,65 @@ async def listar_documentos_vehiculo(patente: str = Path(..., description="Paten
 @router.put("/{patente}/{tipo_documento}")
 async def actualizar_fecha_vencimiento(
     patente: str = Path(..., description="Patente del vehículo"),
-    tipo_documento: str = Path(..., description="Tipo de documento, ej: Poliza_Detalle"),
+    tipo_documento: str = Path(..., description="Tipo de documento (SEGURO, Poliza_Detalle, etc.)"),
     data: VencimientoUpdate = None
 ):
     """
     Actualiza SOLO la fecha de vencimiento de un documento específico.
-    Ideal para corregir alertas cuando se renueva una póliza.
+    Acepta alias para mantener compatibilidad con frontend actual.
     """
     normalized_patente = normalize_patente(patente)
     collection = get_db_collection("Documentacion")
 
+    # ────────────────────────────────────────────────
+    # Normalización / alias (compatible hacia atrás)
+    # ────────────────────────────────────────────────
+    tipo_normalizado = tipo_documento.strip()
+
+    # Mapeo de alias conocidos → valor real guardado en BD al subir póliza
+    alias_to_real = {
+        "Poliza_Detalle": "SEGURO",
+        "Poliza detalle": "SEGURO",
+        "poliza_detalle": "SEGURO",
+        "POLIZA_DETALLE": "SEGURO",
+        # Agregar más si aparecen en logs futuros
+    }
+
+    # Aplicamos el mapeo si existe, sino usamos el valor tal cual
+    tipo_busqueda = alias_to_real.get(tipo_normalizado, tipo_normalizado)
+
+    logger.debug(f"PUT vencimiento - patente={patente}, tipo_enviado={tipo_documento!r} → tipo_busqueda={tipo_busqueda!r}")
+
     result = await collection.update_one(
         {
             "patente": normalized_patente,
-            "tipo_documento": tipo_documento
+            "tipo_documento": tipo_busqueda
         },
         {"$set": {"fecha_vencimiento": data.fecha_vencimiento}}
     )
 
     if result.modified_count == 0:
+        # Intentamos loguear más contexto para debug futuro
+        existing = await collection.find_one({
+            "patente": normalized_patente,
+            "tipo_documento": tipo_busqueda
+        })
+        if not existing:
+            logger.warning(
+                f"No se encontró documento para actualización: "
+                f"patente={normalized_patente}, tipo_busqueda={tipo_busqueda}, "
+                f"tipo_original_enviado={tipo_documento}"
+            )
         raise HTTPException(
             status_code=404,
-            detail=f"No se encontró documento {tipo_documento} para la patente {patente}"
+            detail=f"No se encontró documento '{tipo_documento}' para la patente {patente}"
         )
 
-    logger.info(f"Fecha de vencimiento actualizada: {patente} - {tipo_documento} → {data.fecha_vencimiento}")
+    logger.info(
+        f"Fecha de vencimiento actualizada: {patente} - {tipo_documento} "
+        f"(normalizado a {tipo_busqueda}) → {data.fecha_vencimiento}"
+    )
+
     return {"message": "Fecha de vencimiento actualizada correctamente"}
 
 # =============================================================================
