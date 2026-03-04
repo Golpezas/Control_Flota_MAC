@@ -83,6 +83,40 @@ async def subir_documento(
             }
         )
 
+        if tipo.upper() in ("SEGURO", "POLIZA_SEGURO_DIGITAL", "POLIZA_DETALLE"):
+            doc_collection = get_db_collection("Documentacion")
+            normalized_tipo = "SEGURO"  # Canónico futuro
+            
+            existing = await doc_collection.find_one({
+                "patente": normalized_patente,
+                "tipo_documento": {"$in": ["Poliza_Detalle", "SEGURO"]}  # Busca ambos por ahora
+            })
+            
+            doc_data = {
+                "patente": normalized_patente,
+                "tipo_documento": normalized_tipo,
+                "filename": file.filename,
+                "file_id": str(file_id),
+                "aseguradora": None,  # Expandir form si necesitas
+                "numero_poliza": None,
+                "suma_asegurada": 0,
+                "costo_semestral": 0,
+                "costo_mensual": 0,  # Default de BD
+                "monto_franquicia": 0,
+                "updated_at": datetime.utcnow()
+            }
+            
+            if existing:
+                await doc_collection.update_one(
+                    {"_id": existing["_id"]},
+                    {"$set": doc_data}  # Sobrescribe con canónico
+                )
+                logger.info(f"Documento póliza actualizado en Documentacion para {normalized_patente}")
+            else:
+                doc_data["created_at"] = datetime.utcnow()
+                await doc_collection.insert_one(doc_data)
+                logger.info(f"Documento póliza creado en Documentacion para {normalized_patente}")
+
         # INTENTO B: Si no se modificó nada (matched_count == 0), significa que no existía. Lo agregamos (PUSH).
         if result_update.matched_count == 0:
             logger.info(f"Tipo {tipo} no existía en {normalized_patente}. Creando nueva entrada...")

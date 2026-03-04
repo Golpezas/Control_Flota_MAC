@@ -104,15 +104,15 @@ async def actualizar_fecha_vencimiento(
 
     # Mapeo de alias conocidos → valor real guardado en BD al subir póliza
     alias_to_real = {
-        "Poliza_Detalle": "SEGURO",
-        "Poliza detalle": "SEGURO",
-        "poliza_detalle": "SEGURO",
-        "POLIZA_DETALLE": "SEGURO",
-        # Agregar más si aparecen en logs futuros
-    }
+    "Poliza_Detalle": "Poliza_Detalle",  # Busca exacto lo que hay en BD
+    "Poliza detalle": "Poliza_Detalle",
+    "poliza_detalle": "Poliza_Detalle",
+    "POLIZA_DETALLE": "Poliza_Detalle",
+    "SEGURO": "SEGURO",  # Para futuro
+}
 
     # Aplicamos el mapeo si existe, sino usamos el valor tal cual
-    tipo_busqueda = alias_to_real.get(tipo_normalizado, tipo_normalizado)
+    tipo_busqueda = alias_to_real.get(tipo_documento.strip(), tipo_documento.strip())
 
     logger.debug(f"PUT vencimiento - patente={patente}, tipo_enviado={tipo_documento!r} → tipo_busqueda={tipo_busqueda!r}")
 
