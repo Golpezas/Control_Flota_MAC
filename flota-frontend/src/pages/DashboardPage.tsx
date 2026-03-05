@@ -69,215 +69,127 @@ const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
 
 const DashboardPage: React.FC = () => {
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const [isLoadingVehiculos, setIsLoadingVehiculos] = useState(true); // Loader específico
 
-    const [debouncedPatente, setDebouncedPatente] = useState(''); // ← Nuevo estado para el valor debounced
-
-    // Estados para alertas
     const [alertasCriticas, setAlertasCriticas] = useState<Alerta[]>([]);
     const [alertasTotal, setAlertasTotal] = useState(0);
     const [alertasPage, setAlertasPage] = useState(1);
-    const [alertasLoading, setAlertasLoading] = useState(true);
-    const [alertasError, setAlertasError] = useState<string | null>(null);
+    const [alertasLoading, setAlertasLoading] = useState(false); // Cambiado a false inicial
+    
     const [patenteFilter, setPatenteFilter] = useState('');
+    const [debouncedPatente, setDebouncedPatente] = useState('');
     const ITEMS_PER_PAGE = 10;
 
-    // Debounce (evita refresco y múltiples peticiones)
+    // 1. Efecto solo para cargar Vehículos (Una sola vez al montar)
+    useEffect(() => {
+        const loadInitialData = async () => {
+            setIsLoadingVehiculos(true);
+            try {
+                const data = await fetchVehiculos();
+                setVehiculos(data);
+            } catch (e) {
+                console.error('Error al obtener vehículos:', e);
+            } finally {
+                setIsLoadingVehiculos(false);
+            }
+        };
+        loadInitialData();
+    }, []);
+
+    // 2. Debounce para la búsqueda
     useEffect(() => {
         const timer = setTimeout(() => {
-            setDebouncedPatente(patenteFilter.trim().toUpperCase());
-            setAlertasPage(1); // Reset página al filtrar
+            setDebouncedPatente(patenteFilter);
+            setAlertasPage(1); // Reset de página solo cuando cambia el texto de búsqueda
         }, 500);
-
         return () => clearTimeout(timer);
     }, [patenteFilter]);
 
-    // 1. Fetch vehículos
-    const fetchVehiculosData = useCallback(async () => {
-        setIsLoading(true);
-        setError(null);
-        try {
-            const data = await fetchVehiculos();
-            setVehiculos(data);
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : 'Error desconocido al obtener vehículos.';
-            setError(message);
-        } finally {
-            setIsLoading(false);
-        }
-    }, []);
-
-    // Fetch alertas (usa debouncedPatente)
+    // 3. Fetch Alertas (Se dispara por página o por patente debounced)
     const fetchAlertas = useCallback(async () => {
         setAlertasLoading(true);
-        setAlertasError(null);
         try {
             const params: Record<string, string | number> = {
                 limit: ITEMS_PER_PAGE,
                 skip: (alertasPage - 1) * ITEMS_PER_PAGE,
             };
-
-            if (debouncedPatente) {
-                params.patente = debouncedPatente;
-            }
+            if (debouncedPatente) params.patente = debouncedPatente;
 
             const res = await apiClient.get('/alertas/criticas', { params });
             setAlertasCriticas(res.data.alertas || []);
             setAlertasTotal(res.data.total || 0);
-
-            console.log("[DEBUG DASHBOARD] Página:", alertasPage, "Mostrando:", res.data.alertas?.length || 0, "Total:", res.data.total);
-        } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : 'Error al obtener alertas.';
-            setAlertasError(message);
-            setAlertasCriticas([]);
-            setAlertasTotal(0);
+        } catch (e) {
+            console.error('Error al obtener alertas:', e);
         } finally {
             setAlertasLoading(false);
         }
-    }, [alertasPage, debouncedPatente]); // Dependencia correcta
+    }, [alertasPage, debouncedPatente]);
 
     useEffect(() => {
-        fetchVehiculosData();
         fetchAlertas();
-    }, [fetchVehiculosData, fetchAlertas]);
+    }, [fetchAlertas]);
 
-    // Resumen vehículos
+    // Lógica de resumen
     const summary = useMemo(() => {
         const total = vehiculos.length;
         const activos = vehiculos.filter(v => v.activo).length;
-        const inactivos = total - activos;
-        return { total, activos, inactivos };
+        return { total, activos, inactivos: total - activos };
     }, [vehiculos]);
 
     const totalPages = Math.ceil(alertasTotal / ITEMS_PER_PAGE);
 
-    if (isLoading) {
-        return <div style={{ padding: '30px', fontSize: '1.2em', color: '#457B9D' }}>Cargando resumen de flota... ⏳</div>;
+    // Renderizado condicional solo para la carga inicial de la página
+    if (isLoadingVehiculos && vehiculos.length === 0) {
+        return <div style={{ padding: '30px' }}>Cargando dashboard... ⏳</div>;
     }
 
-    if (error) {
-        return <div style={{ padding: '30px', color: '#E63946', fontWeight: 'bold' }}>❌ Error al cargar los vehículos: {error}</div>;
-    }
-    
     return (
         <div style={{ padding: '30px' }}>
-            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '30px', color: '#1D3557' }}>
-                Inicio (Dashboard)
-            </h1>
+            <h1 style={{ color: '#1D3557' }}>Inicio (Dashboard)</h1>
 
-            {/* Tarjetas de Resumen */}
+            {/* Resumen siempre visible */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '40px' }}>
                 <SummaryCard title="Vehículos Totales" value={summary.total} color="#1D3557" icon="🚚" />
                 <SummaryCard title="Vehículos Activos" value={summary.activos} color="#457B9D" icon="✅" />
                 <SummaryCard title="Vehículos Inactivos" value={summary.inactivos} color="#E63946" icon="🛑" />
             </div>
 
-            {/* Panel de Alertas */}
-            <h2 style={{ marginBottom: '20px', color: alertasCriticas.length > 0 ? '#E63946' : '#457B9D' }}>
-                🚨 Alertas de Vencimiento Críticas ({alertasLoading ? '...' : alertasTotal})
+            <h2 style={{ color: '#457B9D' }}>
+                🚨 Alertas Críticas ({alertasTotal})
+                {alertasLoading && <span style={{ fontSize: '0.5em', marginLeft: '10px' }}>Actualizando...</span>}
             </h2>
 
-            {/* En el return → Buscador con prevención de submit */}
             <div style={{ marginBottom: '20px' }}>
                 <input
                     type="text"
-                    placeholder="Buscar por patente (ej: MVE291, AG705QN)..."
+                    placeholder="Buscar por patente..."
                     value={patenteFilter}
                     onChange={(e) => setPatenteFilter(e.target.value.toUpperCase())}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                            e.preventDefault(); // ← Evita submit/refresco
-                        }
-                    }}
-                    style={{ 
-                        padding: '10px 15px', 
-                        width: '350px', 
-                        borderRadius: '6px', 
-                        border: '1px solid #ccc',
-                        fontSize: '1em'
-                    }}
+                    style={{ padding: '10px', width: '350px', borderRadius: '6px', border: '1px solid #ccc' }}
                 />
             </div>
 
             <div style={{ 
                 border: '1px solid #ddd', 
                 borderRadius: '8px', 
-                overflow: 'hidden', 
-                backgroundColor: 'white',
-                minHeight: '200px'
+                opacity: alertasLoading ? 0.6 : 1, // Feedback visual sin quitar el contenido
+                transition: 'opacity 0.2s' 
             }}>
-                {alertasLoading ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#457B9D' }}>
-                        Cargando alertas... ⏳
-                    </div>
-                ) : alertasError ? (
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#E63946' }}>
-                        ❌ {alertasError}
-                    </div>
-                ) : alertasCriticas.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#457B9D' }}>
-                        🎉 ¡No hay alertas de vencimiento críticas!
-                    </div>
+                {/* Controles de paginación arriba para mejor acceso */}
+                <div style={{ padding: '10px', display: 'flex', justifyContent: 'center', gap: '10px', background: '#f8fafc' }}>
+                    <button disabled={alertasPage === 1 || alertasLoading} onClick={() => setAlertasPage(p => p - 1)}>←</button>
+                    <span>Página {alertasPage} de {totalPages || 1}</span>
+                    <button disabled={alertasPage >= totalPages || alertasLoading} onClick={() => setAlertasPage(p => p + 1)}>→</button>
+                </div>
+
+                {alertasCriticas.length === 0 && !alertasLoading ? (
+                    <div style={{ padding: '40px', textAlign: 'center' }}>No se encontraron alertas.</div>
                 ) : (
-                    <>
-                        {alertasCriticas.length > 0 && (
-                        <div style={{ 
-                            padding: '15px', 
-                            display: 'flex', 
-                            justifyContent: 'center', 
-                            alignItems: 'center', 
-                            gap: '25px',
-                            borderTop: '1px solid #eee',
-                            backgroundColor: '#f8fafc'
-                        }}>
-                            <button
-                                disabled={alertasPage === 1}
-                                onClick={() => setAlertasPage(p => Math.max(1, p - 1))}
-                                style={{ 
-                                    padding: '10px 20px', 
-                                    background: alertasPage === 1 ? '#ccc' : '#457B9D', 
-                                    color: 'white', 
-                                    border: 'none', 
-                                    borderRadius: '6px',
-                                    cursor: alertasPage === 1 ? 'not-allowed' : 'pointer',
-                                    fontWeight: 'bold'
-                                }}
-                            >
-                                ← Anterior
-                            </button>
-
-                            <span style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
-                                Página {alertasPage} de {Math.max(1, totalPages)}
-                            </span>
-
-                            <button
-                                disabled={alertasPage >= totalPages}
-                                onClick={() => setAlertasPage(p => p + 1)}
-                                style={{ 
-                                    padding: '10px 20px', 
-                                    background: alertasPage >= totalPages ? '#ccc' : '#457B9D', 
-                                    color: 'white', 
-                                    border: 'none', 
-                                    borderRadius: '6px',
-                                    cursor: alertasPage >= totalPages ? 'not-allowed' : 'pointer',
-                                    fontWeight: 'bold'
-                                }}
-                            >
-                                Siguiente →
-                            </button>
-                        </div>
-                    )}
-                        {alertasCriticas.map((alerta) => (
-                            <AlertaItem key={`${alerta.patente}-${alerta.tipo_documento}`} alerta={alerta} />
-                        ))}
-                    </>
+                    alertasCriticas.map((alerta) => (
+                        <AlertaItem key={`${alerta.patente}-${alerta.tipo_documento}`} alerta={alerta} />
+                    ))
                 )}
             </div>
-
-            <p style={{ marginTop: '30px', fontSize: '0.9em', color: '#666' }}>
-                *Las alertas se basan en la documentación con vencimiento cercano o expirado.
-            </p>
         </div>
     );
 };
