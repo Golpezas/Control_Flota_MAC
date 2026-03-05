@@ -109,17 +109,7 @@ const VehiculoDetail: React.FC = () => {
             const res = await apiClient.get(`/documentacion/${patente}`);
             const datosBD = Array.isArray(res.data) ? res.data : [];
             setVencimientosBD(datosBD);
-            
-            const fechasIniciales: Record<string, string> = {};
-            datosBD.forEach((doc: DocumentoResponse) => {
-                if (doc.fecha_vencimiento) {
-                    const fechaISO = new Date(doc.fecha_vencimiento).toISOString().split('T')[0];
-                    // Unificamos lectura a clave 'SEGURO' si viene legacy de BD
-                    const key = doc.tipo_documento === 'Poliza_Detalle' ? 'SEGURO' : doc.tipo_documento;
-                    fechasIniciales[key] = fechaISO;
-                }
-            });
-            setFechasVencimiento(fechasIniciales);
+            // ¡Eliminamos el setFechasVencimiento de aquí para que no arrastre datos viejos!
         } catch (err) {
             console.error("Error cargando vencimientos desde documentacion:", err);
         }
@@ -332,13 +322,14 @@ const VehiculoDetail: React.FC = () => {
                 { key: 'VTV', label: 'VTV' }
                 ].map(({ key, label }) => {
                 
-                // Búsqueda flexible para soportar nombres nuevos y viejos
                 const doc = vencimientosBD.find(d => 
                     d.tipo_documento === key || 
                     (key === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
                 ); 
 
-                const fechaRaw = fechasVencimiento[key] || doc?.fecha_vencimiento;
+                // CORRECCIÓN CRÍTICA: Solo leemos de la Base de Datos para mostrar
+                const fechaRaw = doc?.fecha_vencimiento;
+                
                 const fechaStr = fechaRaw
                     ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
                     : 'Sin fecha asignada';
@@ -378,7 +369,14 @@ const VehiculoDetail: React.FC = () => {
                         </div>
                         ) : (
                         <button
-                            onClick={() => setEditingVencimientos(prev => ({ ...prev, [key]: true }))}
+                            onClick={() => {
+                                setEditingVencimientos(prev => ({ ...prev, [key]: true }));
+                                // Carga la fecha actual en el input al momento de editar
+                                setFechasVencimiento(prev => ({ 
+                                    ...prev, 
+                                    [key]: doc?.fecha_vencimiento ? new Date(doc.fecha_vencimiento).toISOString().split('T')[0] : '' 
+                                }));
+                            }}
                             style={{ background: '#f59e0b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
                         >
                             ✏️ Modificar
