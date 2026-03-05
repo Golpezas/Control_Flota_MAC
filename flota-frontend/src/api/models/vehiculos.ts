@@ -136,3 +136,13 @@ export interface CostoManualDeleteInput {
     id: string;
     origen: 'Finanzas' | 'Mantenimiento'; 
 }
+
+// NUEVO: Tipo exacto que devuelve el endpoint GET /documentacion/{patente}
+export interface DocumentoResponse {
+    tipo_documento: string;
+    fecha_vencimiento: string | null;  // ISO string o null (backend lo envía como string o null)
+    aseguradora: string | null;
+    numero_poliza: string | null;
+    filename: string | null;
+    file_id: string | null;
+}

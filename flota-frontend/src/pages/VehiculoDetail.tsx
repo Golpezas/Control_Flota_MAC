@@ -7,6 +7,7 @@ import type {
     Vehiculo, 
     Alerta, 
     DocumentoDigital, 
+    DocumentoResponse // ← NUEVO IMPORT: para datos de /documentacion
 } from '../api/models/vehiculos'; 
 import { 
     fetchVehiculoByPatente,
@@ -75,6 +76,9 @@ const VehiculoDetail: React.FC = () => {
     const [editingVencimientos, setEditingVencimientos] = useState<Record<string, boolean>>({});
     const [fechasVencimiento, setFechasVencimiento] = useState<Record<string, string>>({});
     
+    // NUEVO: Estados para vencimientos reales desde /documentacion
+    const [vencimientosBD, setVencimientosBD] = useState<DocumentoResponse[]>([]);
+
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
     // =========================================
@@ -114,26 +118,33 @@ const VehiculoDetail: React.FC = () => {
         }
     }, [patente]);
 
+    // NUEVA FUNCIÓN: Cargar vencimientos desde /documentacion
+    const cargarVencimientosBD = useCallback(async () => {
+        if (!patente) return;
+        try {
+            const res = await apiClient.get(`/documentacion/${patente}`);
+            setVencimientosBD(res.data);
+            console.log("[DEBUG] Vencimientos cargados desde /documentacion:", res.data);
+            
+            // Inicializar fechas locales desde BD
+            const fechasIniciales: Record<string, string> = {};
+            res.data.forEach((doc: DocumentoResponse) => {
+                if (doc.fecha_vencimiento) {
+                    const fechaISO = new Date(doc.fecha_vencimiento).toISOString().split('T')[0];
+                    const key = doc.tipo_documento === 'Poliza_Detalle' ? 'SEGURO' : doc.tipo_documento;
+                    fechasIniciales[key] = fechaISO;
+                }
+            });
+            setFechasVencimiento(fechasIniciales);
+        } catch (err) {
+            console.error("Error cargando vencimientos desde documentacion:", err);
+        }
+    }, [patente]);
+
     useEffect(() => {
         cargarDatos();
-    }, [cargarDatos]);
-
-    useEffect(() => {
-        if (!vehiculo) return;
-
-        const fechasIniciales: Record<string, string> = {};
-        (vehiculo.documentos_digitales || []).forEach(doc => {
-            if (doc.fecha_vencimiento) {
-            const fechaISO = new Date(doc.fecha_vencimiento).toISOString().split('T')[0];
-            if (doc.tipo.includes('SEGURO') || doc.tipo === 'Poliza_Detalle') {
-                fechasIniciales['SEGURO'] = fechaISO;
-            } else if (doc.tipo === 'VTV') {
-                fechasIniciales['VTV'] = fechaISO;
-            }
-            }
-        });
-        setFechasVencimiento(fechasIniciales);
-    }, [vehiculo]);  // Dependencia correcta: vehiculo
+        cargarVencimientosBD(); // Cargar vencimientos al montar
+    }, [cargarDatos, cargarVencimientosBD]);
 
     // =========================================
     // FUNCIONES DOCUMENTOS
@@ -243,7 +254,7 @@ const VehiculoDetail: React.FC = () => {
 
     const guardarVencimiento = async (tipoFrontend: string) => {
         const fecha = fechasVencimiento[tipoFrontend];
-        if (!fecha || !vehiculo) return;
+        if (!fecha || !patente) return;
 
         // Mapeo del tipo frontend → tipo que espera el backend
         const tipoBackend = tipoFrontend === 'SEGURO' ? 'Poliza_Detalle' : tipoFrontend;
@@ -254,7 +265,8 @@ const VehiculoDetail: React.FC = () => {
             });
             alert(`Fecha de ${tipoFrontend} actualizada correctamente`);
             setEditingVencimientos(prev => ({ ...prev, [tipoFrontend]: false }));
-            await cargarDatos();
+            // NUEVO: Recargar vencimientos después de guardar
+            await cargarVencimientosBD();
         } catch (err) {
             console.error("Error al guardar vencimiento:", err);
             alert("Error al actualizar la fecha.");
@@ -351,9 +363,7 @@ const VehiculoDetail: React.FC = () => {
                 { key: 'SEGURO', label: 'Póliza de Seguro' },
                 { key: 'VTV', label: 'VTV' }
                 ].map(({ key, label }) => {
-                const doc = (v.documentos_digitales || []).find(
-                    d => d.tipo.toUpperCase().includes(key.toUpperCase()) || d.tipo === (key === 'SEGURO' ? 'Poliza_Detalle' : key)
-                );
+                const doc = vencimientosBD.find(d => d.tipo_documento === (key === 'SEGURO' ? 'Poliza_Detalle' : key)); // Buscar en datos de BD
 
                 const fechaRaw = fechasVencimiento[key] || doc?.fecha_vencimiento;
                 const fechaStr = fechaRaw
