@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { Vehiculo, Alerta } from '../api/models/vehiculos';
 import { fetchVehiculos } from '../api/vehiculos';
-import { apiClient } from '../api/vehiculos'; // ← IMPORT OBLIGATORIO PARA LAS LLAMADAS
+import { apiClient } from '../api/vehiculos';
 
 // =================================================================
 // COMPONENTE: TARJETA DE RESUMEN (sin cambios)
@@ -34,7 +34,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, color, icon }) 
 );
 
 // =================================================================
-// COMPONENTE: ITEM DE ALERTA (sin cambios, pero ahora con datos enriquecidos)
+// COMPONENTE: ITEM DE ALERTA (sin cambios)
 // =================================================================
 interface AlertaItemProps {
     alerta: Alerta;
@@ -71,8 +71,10 @@ const DashboardPage: React.FC = () => {
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    
+    const [debouncedPatente, setDebouncedPatente] = useState(''); // ← Nuevo estado para el valor debounced
 
-    // Estados para alertas paginadas y filtradas
+    // Estados para alertas
     const [alertasCriticas, setAlertasCriticas] = useState<Alerta[]>([]);
     const [alertasTotal, setAlertasTotal] = useState(0);
     const [alertasPage, setAlertasPage] = useState(1);
@@ -81,7 +83,18 @@ const DashboardPage: React.FC = () => {
     const [patenteFilter, setPatenteFilter] = useState('');
     const ITEMS_PER_PAGE = 10;
 
-    // 1. Fetch vehículos (sin cambios, pero con useCallback para evitar re-creaciones)
+    // Debounce real con useEffect (mejor práctica 2025)
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedPatente(patenteFilter.trim().toUpperCase());
+            setAlertasPage(1); // Resetear página al cambiar filtro
+        }, 500); // 500ms de espera después de dejar de escribir
+
+        // Cleanup: cancela el timer si el usuario escribe de nuevo antes de 500ms
+        return () => clearTimeout(timer);
+    }, [patenteFilter]); // Dependencia SOLO en patenteFilter (ESLint feliz)
+
+    // 1. Fetch vehículos
     const fetchVehiculosData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
@@ -96,7 +109,7 @@ const DashboardPage: React.FC = () => {
         }
     }, []);
 
-    // 2. Fetch alertas con paginación y filtro (tipado estricto)
+    // Fetch alertas: ahora usa debouncedPatente en lugar de patenteFilter directo
     const fetchAlertas = useCallback(async () => {
         setAlertasLoading(true);
         setAlertasError(null);
@@ -106,16 +119,17 @@ const DashboardPage: React.FC = () => {
                 skip: (alertasPage - 1) * ITEMS_PER_PAGE,
             };
 
-            if (patenteFilter.trim()) {
-                params.patente = patenteFilter.trim().toUpperCase();
+            // Usamos el valor debounced
+            if (debouncedPatente) {
+                params.patente = debouncedPatente;
             }
 
             const res = await apiClient.get<Alerta[]>('/alertas/criticas', { params });
             setAlertasCriticas(res.data);
 
-            // Obtener total real (sin paginación)
+            // Total real (usando el mismo filtro debounced)
             const totalRes = await apiClient.get<Alerta[]>('/alertas/criticas', {
-                params: { patente: patenteFilter.trim() || undefined }
+                params: { patente: debouncedPatente || undefined }
             });
             setAlertasTotal(totalRes.data.length);
 
@@ -127,14 +141,14 @@ const DashboardPage: React.FC = () => {
         } finally {
             setAlertasLoading(false);
         }
-    }, [alertasPage, patenteFilter]);
+    }, [alertasPage, debouncedPatente]); // Dependencia en debouncedPatente
 
     useEffect(() => {
         fetchVehiculosData();
         fetchAlertas();
     }, [fetchVehiculosData, fetchAlertas]);
 
-    // Resumen (sin cambios)
+    // Resumen vehículos
     const summary = useMemo(() => {
         const total = vehiculos.length;
         const activos = vehiculos.filter(v => v.activo).length;
@@ -170,7 +184,7 @@ const DashboardPage: React.FC = () => {
                 🚨 Alertas de Vencimiento Críticas ({alertasLoading ? '...' : alertasTotal})
             </h2>
 
-            {/* Buscador por patente */}
+            {/* Buscador con debounce */}
             <div style={{ marginBottom: '20px' }}>
                 <input
                     type="text"
@@ -212,7 +226,7 @@ const DashboardPage: React.FC = () => {
                             <AlertaItem key={index} alerta={alerta} />
                         ))}
 
-                        {/* Paginación */}
+                        {/* Paginación visible */}
                         {totalPages > 1 && (
                             <div style={{ 
                                 padding: '15px', 
