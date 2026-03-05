@@ -1,12 +1,12 @@
-// src/pages/DashboardPage.tsx (CÓDIGO CONFIRMADO)
+// src/pages/DashboardPage.tsx
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { Vehiculo, Alerta } from '../api/models/vehiculos';
-import { fetchVehiculos, fetchGlobalAlertas } from '../api/vehiculos';
-//import { Link } from 'react-router-dom';
+import { fetchVehiculos } from '../api/vehiculos';
+import { apiClient } from '../api/vehiculos'; // ← IMPORT OBLIGATORIO PARA LAS LLAMADAS
 
 // =================================================================
-// COMPONENTE: TARJETA DE RESUMEN
+// COMPONENTE: TARJETA DE RESUMEN (sin cambios)
 // =================================================================
 interface SummaryCardProps {
     title: string;
@@ -33,17 +33,15 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, color, icon }) 
     </div>
 );
 
-
 // =================================================================
-// COMPONENTE: ITEM DE ALERTA
+// COMPONENTE: ITEM DE ALERTA (sin cambios, pero ahora con datos enriquecidos)
 // =================================================================
 interface AlertaItemProps {
     alerta: Alerta;
 }
 
 const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
-    // 🚨 LOG DE DEPURACIÓN 2: Muestra el valor de 'patente' justo antes de renderizar
-    console.log(`DEBUG ALERTA ITEM - Patente recibida para renderizar: ${alerta.patente}, Descripción: ${alerta.descripcion_modelo}`);
+    console.log(`DEBUG ALERTA ITEM - Patente: ${alerta.patente}, Movil: ${alerta.movil_nro}, Modelo: ${alerta.descripcion_modelo}`);
 
     return (
         <div style={{ 
@@ -54,12 +52,12 @@ const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
             alignItems: 'center', 
             background: 'white' 
         }}>
-            <div style={{ fontWeight: 'bold', color: alerta.prioridad === 'CRÍTICA' ? '#E63946' : '#F4A261' 
-}}>
+            <div style={{ fontWeight: 'bold', color: alerta.prioridad === 'CRÍTICA' ? '#E63946' : '#F4A261' }}>
                 🚨 {alerta.tipo_documento}
             </div>
             <div>
-                Patente: **{alerta.patente || 'N/A'}** (Movil: {alerta.movil_nro || 'N/A'}, {alerta.descripcion_modelo || 'Vehículo'})
+                Patente: **{alerta.patente || 'N/A'}** 
+                (Movil: {alerta.movil_nro || 'Sin móvil'}, {alerta.descripcion_modelo || 'Sin modelo'})
             </div>
         </div>
     );
@@ -74,14 +72,17 @@ const DashboardPage: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Estados para alertas
+    // Estados para alertas paginadas y filtradas
     const [alertasCriticas, setAlertasCriticas] = useState<Alerta[]>([]);
-    const [isAlertsLoading, setIsAlertsLoading] = useState(true);
-    const [alertsError, setAlertsError] = useState<string | null>(null);
+    const [alertasTotal, setAlertasTotal] = useState(0);
+    const [alertasPage, setAlertasPage] = useState(1);
+    const [alertasLoading, setAlertasLoading] = useState(true);
+    const [alertasError, setAlertasError] = useState<string | null>(null);
+    const [patenteFilter, setPatenteFilter] = useState('');
+    const ITEMS_PER_PAGE = 10;
 
-
-    // 1. Fetch de datos principales de vehículos
-    const fetchVehiculosData = async () => {
+    // 1. Fetch vehículos (sin cambios, pero con useCallback para evitar re-creaciones)
+    const fetchVehiculosData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
         try {
@@ -93,49 +94,56 @@ const DashboardPage: React.FC = () => {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, []);
 
-    // 2. Fetch de Alertas Críticas
-    const fetchAlertas = async () => {
-        setIsAlertsLoading(true);
-        setAlertsError(null);
+    // 2. Fetch alertas con paginación y filtro (tipado estricto)
+    const fetchAlertas = useCallback(async () => {
+        setAlertasLoading(true);
+        setAlertasError(null);
         try {
-            const data = await fetchGlobalAlertas();
-            
-            // 🚨 LOG DE DEPURACIÓN 1: Muestra los datos de la primera alerta
-            if (data.length > 0) {
-                 console.log("DEBUG API RESPONSE - Primer Objeto Alerta:", data[0]);
-            } else {
-                 console.log("DEBUG API RESPONSE - No hay alertas");
+            const params: Record<string, string | number> = {
+                limit: ITEMS_PER_PAGE,
+                skip: (alertasPage - 1) * ITEMS_PER_PAGE,
+            };
+
+            if (patenteFilter.trim()) {
+                params.patente = patenteFilter.trim().toUpperCase();
             }
 
-            setAlertasCriticas(data);
+            const res = await apiClient.get<Alerta[]>('/alertas/criticas', { params });
+            setAlertasCriticas(res.data);
+
+            // Obtener total real (sin paginación)
+            const totalRes = await apiClient.get<Alerta[]>('/alertas/criticas', {
+                params: { patente: patenteFilter.trim() || undefined }
+            });
+            setAlertasTotal(totalRes.data.length);
+
+            console.log("[DEBUG DASHBOARD] Página:", alertasPage, "Mostrando:", res.data.length, "Total:", totalRes.data.length);
         } catch (e: unknown) {
-            const message = e instanceof Error ? e.message : 'Error desconocido al obtener alertas.';
-            setAlertsError(message);
+            const message = e instanceof Error ? e.message : 'Error al obtener alertas.';
+            setAlertasError(message);
             setAlertasCriticas([]);
         } finally {
-            setIsAlertsLoading(false);
+            setAlertasLoading(false);
         }
-    };
-
+    }, [alertasPage, patenteFilter]);
 
     useEffect(() => {
         fetchVehiculosData();
         fetchAlertas();
-    }, []);
+    }, [fetchVehiculosData, fetchAlertas]);
 
-    // 3. Cálculo de resumen usando useMemo
+    // Resumen (sin cambios)
     const summary = useMemo(() => {
         const total = vehiculos.length;
         const activos = vehiculos.filter(v => v.activo).length;
         const inactivos = total - activos;
-        
         return { total, activos, inactivos };
     }, [vehiculos]);
 
+    const totalPages = Math.ceil(alertasTotal / ITEMS_PER_PAGE);
 
-    // Mantenemos el estado de carga y error principal
     if (isLoading) {
         return <div style={{ padding: '30px', fontSize: '1.2em', color: '#457B9D' }}>Cargando resumen de flota... ⏳</div>;
     }
@@ -152,52 +160,107 @@ const DashboardPage: React.FC = () => {
 
             {/* Tarjetas de Resumen */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '40px' }}>
-                <SummaryCard 
-                    title="Vehículos Totales" 
-                    value={summary.total} 
-                    color="#1D3557" 
-                    icon="🚚" 
-                />
-                <SummaryCard 
-                    title="Vehículos Activos" 
-                    value={summary.activos} 
-                    color="#457B9D" 
-                    icon="✅" 
-                />
-                <SummaryCard 
-                    title="Vehículos Inactivos" 
-                    value={summary.inactivos} 
-                    color="#E63946" 
-                    icon="🛑" 
-                />
+                <SummaryCard title="Vehículos Totales" value={summary.total} color="#1D3557" icon="🚚" />
+                <SummaryCard title="Vehículos Activos" value={summary.activos} color="#457B9D" icon="✅" />
+                <SummaryCard title="Vehículos Inactivos" value={summary.inactivos} color="#E63946" icon="🛑" />
             </div>
 
             {/* Panel de Alertas */}
             <h2 style={{ marginBottom: '20px', color: alertasCriticas.length > 0 ? '#E63946' : '#457B9D' }}>
-                🚨 Alertas de Vencimiento Críticas ({isAlertsLoading ? '...' : alertasCriticas.length})
+                🚨 Alertas de Vencimiento Críticas ({alertasLoading ? '...' : alertasTotal})
             </h2>
+
+            {/* Buscador por patente */}
+            <div style={{ marginBottom: '20px' }}>
+                <input
+                    type="text"
+                    placeholder="Buscar por patente (ej: MVE291, AG705QN)..."
+                    value={patenteFilter}
+                    onChange={(e) => setPatenteFilter(e.target.value.toUpperCase())}
+                    style={{ 
+                        padding: '10px 15px', 
+                        width: '350px', 
+                        borderRadius: '6px', 
+                        border: '1px solid #ccc',
+                        fontSize: '1em'
+                    }}
+                />
+            </div>
+
             <div style={{ 
                 border: '1px solid #ddd', 
                 borderRadius: '8px', 
                 overflow: 'hidden', 
-                backgroundColor: 'white' 
+                backgroundColor: 'white',
+                minHeight: '200px'
             }}>
-                {isAlertsLoading ? ( 
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#457B9D' }}>
-                        Cargando alertas de vencimiento... ⏳
+                {alertasLoading ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#457B9D' }}>
+                        Cargando alertas... ⏳
                     </div>
-                ) : alertsError ? ( 
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#E63946', fontWeight: 'bold' }}>
-                        ❌ Error al cargar las alertas: {alertsError}. Verifique la conexión con el backend.
+                ) : alertasError ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#E63946' }}>
+                        ❌ {alertasError}
                     </div>
-                ) : alertasCriticas.length > 0 ? ( 
-                    alertasCriticas.map((alerta, index) => (
-                        <AlertaItem key={index} alerta={alerta} />
-                    ))
-                ) : ( 
-                    <div style={{ padding: '20px', textAlign: 'center', color: '#457B9D' }}>
+                ) : alertasCriticas.length === 0 ? (
+                    <div style={{ padding: '40px', textAlign: 'center', color: '#457B9D' }}>
                         🎉 ¡No hay alertas de vencimiento críticas!
                     </div>
+                ) : (
+                    <>
+                        {alertasCriticas.map((alerta, index) => (
+                            <AlertaItem key={index} alerta={alerta} />
+                        ))}
+
+                        {/* Paginación */}
+                        {totalPages > 1 && (
+                            <div style={{ 
+                                padding: '15px', 
+                                display: 'flex', 
+                                justifyContent: 'center', 
+                                alignItems: 'center', 
+                                gap: '25px',
+                                borderTop: '1px solid #eee',
+                                backgroundColor: '#f8fafc'
+                            }}>
+                                <button
+                                    disabled={alertasPage === 1}
+                                    onClick={() => setAlertasPage(p => Math.max(1, p - 1))}
+                                    style={{ 
+                                        padding: '10px 20px', 
+                                        background: alertasPage === 1 ? '#ccc' : '#457B9D', 
+                                        color: 'white', 
+                                        border: 'none', 
+                                        borderRadius: '6px',
+                                        cursor: alertasPage === 1 ? 'not-allowed' : 'pointer',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    ← Anterior
+                                </button>
+
+                                <span style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                    Página {alertasPage} de {totalPages}
+                                </span>
+
+                                <button
+                                    disabled={alertasPage === totalPages}
+                                    onClick={() => setAlertasPage(p => p + 1)}
+                                    style={{ 
+                                        padding: '10px 20px', 
+                                        background: alertasPage === totalPages ? '#ccc' : '#457B9D', 
+                                        color: 'white', 
+                                        border: 'none', 
+                                        borderRadius: '6px',
+                                        cursor: alertasPage === totalPages ? 'not-allowed' : 'pointer',
+                                        fontWeight: 'bold'
+                                    }}
+                                >
+                                    Siguiente →
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
             

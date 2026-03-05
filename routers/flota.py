@@ -191,10 +191,36 @@ async def get_vencimientos_criticos_alertas(dias_tolerancia: int = 30) -> List[A
 
     return alertas
 
-# Endpoint existente (lo mantenemos, pero ahora usa la lógica actualizada)
 @router.get("/alertas/criticas", response_model=List[Alerta])
-async def get_alertas_criticas(dias_tolerancia: int = Query(30)):
-    return await get_vencimientos_criticos_alertas(dias_tolerancia)
+async def get_alertas_criticas(
+    dias_tolerancia: int = Query(30, description="Días para alerta ALTA"),
+    skip: int = Query(0, ge=0, description="Número de alertas a saltar (paginación)"),
+    limit: int = Query(10, ge=1, le=200, description="Máximo de alertas por página (máx 200)"),
+    patente: str | None = Query(None, description="Filtrar solo por esta patente (normalizada)")
+):
+    """
+    Alertas críticas de vencimiento con:
+    - Paginación (skip/limit)
+    - Filtro por patente
+    - Enriquecimiento de nro_movil y descripcion_modelo desde Vehiculos
+    """
+    if limit > 200:
+        raise HTTPException(400, "Límite máximo permitido: 200 alertas por página")
+
+    logger.info(f"Alertas críticas solicitadas: dias={dias_tolerancia}, skip={skip}, limit={limit}, patente={patente or 'todas'}")
+
+    alertas = await get_vencimientos_criticos_alertas(dias_tolerancia, skip, limit, patente)
+
+    # Enriquecimiento final (por si quedó algún N/A)
+    db_vehiculos = get_db_collection("Vehiculos")
+    for alerta in alertas:
+        if alerta.movil_nro == "N/A" or alerta.descripcion_modelo == "Vehículo":
+            veh = await db_vehiculos.find_one({"_id": alerta.patente})
+            if veh:
+                alerta.movil_nro = veh.get("nro_movil") or veh.get("NRO_MOVIL") or "Sin móvil"
+                alerta.descripcion_modelo = veh.get("descripcion_modelo") or veh.get("DESCRIPCION_MODELO") or "Sin modelo"
+
+    return alertas
 
 # =========================================================================
 # 2. ENDPOINTS: VEHÍCULOS (CRUD)
@@ -525,10 +551,10 @@ async def delete_vehiculo(patente: str):
 # 3. ENDPOINTS: REPORTES DE VEHÍCULO Y COSTOS
 # =========================================================================
 
-@router.get("/alertas/criticas", response_model=List[Alerta], summary="Obtiene todas las alertas críticas (expiradas o próximas a vencer).")
-async def get_alertas_criticas(dias_tolerancia: int = Query(30, description="Días máximos de antelación para considerar una alerta 'ALTA'")):
+#@router.get("/alertas/criticas", response_model=List[Alerta], summary="Obtiene todas las alertas críticas (expiradas o próximas a vencer).")
+#async def get_alertas_criticas(dias_tolerancia: int = Query(30, description="Días máximos de antelación para considerar una alerta 'ALTA'")):
     # 🔑 CORRECCIÓN 1: await para la función asíncrona
-    return await get_vencimientos_criticos_alertas(dias_tolerancia) 
+#    return await get_vencimientos_criticos_alertas(dias_tolerancia) 
 
 @router.get("/vehiculos/{patente}/reporte", response_model=ReporteCostosResponse)
 async def get_reporte_vehiculo(
