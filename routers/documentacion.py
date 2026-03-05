@@ -1,5 +1,3 @@
-# routers/documentacion.py
-
 from fastapi import APIRouter, HTTPException, status, Path
 from typing import List, Optional
 from datetime import datetime
@@ -70,7 +68,8 @@ async def listar_documentos_vehiculo(patente: str = Path(..., description="Paten
     ).to_list(None)
 
     if not documentos:
-        raise HTTPException(status_code=404, detail="No se encontraron documentos para esta patente")
+        # Ya no lanzamos 404 estricto para no romper el frontend si el vehículo no tiene documentos aún
+        return []
 
     return [
         DocumentoResponse(
@@ -91,8 +90,7 @@ async def actualizar_fecha_vencimiento(
     data: VencimientoUpdate = None
 ):
     """
-    Actualiza SOLO la fecha de vencimiento de un documento específico.
-    Acepta alias para mantener compatibilidad con frontend actual.
+    Actualiza SOLO la fecha de vencimiento. Si el documento no existe en BD, lo crea automáticamente (Upsert).
     """
     normalized_patente = normalize_patente(patente)
     collection = get_db_collection("Documentacion")
@@ -102,54 +100,51 @@ async def actualizar_fecha_vencimiento(
     # ────────────────────────────────────────────────
     tipo_normalizado = tipo_documento.strip()
 
-    # Mapeo de alias conocidos → valor real guardado en BD al subir póliza
+    # Mapeo de alias conocidos → valor real guardado en BD. Todo apunta a SEGURO ahora.
     alias_to_real = {
-    "Poliza_Detalle": "Poliza_Detalle",  # Busca exacto lo que hay en BD
-    "Poliza detalle": "Poliza_Detalle",
-    "poliza_detalle": "Poliza_Detalle",
-    "POLIZA_DETALLE": "Poliza_Detalle",
-    "SEGURO": "SEGURO",  # Para futuro
-}
+        "Poliza_Detalle": "SEGURO",
+        "Poliza detalle": "SEGURO",
+        "poliza_detalle": "SEGURO",
+        "POLIZA_DETALLE": "SEGURO",
+        "SEGURO": "SEGURO",
+        "VTV": "VTV"
+    }
 
-    # Aplicamos el mapeo si existe, sino usamos el valor tal cual
-    tipo_busqueda = alias_to_real.get(tipo_documento.strip(), tipo_documento.strip())
+    tipo_busqueda = alias_to_real.get(tipo_normalizado, tipo_normalizado)
 
-    logger.debug(f"PUT vencimiento - patente={patente}, tipo_enviado={tipo_documento!r} → tipo_busqueda={tipo_busqueda!r}")
+    logger.debug(f"PUT vencimiento (Upsert) - patente={normalized_patente}, tipo={tipo_busqueda}")
 
+    # Operación UPSERT: Crea el registro si no existe, actualiza si existe
     result = await collection.update_one(
         {
             "patente": normalized_patente,
             "tipo_documento": tipo_busqueda
         },
-        {"$set": {"fecha_vencimiento": data.fecha_vencimiento}}
+        {
+            "$set": {
+                "fecha_vencimiento": data.fecha_vencimiento
+            },
+            "$setOnInsert": {
+                "patente": normalized_patente,
+                "tipo_documento": tipo_busqueda,
+                "aseguradora": None,
+                "numero_poliza": None,
+                "filename": None,
+                "file_id": None
+            }
+        },
+        upsert=True
     )
 
-    if result.modified_count == 0:
-        # Intentamos loguear más contexto para debug futuro
-        existing = await collection.find_one({
-            "patente": normalized_patente,
-            "tipo_documento": tipo_busqueda
-        })
-        if not existing:
-            logger.warning(
-                f"No se encontró documento para actualización: "
-                f"patente={normalized_patente}, tipo_busqueda={tipo_busqueda}, "
-                f"tipo_original_enviado={tipo_documento}"
-            )
-        raise HTTPException(
-            status_code=404,
-            detail=f"No se encontró documento '{tipo_documento}' para la patente {patente}"
-        )
-
-    logger.info(
-        f"Fecha de vencimiento actualizada: {patente} - {tipo_documento} "
-        f"(normalizado a {tipo_busqueda}) → {data.fecha_vencimiento}"
-    )
+    if result.upserted_id:
+        logger.info(f"NUEVO documento creado en BD (Upsert): {normalized_patente} - {tipo_busqueda} → {data.fecha_vencimiento}")
+    else:
+        logger.info(f"Fecha actualizada en BD: {normalized_patente} - {tipo_busqueda} → {data.fecha_vencimiento}")
 
     return {"message": "Fecha de vencimiento actualizada correctamente"}
 
 # =============================================================================
-# OPCIONAL: Agregar nuevo documento (si querés permitir crear desde la app)
+# OPCIONAL: Agregar nuevo documento explícitamente
 # =============================================================================
 
 class DocumentoCreate(BaseModel):

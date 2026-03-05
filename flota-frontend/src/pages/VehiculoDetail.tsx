@@ -1,5 +1,3 @@
-// src/pages/VehiculoDetail.tsx
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Modal from 'react-modal';
@@ -7,7 +5,7 @@ import type {
     Vehiculo, 
     Alerta, 
     DocumentoDigital, 
-    DocumentoResponse // ← NUEVO IMPORT: para datos de /documentacion
+    DocumentoResponse
 } from '../api/models/vehiculos'; 
 import { 
     fetchVehiculoByPatente,
@@ -15,7 +13,7 @@ import {
     apiClient 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
-import axios from 'axios'; // Se usa para isAxiosError
+import axios from 'axios';
 import { normalizePatente } from '../utils/data-utils';
 import type { GastoUnificado } from '../api/models/gastos';
 
@@ -29,16 +27,14 @@ type VehiculoConLegacy = Vehiculo & {
     _id?: string;
 };
 
-// Configuración de documentos estándar – ACTUALIZADA según pedido del cliente
+// Configuración de documentos estándar
 const DOCUMENTOS_ESTANDAR = [
   { tipo: 'TITULO_AUTOMOTOR',     label: 'TÍTULO AUTOMOTOR' },
   { tipo: 'CEDULA_VERDE',         label: 'CÉDULA VERDE DIGITAL' },
   { tipo: 'SEGURO',               label: 'PÓLIZA SEGURO DIGITAL' },
-  { tipo: 'FACTURA_VEHICULO',     label: 'FACTURA VEHÍCULO' }     // NUEVO – sin vencimiento
-  // Eliminados: 'VTV' y 'GNC'
+  { tipo: 'FACTURA_VEHICULO',     label: 'FACTURA VEHÍCULO' } 
 ];
 
-// Componente auxiliar
 const DetailItem: React.FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
     <div style={{ borderBottom: '1px dotted #ccc', padding: '5px 0' }}>
         <span style={{ fontWeight: 'bold', color: '#457B9D' }}>{label}:</span> {value ?? 'N/A'}
@@ -50,7 +46,6 @@ const VehiculoDetail: React.FC = () => {
     const [vehiculo, setVehiculo] = useState<Vehiculo | null>(null);
     const [gastosUnificados, setGastosUnificados] = useState<GastoUnificado[]>([]);
     
-    // Totales financieros
     const [totalGeneral, setTotalGeneral] = useState(0);
     const [totalMantenimiento, setTotalMantenimiento] = useState(0);
     const [totalMultas, setTotalMultas] = useState(0);
@@ -59,7 +54,6 @@ const VehiculoDetail: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    // Estados para modal de documentos
     const [modalIsOpen, setModalIsOpen] = useState(false);
     const [docSeleccionado, setDocSeleccionado] = useState<DocumentoDigital | null>(null);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -70,37 +64,28 @@ const VehiculoDetail: React.FC = () => {
     const [comprobantePreviewUrl, setComprobantePreviewUrl] = useState<string | null>(null);
     const [comprobanteLoading, setComprobanteLoading] = useState(false);
 
-    // Estados para edición de vencimientos
     const [editingGasto, setEditingGasto] = useState<GastoUnificado | null>(null);
-   
     const [editingVencimientos, setEditingVencimientos] = useState<Record<string, boolean>>({});
     const [fechasVencimiento, setFechasVencimiento] = useState<Record<string, string>>({});
     
-    // NUEVO: Estados para vencimientos reales desde /documentacion
     const [vencimientosBD, setVencimientosBD] = useState<DocumentoResponse[]>([]);
 
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-    // =========================================
-    // CARGA DE DATOS
-    // =========================================
     const cargarDatos = useCallback(async () => {
         if (!patente) return;
         setLoading(true);
         setError(null);
 
         try {
-            // 1. Vehículo
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
 
-            // 2. Alertas
             const report = await apiClient.get(
                 `/vehiculos/${patente}/reporte?start_date=2023-01-01&end_date=${new Date().toISOString().split('T')[0]}`
             );
             setAlertas(report.data.alertas || []);
 
-            // 3. Gastos unificados
             const response = await apiClient.get(`/costos/unificado/${patente}`);
             const data = response.data;
             setGastosUnificados(data.gastos || []);
@@ -118,19 +103,18 @@ const VehiculoDetail: React.FC = () => {
         }
     }, [patente]);
 
-    // NUEVA FUNCIÓN: Cargar vencimientos desde /documentacion
     const cargarVencimientosBD = useCallback(async () => {
         if (!patente) return;
         try {
             const res = await apiClient.get(`/documentacion/${patente}`);
-            setVencimientosBD(res.data);
-            console.log("[DEBUG] Vencimientos cargados desde /documentacion:", res.data);
+            const datosBD = Array.isArray(res.data) ? res.data : [];
+            setVencimientosBD(datosBD);
             
-            // Inicializar fechas locales desde BD
             const fechasIniciales: Record<string, string> = {};
-            res.data.forEach((doc: DocumentoResponse) => {
+            datosBD.forEach((doc: DocumentoResponse) => {
                 if (doc.fecha_vencimiento) {
                     const fechaISO = new Date(doc.fecha_vencimiento).toISOString().split('T')[0];
+                    // Unificamos lectura a clave 'SEGURO' si viene legacy de BD
                     const key = doc.tipo_documento === 'Poliza_Detalle' ? 'SEGURO' : doc.tipo_documento;
                     fechasIniciales[key] = fechaISO;
                 }
@@ -143,12 +127,9 @@ const VehiculoDetail: React.FC = () => {
 
     useEffect(() => {
         cargarDatos();
-        cargarVencimientosBD(); // Cargar vencimientos al montar
+        cargarVencimientosBD();
     }, [cargarDatos, cargarVencimientosBD]);
 
-    // =========================================
-    // FUNCIONES DOCUMENTOS
-    // =========================================
     const handleDownload = (fileId: string) => {
         window.open(`${API_URL}/api/archivos/descargar/${fileId}`, '_blank');
     };
@@ -178,7 +159,7 @@ const VehiculoDetail: React.FC = () => {
                 setPreviewUrl(URL.createObjectURL(blob));
             }
         } catch (err) {
-            console.error("Error preview:", err); // Usamos 'err'
+            console.error("Error preview:", err);
         } finally {
             setLoadingPreview(false);
         }
@@ -207,7 +188,7 @@ const VehiculoDetail: React.FC = () => {
             setArchivoNuevo(null);
             await cargarDatos(); 
         } catch (error) {
-            console.error("Error al subir:", error); // Usamos 'error'
+            console.error("Error al subir:", error);
             let msg = "Error al subir.";
             if (axios.isAxiosError(error) && error.response?.data?.detail) {
                 msg += ` ${JSON.stringify(error.response.data.detail)}`;
@@ -216,9 +197,6 @@ const VehiculoDetail: React.FC = () => {
         }
     };
 
-    // =========================================
-    // FUNCIONES COMPROBANTES COSTOS
-    // =========================================
     const abrirComprobante = async (fileId: string) => {
         setComprobantePreviewUrl(null);
         setComprobanteLoading(true);
@@ -247,7 +225,7 @@ const VehiculoDetail: React.FC = () => {
             await borrarGastoUniversal(id, coleccion);
             await cargarDatos();
         } catch (err) {
-            console.error(err); // Usamos 'err'
+            console.error(err);
             alert("Error al borrar el gasto");
         }
     };
@@ -256,16 +234,15 @@ const VehiculoDetail: React.FC = () => {
         const fecha = fechasVencimiento[tipoFrontend];
         if (!fecha || !patente) return;
 
-        // Mapeo del tipo frontend → tipo que espera el backend
-        const tipoBackend = tipoFrontend === 'SEGURO' ? 'Poliza_Detalle' : tipoFrontend;
+        // Ya no forzamos el nombre a Poliza_Detalle, enviamos lo que tenemos
+        const tipoBackend = tipoFrontend;
 
         try {
             await apiClient.put(`/documentacion/${patente}/${tipoBackend}`, {
-            fecha_vencimiento: new Date(fecha).toISOString()
+                fecha_vencimiento: new Date(fecha).toISOString()
             });
             alert(`Fecha de ${tipoFrontend} actualizada correctamente`);
             setEditingVencimientos(prev => ({ ...prev, [tipoFrontend]: false }));
-            // NUEVO: Recargar vencimientos después de guardar
             await cargarVencimientosBD();
         } catch (err) {
             console.error("Error al guardar vencimiento:", err);
@@ -273,20 +250,11 @@ const VehiculoDetail: React.FC = () => {
         }
     };
 
-    // =========================================
-    // RENDER
-    // =========================================
     if (loading) return <div>Cargando... ⏳</div>;
-    // Utilizamos la variable 'error' aquí
     if (error) return <div style={{ color: 'red', padding: '20px' }}>❌ {error}</div>;
     if (!vehiculo) return <div>No encontrado.</div>;
 
     const v = vehiculo as VehiculoConLegacy;
-
-    // Buscamos ESPECÍFICAMENTE el documento de seguro
-    /*const seguroDoc = (v.documentos_digitales || []).find(
-        d => d.tipo === 'SEGURO' || d.tipo === 'POLIZA_SEGURO_DIGITAL'
-    );*/
 
     return (
         <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
@@ -352,7 +320,7 @@ const VehiculoDetail: React.FC = () => {
                 </div>
             </div>
 
-            {/* 3. VENCIMIENTOS CRÍTICOS – ACTUALIZADO */}
+            {/* 3. VENCIMIENTOS CRÍTICOS */}
             <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', border: '2px solid #457B9D', marginTop: '32px', boxShadow: '0 4px 10px rgba(69, 123, 157, 0.2)' }}>
             <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1D3557', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
                 📅 Vencimientos Críticos
@@ -363,11 +331,16 @@ const VehiculoDetail: React.FC = () => {
                 { key: 'SEGURO', label: 'Póliza de Seguro' },
                 { key: 'VTV', label: 'VTV' }
                 ].map(({ key, label }) => {
-                const doc = vencimientosBD.find(d => d.tipo_documento === (key === 'SEGURO' ? 'Poliza_Detalle' : key)); // Buscar en datos de BD
+                
+                // Búsqueda flexible para soportar nombres nuevos y viejos
+                const doc = vencimientosBD.find(d => 
+                    d.tipo_documento === key || 
+                    (key === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
+                ); 
 
                 const fechaRaw = fechasVencimiento[key] || doc?.fecha_vencimiento;
                 const fechaStr = fechaRaw
-                    ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric' })
+                    ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
                     : 'Sin fecha asignada';
 
                 const isEditing = editingVencimientos[key];
@@ -418,7 +391,7 @@ const VehiculoDetail: React.FC = () => {
             </div>
             </div>
 
-            {/* 4. ALERTAS (Si existen) */}
+            {/* 4. ALERTAS */}
             {alertas.length > 0 && (
                 <div style={{ marginTop: '40px' }}>
                     <h2 style={{ color: '#E63946', fontSize: '1.6rem', fontWeight: 'bold', marginBottom: '20px' }}>
@@ -436,9 +409,6 @@ const VehiculoDetail: React.FC = () => {
             <div style={{ marginTop: '40px' }}>
                 <h2 style={{ color: '#457B9D', borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Historial de Costos</h2>
                 
-                {/* AQUI UTILIZAMOS LOS TOTALES QUE DABAN ERROR
-                   Los mostramos como un resumen antes de la tabla
-                */}
                 <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
                     <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
                         <div style={{ fontSize: '0.9em', color: '#666' }}>Total General</div>
@@ -520,7 +490,6 @@ const VehiculoDetail: React.FC = () => {
             </Modal>
 
             <Modal isOpen={modalComprobanteOpen} onRequestClose={() => setModalComprobanteOpen(false)} ariaHideApp={false} style={{ content: { maxWidth: '800px', margin: 'auto' } }}>
-                {/* AQUI UTILIZAMOS comprobanteLoading */}
                 {comprobanteLoading ? (
                     <p style={{textAlign: 'center', padding: '20px'}}>Cargando comprobante...</p>
                 ) : (
