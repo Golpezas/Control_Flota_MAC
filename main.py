@@ -30,7 +30,7 @@ app = FastAPI(
 # 🔥 ORDEN CORRECTO: PRIMERO EL CORS, DESPUÉS LOS ROUTERS
 app.add_middleware(
     CORSMiddleware,
-    # 🔑 MEJORA: Restringe wildcard; quita "*" para prod si no es necesario
+    # 🔑 MEJORA: Restringe wildcard; quita "*" para prod si no es necesario pero si lo es
     allow_origins=[
         "http://localhost:5173", 
         "https://control-flota-mac.vercel.app",
