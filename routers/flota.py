@@ -201,36 +201,45 @@ async def get_vencimientos_criticos_alertas(
 
     return alertas
 
-@router.get("/alertas/criticas", response_model=List[Alerta])
+@router.get("/alertas/criticas")
 async def get_alertas_criticas(
     dias_tolerancia: int = Query(30, description="Días para alerta ALTA"),
-    skip: int = Query(0, ge=0, description="Número de alertas a saltar (paginación)"),
-    limit: int = Query(10, ge=1, le=200, description="Máximo de alertas por página (máx 200)"),
-    patente: str | None = Query(None, description="Filtrar solo por esta patente (normalizada)")
+    skip: int = Query(0, ge=0, description="Número de alertas a saltar"),
+    limit: int = Query(10, ge=1, le=200, description="Máximo de alertas por página"),
+    patente: str | None = Query(None, description="Filtrar por patente (normalizada)")
 ):
     """
-    Alertas críticas de vencimiento con:
-    - Paginación (skip/limit)
-    - Filtro por patente
-    - Enriquecimiento de nro_movil y descripcion_modelo desde Vehiculos
+    Devuelve alertas paginadas + total real (para paginación frontend).
     """
-    if limit > 200:
-        raise HTTPException(400, "Límite máximo permitido: 200 alertas por página")
-
     logger.info(f"Alertas críticas solicitadas: dias={dias_tolerancia}, skip={skip}, limit={limit}, patente={patente or 'todas'}")
 
+    # Obtener alertas paginadas
     alertas = await get_vencimientos_criticos_alertas(dias_tolerancia, skip, limit, patente)
 
-    # Enriquecimiento final (por si quedó algún N/A)
+    # Calcular total real (conteo sin paginación)
+    db_documentacion = get_db_collection("Documentacion")
+    filtro_total = {
+        "tipo_documento": {"$in": ["SEGURO", "Poliza_Detalle", "VTV"]},
+        "fecha_vencimiento": {"$ne": None}
+    }
+    if patente:
+        filtro_total["patente"] = normalize_patente(patente)
+
+    total = await db_documentacion.count_documents(filtro_total)
+
+    # Enriquecimiento final (por si quedó N/A)
     db_vehiculos = get_db_collection("Vehiculos")
     for alerta in alertas:
-        if alerta.movil_nro == "N/A" or alerta.descripcion_modelo == "Vehículo":
+        if alerta.movil_nro in ("N/A", None) or alerta.descripcion_modelo in ("Vehículo", None):
             veh = await db_vehiculos.find_one({"_id": alerta.patente})
             if veh:
                 alerta.movil_nro = veh.get("nro_movil") or veh.get("NRO_MOVIL") or "Sin móvil"
                 alerta.descripcion_modelo = veh.get("descripcion_modelo") or veh.get("DESCRIPCION_MODELO") or "Sin modelo"
 
-    return alertas
+    return {
+        "alertas": alertas,
+        "total": total
+    }
 
 # =========================================================================
 # 2. ENDPOINTS: VEHÍCULOS (CRUD)

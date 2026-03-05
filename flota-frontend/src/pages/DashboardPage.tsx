@@ -71,7 +71,7 @@ const DashboardPage: React.FC = () => {
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    
+
     const [debouncedPatente, setDebouncedPatente] = useState(''); // ← Nuevo estado para el valor debounced
 
     // Estados para alertas
@@ -83,16 +83,15 @@ const DashboardPage: React.FC = () => {
     const [patenteFilter, setPatenteFilter] = useState('');
     const ITEMS_PER_PAGE = 10;
 
-    // Debounce real con useEffect (mejor práctica 2025)
+    // Debounce (evita refresco y múltiples peticiones)
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedPatente(patenteFilter.trim().toUpperCase());
-            setAlertasPage(1); // Resetear página al cambiar filtro
-        }, 500); // 500ms de espera después de dejar de escribir
+            setAlertasPage(1); // Reset página al filtrar
+        }, 500);
 
-        // Cleanup: cancela el timer si el usuario escribe de nuevo antes de 500ms
         return () => clearTimeout(timer);
-    }, [patenteFilter]); // Dependencia SOLO en patenteFilter (ESLint feliz)
+    }, [patenteFilter]);
 
     // 1. Fetch vehículos
     const fetchVehiculosData = useCallback(async () => {
@@ -109,7 +108,7 @@ const DashboardPage: React.FC = () => {
         }
     }, []);
 
-    // Fetch alertas: ahora usa debouncedPatente en lugar de patenteFilter directo
+    // Fetch alertas (usa debouncedPatente)
     const fetchAlertas = useCallback(async () => {
         setAlertasLoading(true);
         setAlertasError(null);
@@ -119,29 +118,24 @@ const DashboardPage: React.FC = () => {
                 skip: (alertasPage - 1) * ITEMS_PER_PAGE,
             };
 
-            // Usamos el valor debounced
             if (debouncedPatente) {
                 params.patente = debouncedPatente;
             }
 
-            const res = await apiClient.get<Alerta[]>('/alertas/criticas', { params });
-            setAlertasCriticas(res.data);
+            const res = await apiClient.get('/alertas/criticas', { params });
+            setAlertasCriticas(res.data.alertas || []);
+            setAlertasTotal(res.data.total || 0);
 
-            // Total real (usando el mismo filtro debounced)
-            const totalRes = await apiClient.get<Alerta[]>('/alertas/criticas', {
-                params: { patente: debouncedPatente || undefined }
-            });
-            setAlertasTotal(totalRes.data.length);
-
-            console.log("[DEBUG DASHBOARD] Página:", alertasPage, "Mostrando:", res.data.length, "Total:", totalRes.data.length);
+            console.log("[DEBUG DASHBOARD] Página:", alertasPage, "Mostrando:", res.data.alertas?.length || 0, "Total:", res.data.total);
         } catch (e: unknown) {
             const message = e instanceof Error ? e.message : 'Error al obtener alertas.';
             setAlertasError(message);
             setAlertasCriticas([]);
+            setAlertasTotal(0);
         } finally {
             setAlertasLoading(false);
         }
-    }, [alertasPage, debouncedPatente]); // Dependencia en debouncedPatente
+    }, [alertasPage, debouncedPatente]); // Dependencia correcta
 
     useEffect(() => {
         fetchVehiculosData();
@@ -184,13 +178,18 @@ const DashboardPage: React.FC = () => {
                 🚨 Alertas de Vencimiento Críticas ({alertasLoading ? '...' : alertasTotal})
             </h2>
 
-            {/* Buscador con debounce */}
+            {/* En el return → Buscador con prevención de submit */}
             <div style={{ marginBottom: '20px' }}>
                 <input
                     type="text"
                     placeholder="Buscar por patente (ej: MVE291, AG705QN)..."
                     value={patenteFilter}
                     onChange={(e) => setPatenteFilter(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault(); // ← Evita submit/refresco
+                        }
+                    }}
                     style={{ 
                         padding: '10px 15px', 
                         width: '350px', 
@@ -222,62 +221,60 @@ const DashboardPage: React.FC = () => {
                     </div>
                 ) : (
                     <>
-                        {alertasCriticas.map((alerta, index) => (
-                            <AlertaItem key={index} alerta={alerta} />
+                        {alertasCriticas.length > 0 && (
+                        <div style={{ 
+                            padding: '15px', 
+                            display: 'flex', 
+                            justifyContent: 'center', 
+                            alignItems: 'center', 
+                            gap: '25px',
+                            borderTop: '1px solid #eee',
+                            backgroundColor: '#f8fafc'
+                        }}>
+                            <button
+                                disabled={alertasPage === 1}
+                                onClick={() => setAlertasPage(p => Math.max(1, p - 1))}
+                                style={{ 
+                                    padding: '10px 20px', 
+                                    background: alertasPage === 1 ? '#ccc' : '#457B9D', 
+                                    color: 'white', 
+                                    border: 'none', 
+                                    borderRadius: '6px',
+                                    cursor: alertasPage === 1 ? 'not-allowed' : 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                ← Anterior
+                            </button>
+
+                            <span style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
+                                Página {alertasPage} de {Math.max(1, totalPages)}
+                            </span>
+
+                            <button
+                                disabled={alertasPage >= totalPages}
+                                onClick={() => setAlertasPage(p => p + 1)}
+                                style={{ 
+                                    padding: '10px 20px', 
+                                    background: alertasPage >= totalPages ? '#ccc' : '#457B9D', 
+                                    color: 'white', 
+                                    border: 'none', 
+                                    borderRadius: '6px',
+                                    cursor: alertasPage >= totalPages ? 'not-allowed' : 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                            >
+                                Siguiente →
+                            </button>
+                        </div>
+                    )}
+                        {alertasCriticas.map((alerta) => (
+                            <AlertaItem key={`${alerta.patente}-${alerta.tipo_documento}`} alerta={alerta} />
                         ))}
-
-                        {/* Paginación visible */}
-                        {totalPages > 1 && (
-                            <div style={{ 
-                                padding: '15px', 
-                                display: 'flex', 
-                                justifyContent: 'center', 
-                                alignItems: 'center', 
-                                gap: '25px',
-                                borderTop: '1px solid #eee',
-                                backgroundColor: '#f8fafc'
-                            }}>
-                                <button
-                                    disabled={alertasPage === 1}
-                                    onClick={() => setAlertasPage(p => Math.max(1, p - 1))}
-                                    style={{ 
-                                        padding: '10px 20px', 
-                                        background: alertasPage === 1 ? '#ccc' : '#457B9D', 
-                                        color: 'white', 
-                                        border: 'none', 
-                                        borderRadius: '6px',
-                                        cursor: alertasPage === 1 ? 'not-allowed' : 'pointer',
-                                        fontWeight: 'bold'
-                                    }}
-                                >
-                                    ← Anterior
-                                </button>
-
-                                <span style={{ fontWeight: 'bold', fontSize: '1.1em' }}>
-                                    Página {alertasPage} de {totalPages}
-                                </span>
-
-                                <button
-                                    disabled={alertasPage === totalPages}
-                                    onClick={() => setAlertasPage(p => p + 1)}
-                                    style={{ 
-                                        padding: '10px 20px', 
-                                        background: alertasPage === totalPages ? '#ccc' : '#457B9D', 
-                                        color: 'white', 
-                                        border: 'none', 
-                                        borderRadius: '6px',
-                                        cursor: alertasPage === totalPages ? 'not-allowed' : 'pointer',
-                                        fontWeight: 'bold'
-                                    }}
-                                >
-                                    Siguiente →
-                                </button>
-                            </div>
-                        )}
                     </>
                 )}
             </div>
-            
+
             <p style={{ marginTop: '30px', fontSize: '0.9em', color: '#666' }}>
                 *Las alertas se basan en la documentación con vencimiento cercano o expirado.
             </p>
