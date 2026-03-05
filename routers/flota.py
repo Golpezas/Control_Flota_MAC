@@ -57,79 +57,144 @@ MEDIA_ROOT = "C:/Users/Antonio/Documents/Projects/Control_Flota"
 # 1. LÓGICA CORE: OBTENER VENCIMIENTOS CRÍTICOS (ACTUALIZADA Y CORREGIDA)
 # =========================================================================
 
-# 🔑 CORRECCIÓN 1: La función DEBE ser asíncrona (async)
-async def get_vencimientos_criticos_alertas(dias_tolerancia: int) -> List[Alerta]:
-    """
-    Consulta la colección Vehiculos → documentos_digitales y genera alertas para documentos
-    cuyo vencimiento está dentro de 'dias_tolerancia' o ya expiró.
-    """
-    db_vehiculos = get_db_collection("Vehiculos")
-    alertas: List[Alerta] = []
+class AlertaVencimiento(BaseModel):
+    """Modelo unificado para alertas (compatible con el existente)"""
+    patente: str
+    tipo_documento: str
+    fecha_vencimiento: str | None  # ISO string
+    dias_restantes: int | None
+    mensaje: str
+    prioridad: str  # "CRÍTICA", "ALTA", "MEDIA", "BAJA", "OK"
+    movil_nro: str | None = None
+    descripcion_modelo: str | None = None
 
-    # 1. Obtener todos los vehículos
-    cursor_vehiculos = db_vehiculos.find({}, 
-        {'_id': 1, 'descripcion_modelo': 1, 'nro_movil': 1, 'documentos_digitales': 1})
+async def get_vencimientos_criticos_alertas(dias_tolerancia: int = 30) -> List[Alerta]:
+    """
+    Genera alertas de vencimiento leyendo PRIORITARIAMENTE de Documentacion
+    (fechas manuales de Vencimientos Críticos), y como fallback de Vehiculos.documentos_digitales.
     
-    vehiculos_list = await cursor_vehiculos.to_list(length=None)
+    Prioridades:
+    - CRÍTICA: <= 7 días o vencido
+    - ALTA: 8-30 días
+    - MEDIA: 31-60 días
+    - BAJA: >60 días
+    - OK: sin fecha
+    """
+    db_documentacion = get_db_collection("Documentacion")
+    db_vehiculos = get_db_collection("Vehiculos")
 
-    # 2. Iterar por cada vehículo
-    for veh in vehiculos_list:
+    now = datetime.utcnow()
+    alertas_dict: Dict[str, AlertaVencimiento] = {}  # patente + tipo → alerta (evita duplicados)
+
+    # 1. PRIORIDAD 1: Leer de Documentacion (fuente principal - manual)
+    cursor_doc = db_documentacion.find({
+        "tipo_documento": {"$in": ["SEGURO", "Poliza_Detalle", "VTV"]},
+        "fecha_vencimiento": {"$ne": None}
+    })
+    docs = await cursor_doc.to_list(length=None)
+
+    for doc in docs:
+        patente = doc["patente"]
+        tipo = doc["tipo_documento"]
+        fecha_vto = doc["fecha_vencimiento"]
+        dias = (fecha_vto - now).days
+
+        # Normalizar tipo a canónico
+        tipo_norm = "SEGURO" if tipo in ["SEGURO", "Poliza_Detalle"] else tipo
+
+        # Determinar prioridad
+        if dias <= 7:
+            prioridad = "CRÍTICA"
+            mensaje = f"¡URGENTE! {'VENCIDO hace ' + str(-dias) + ' días' if dias < 0 else 'VENCE HOY' if dias == 0 else 'Quedan ' + str(dias) + ' días'} para {tipo_norm}"
+        elif dias <= dias_tolerancia:
+            prioridad = "ALTA"
+            mensaje = f"Quedan {dias} días para vencimiento de {tipo_norm}"
+        elif dias <= 60:
+            prioridad = "MEDIA"
+            mensaje = f"Atención: {dias} días restantes para {tipo_norm}"
+        else:
+            prioridad = "BAJA"
+            mensaje = f"{tipo_norm} vence en {dias} días"
+
+        key = f"{patente}_{tipo_norm}"
+        alertas_dict[key] = AlertaVencimiento(
+            patente=patente,
+            tipo_documento=tipo_norm,
+            fecha_vencimiento=fecha_vto.isoformat(),
+            dias_restantes=dias,
+            mensaje=mensaje,
+            prioridad=prioridad,
+            movil_nro=None,  # Podemos enriquecer después si tenemos nro_movil
+            descripcion_modelo=None
+        )
+
+    # 2. FALLBACK: Leer de Vehiculos (solo si no hay en Documentacion)
+    cursor_veh = db_vehiculos.find({}, 
+        {'_id': 1, 'nro_movil': 1, 'descripcion_modelo': 1, 'documentos_digitales': 1})
+    vehiculos = await cursor_veh.to_list(length=None)
+
+    for veh in vehiculos:
         patente = veh.get('_id')
         movil_nro = veh.get('nro_movil')
-        descripcion_modelo = veh.get('descripcion_modelo')
+        desc_modelo = veh.get('descripcion_modelo')
 
-        documentos_digitales = veh.get('documentos_digitales', [])
-
-        # 3. Procesar cada documento digital del vehículo
-        for doc in documentos_digitales:
+        for doc in veh.get('documentos_digitales', []):
             tipo = doc.get("tipo")
-            fecha_vencimiento_str = doc.get("fecha_vencimiento")
-
-            if not fecha_vencimiento_str:
-                continue  # No tiene fecha → no alerta
+            fecha_str = doc.get("fecha_vencimiento")
+            if not fecha_str:
+                continue
 
             try:
-                fecha_vencimiento = parse(fecha_vencimiento_str)
-            except Exception:
-                continue  # Fecha inválida → skip
+                fecha_vto = parse(fecha_str)
+            except:
+                continue
 
-            # Calcular diferencia en días
-            today = datetime.now().date()
-            fecha_ven_date = fecha_vencimiento.date()
-            diff_days = (fecha_ven_date - today).days
+            # Normalizar tipo
+            tipo_norm = "SEGURO" if "SEGURO" in tipo.upper() or "POLIZA" in tipo.upper() else tipo
 
-            # Umbral crítico (usa VENCIMIENTO_MAP si existe, o default)
-            config = next((cfg for key, cfg in VENCIMIENTO_MAP.items() if key in tipo), {})
-            dias_critico = config.get("dias_critico", dias_tolerancia)
+            key = f"{patente}_{tipo_norm}"
+            if key in alertas_dict:
+                # Ya tenemos dato manual → skip (prioridad a Documentacion)
+                continue
 
-            if diff_days <= dias_critico:
-                prioridad: Alerta.Prioridad = 'CRÍTICA' if diff_days <= 0 else 'ALTA'
-                
-                # Mensaje claro y urgente
-                if diff_days < 0:
-                    mensaje = f"VENCIDO hace {-diff_days} día{'s' if -diff_days > 1 else ''}"
-                elif diff_days == 0:
-                    mensaje = "VENCE HOY"
-                else:
-                    mensaje = f"Vence en {diff_days} día{'s' if diff_days > 1 else ''}"
+            dias = (fecha_vto - now).days
 
-                print(f"✅ ALERTA GENERADA: Patente={patente}, Días={diff_days} → {mensaje}")
+            # Misma lógica de prioridad
+            if dias <= 7:
+                prioridad = "CRÍTICA"
+                mensaje = f"¡URGENTE! {'VENCIDO' if dias < 0 else 'VENCE HOY' if dias == 0 else f'Quedan {dias} días'}"
+            elif dias <= dias_tolerancia:
+                prioridad = "ALTA"
+                mensaje = f"Quedan {dias} días"
+            else:
+                continue  # No generar alerta si >30 días y no es manual
 
-                alerta = Alerta(
-                    patente=patente,
-                    tipo_documento=tipo,
-                    nombre_legible=config.get('nombre_legible', tipo.replace('_', ' ')),
-                    fecha_vencimiento=fecha_vencimiento.strftime('%Y-%m-%d'),
-                    dias_restantes=diff_days,
-                    mensaje=mensaje,
-                    prioridad=prioridad,
-                    movil_nro=movil_nro,
-                    descripcion_modelo=descripcion_modelo
-                )
-                alertas.append(alerta)
+            alertas_dict[key] = AlertaVencimiento(
+                patente=patente,
+                tipo_documento=tipo_norm,
+                fecha_vencimiento=fecha_vto.isoformat(),
+                dias_restantes=dias,
+                mensaje=f"{mensaje} para {tipo_norm} ({patente})",
+                prioridad=prioridad,
+                movil_nro=movil_nro,
+                descripcion_modelo=desc_modelo
+            )
 
-    # 5. Ordenar: Críticas primero, luego por menos días restantes
-    return sorted(alertas, key=lambda a: (a.prioridad != 'CRÍTICA', a.dias_restantes))
+    # Convertir a lista y ordenar por urgencia
+    alertas = list(alertas_dict.values())
+    alertas.sort(key=lambda a: (
+        0 if a.prioridad == "CRÍTICA" else
+        1 if a.prioridad == "ALTA" else
+        2 if a.prioridad == "MEDIA" else 3,
+        a.dias_restantes or 9999
+    ))
+
+    return alertas
+
+# Endpoint existente (lo mantenemos, pero ahora usa la lógica actualizada)
+@router.get("/alertas/criticas", response_model=List[Alerta])
+async def get_alertas_criticas(dias_tolerancia: int = Query(30)):
+    return await get_vencimientos_criticos_alertas(dias_tolerancia)
 
 # =========================================================================
 # 2. ENDPOINTS: VEHÍCULOS (CRUD)
