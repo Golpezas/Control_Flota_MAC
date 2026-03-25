@@ -17,7 +17,6 @@ const VehiculoTableRow: React.FC<{
   const anio = v.anio || v.ANIO || 'N/A';
   const color = v.color || v.COLOR || 'N/A';
   const nro_movil = v.nro_movil || v.NRO_MOVIL || 'N/A';
-  // Eliminamos Combustible de la fila para alinear con el encabezado
 
   return (
     <tr
@@ -33,15 +32,13 @@ const VehiculoTableRow: React.FC<{
         </Link>
       </td>
       <td style={{ padding: '15px' }}>{nro_movil}</td>
-      <td style={{ padding: '15px' }}>{modelo}</td>
+      <td style={{ padding: '15px', textTransform: 'capitalize' }}>{modelo.toLowerCase()}</td>
       <td style={{ padding: '15px', textAlign: 'center' }}>
           <span style={{ backgroundColor: '#e0f2fe', color: '#0369a1', padding: '4px 8px', borderRadius: '12px', fontWeight: 'bold', fontSize: '0.9em' }}>
             {anio}
           </span>
       </td>
       <td style={{ padding: '15px' }}>{color}</td>
-      
-      {/* Columna ACTIVO alineada correctamente */}
       <td style={{ padding: '15px', textAlign: 'center' }}>
         {v.activo ? (
             <span style={{color: '#166534', backgroundColor: '#dcfce7', padding: '4px 8px', borderRadius: '6px', fontSize: '0.85em', fontWeight: 'bold'}}>Sí</span> 
@@ -52,27 +49,16 @@ const VehiculoTableRow: React.FC<{
 
       <td style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
-            {/* Botón Detalle (Ojo) */}
             <Link to={`/vehiculos/${v._id}`} title="Ver Detalle" style={{ textDecoration: 'none' }}>
-                <button
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }}
-                    disabled={!canPerformAction}
-                >
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }} disabled={!canPerformAction}>
                     👁️
                 </button>
             </Link>
-
-            {/* Botón Editar (Lápiz) */}
             <Link to={`/vehiculos/editar/${v._id}`} title="Editar" style={{ textDecoration: 'none' }}>
-                <button
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }}
-                    disabled={!canPerformAction}
-                >
+                <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2em', transition: 'transform 0.2s' }} disabled={!canPerformAction}>
                     ✏️
                 </button>
             </Link>
-
-            {/* Botón Eliminar (Basura) */}
             <button
                 onClick={() => handleDelete(v._id, String(nro_movil))}
                 title="Eliminar"
@@ -112,8 +98,8 @@ const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undef
                 <Link to={`/vehiculos/${v._id}`} style={{ textDecoration: 'none', color: '#1D3557', fontWeight: 'bold' }}>
                     Patente: <span style={{ color: canPerformAction ? '#E63946' : 'gray' }}>{v._id || '⚠️ ID Desconocido'}</span>
                 </Link>
-                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: '#457B9D' }}>
-                    Móvil: {nro_movil} | Modelo: {modelo} ({anio})
+                <p style={{ margin: '5px 0 0 0', fontSize: '0.9em', color: '#457B9D', textTransform: 'capitalize' }}>
+                    Móvil: {nro_movil} | Modelo: {modelo.toLowerCase()} ({anio})
                 </p>
             </div>
             <div style={{ display: 'flex', gap: '15px' }}>
@@ -179,12 +165,15 @@ const Vehiculos: React.FC = () => {
         }
     };
 
-    // --- LÓGICA DE EXTRACCIÓN DE DATOS PARA FILTROS ---
+    // --- LÓGICA DE EXTRACCIÓN DE DATOS PARA FILTROS (CORREGIDA) ---
     const uniqueModelos = useMemo(() => {
-        const modelos = vehiculos.map(v => 
-            v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO
-        ).filter(Boolean);
-        return Array.from(new Set(modelos as string[])).sort();
+        const modelos = vehiculos.map(v => {
+            const m = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '';
+            // Forzamos a Mayúsculas y quitamos espacios extra para evitar duplicados
+            return m.toUpperCase().trim();
+        }).filter(m => m !== ''); // Filtramos los que estén vacíos
+        
+        return Array.from(new Set(modelos)).sort();
     }, [vehiculos]);
 
     const uniqueAnios = useMemo(() => {
@@ -194,7 +183,7 @@ const Vehiculos: React.FC = () => {
         return Array.from(new Set(anios as number[])).sort((a, b) => b - a);
     }, [vehiculos]);
 
-    // --- LÓGICA DE FILTRADO UNIFICADA ---
+    // --- LÓGICA DE FILTRADO UNIFICADA (CORREGIDA) ---
     const filteredVehiculos = useMemo(() => {
         return vehiculos.filter(v => {
             const lowerCaseSearch = searchTerm.toLowerCase();
@@ -203,7 +192,8 @@ const Vehiculos: React.FC = () => {
             const modeloText = String(v.descripcion_modelo || v.DESCRIPCION_MODELO || '').toLowerCase();
             const matchesSearch = !searchTerm || id.includes(lowerCaseSearch) || movil.includes(lowerCaseSearch) || modeloText.includes(lowerCaseSearch);
 
-            const m = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO;
+            // Normalizamos el modelo del vehículo iterado a mayúsculas para compararlo con el filtro
+            const m = String(v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '').toUpperCase().trim();
             const matchesModelo = filterModelo ? m === filterModelo : true;
 
             const a = v.anio || v.ANIO;
@@ -232,52 +222,57 @@ const Vehiculos: React.FC = () => {
                 </div>
             )}
 
-            {/* --- BARRA DE FILTROS --- */}
+            {/* --- BARRA DE FILTROS (DISEÑO ARREGLADO) --- */}
             <div style={{ 
                 backgroundColor: 'white', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0',
-                marginBottom: '25px', display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
+                marginBottom: '25px', display: 'flex', flexWrap: 'wrap', gap: '15px', alignItems: 'flex-end', boxShadow: '0 4px 6px rgba(0,0,0,0.05)'
             }}>
-                <div style={{ flex: '1 1 100%', marginBottom: '10px', fontSize: '1.1em', color: '#457B9D' }}>
+                {/* Contador */}
+                <div style={{ flex: '1 1 100%', marginBottom: '5px', fontSize: '1.1em', color: '#457B9D' }}>
                     📊 Mostrando <strong>{filteredVehiculos.length}</strong> vehículos 
                     {(filterModelo || filterAnio || searchTerm) ? ' (filtrados)' : ' (total)'}
                 </div>
 
-                <div style={{ flex: '1 1 250px' }}>
+                {/* Filtro Modelo */}
+                <div style={{ flex: '1 1 200px', minWidth: '150px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Modelo:</label>
                     <select 
                         value={filterModelo} 
                         onChange={(e) => setFilterModelo(e.target.value)}
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                     >
                         <option value="">Todos los Modelos</option>
                         {uniqueModelos.map((m) => <option key={m} value={m}>{m}</option>)}
                     </select>
                 </div>
 
-                <div style={{ flex: '1 1 150px' }}>
+                {/* Filtro Año */}
+                <div style={{ flex: '1 1 120px', minWidth: '100px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Año:</label>
                     <select 
                         value={filterAnio} 
                         onChange={(e) => setFilterAnio(e.target.value)}
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                     >
                         <option value="">Todos</option>
                         {uniqueAnios.map((a) => <option key={a} value={a}>{a}</option>)}
                     </select>
                 </div>
 
-                <div style={{ flex: '2 1 300px' }}>
+                {/* Buscador Texto */}
+                <div style={{ flex: '2 1 250px', minWidth: '200px' }}>
                     <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.9em', marginBottom: '5px' }}>Buscar:</label>
                     <input
                         type="text"
                         placeholder="Patente, Móvil..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc' }}
+                        style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid #ccc', boxSizing: 'border-box' }}
                     />
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                {/* Botones de Acción (Corregidos para no chocar) */}
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', flexShrink: 0 }}>
                     {(filterModelo || filterAnio || searchTerm) && (
                         <button 
                             onClick={() => { setFilterModelo(''); setFilterAnio(''); setSearchTerm(''); }}
