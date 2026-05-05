@@ -186,15 +186,15 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
                 <label style={{ fontWeight: 'bold' }}>
                     Tipo*:
                     <br/>
-                    <select name="tipo" value={formData.tipo || ''} onChange={handleChange} required style={{ ...inputStyle, marginTop: '5px' }}>
-                        <option value="">Seleccionar...</option>
-                        <option value="Auto">Auto</option>
-                        <option value="Pick-up">Pick-up</option>
-                        <option value="Utilitario">Utilitario</option>
-                        <option value="Moto">Moto</option>
-                        <option value="Camión">Camión</option>
-                        <option value="Otro">Otro</option>
-                    </select>
+                    <input 
+                        type="text" 
+                        name="tipo" 
+                        placeholder="Ej. Alaskan Confort..." 
+                        value={formData.tipo || ''} 
+                        onChange={handleChange} 
+                        required 
+                        style={{ ...inputStyle, marginTop: '5px' }} 
+                    />
                 </label>
 
                 <label style={{ fontWeight: 'bold' }}>
