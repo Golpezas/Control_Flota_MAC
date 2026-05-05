@@ -90,7 +90,7 @@ async def get_vencimientos_criticos_alertas(
     alertas_dict: Dict[str, Alerta] = {} 
 
     # =================================================================
-    # PRIORIDAD 1: Documentacion (fechas manuales)
+    # PRIORIDAD 1: Documentacion
     # =================================================================
     # 2. Aplicamos el filtro relacional $lte directo en la BD
     filtro_doc = {
