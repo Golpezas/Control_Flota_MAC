@@ -1,10 +1,9 @@
 /* src/index.css */
 @import "tailwindcss";
 
-/* 
-  Configuración base súper segura. Tailwind tomará el control, 
-  pero dejamos esto como respaldo (fallback) 
-*/
+/* NUEVO: Habilita el control manual del Modo Oscuro mediante la clase .dark */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   color-scheme: light dark;
 }
