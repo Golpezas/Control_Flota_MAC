@@ -1,23 +1,8 @@
-/* src/index.css */
 /* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 /* stylelint-enable at-rule-no-unknown */
-
-@layer base {
-  body {
-    /* Fondo neutro claro y texto oscuro, estándar para dashboards */
-    @apply bg-slate-50 text-slate-800 antialiased font-sans;
-    margin: 0;
-    min-height: 100vh;
-  }
-
-  /* Forzamos al root a ocupar toda la pantalla y organizar en columna */
-  #root {
-    @apply flex flex-col min-h-screen w-full;
-  }
-}
 
 /* Mantenemos tu animación original intacta */
 @keyframes spin {
