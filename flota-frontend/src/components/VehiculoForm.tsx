@@ -35,28 +35,25 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
 
     useEffect(() => {
         if (isEditMode && initialData) {
-            const legacyData = initialData as unknown as Record<string, unknown>;
-            // Evaluamos si el vehículo viene con el formato viejo (sin marca)
-            const legacyDesc = initialData.descripcion_modelo || (legacyData['DESCRIPCION_MODELO'] as string | null);
-            const hasNewFormat = !!(initialData.marca || (legacyData['MARCA'] as string | null));
+            const legacyData = initialData as Vehiculo & Record<string, unknown>;
+            const legacyDesc = initialData.descripcion_modelo ?? (legacyData.DESCRIPCION_MODELO as string | null) ?? null;
+            const hasNewFormat = !!(initialData.marca || (legacyData.MARCA as string));
             
             setIsLegacy(!hasNewFormat);
 
             setFormData({
-                patente: initialData._id, 
+                patente: initialData._id,
                 activo: initialData.activo,
-                anio: initialData.anio || (legacyData['ANIO'] as number | null),
-                color: initialData.color || (legacyData['COLOR'] as string | null),
+                anio: initialData.anio ?? (legacyData.ANIO as number | null) ?? null,
+                color: initialData.color ?? (legacyData.COLOR as string | null) ?? null,
                 
-                // --- MAPEO DE NUEVOS CAMPOS ---
-                marca: initialData.marca || (legacyData['MARCA'] as string | null) || '',
-                // Si es legacy, autocompletamos 'modelo' con la descripción vieja para facilitar la edición
-                modelo: initialData.modelo || (legacyData['MODELO'] as string | null) || (!hasNewFormat ? legacyDesc : ''),
-                tipo: initialData.tipo || (legacyData['TIPO'] as string | null) || '',
+                marca: initialData.marca ?? (legacyData.MARCA as string) ?? '',
+                modelo: initialData.modelo ?? (legacyData.MODELO as string) ?? (!hasNewFormat ? legacyDesc : ''),
+                tipo: initialData.tipo ?? (legacyData.TIPO as string) ?? '',
                 
                 descripcion_modelo: legacyDesc,
-                nro_movil: initialData.nro_movil || (legacyData['NRO_MOVIL'] as string | null),
-                tipo_combustible: initialData.tipo_combustible || (legacyData['TIPO_COMBUSTIBLE'] as string | null),
+                nro_movil: initialData.nro_movil ?? (legacyData.NRO_MOVIL as string | null) ?? null,
+                tipo_combustible: initialData.tipo_combustible ?? (legacyData.TIPO_COMBUSTIBLE as string) ?? 'Nafta',
             });
         } else {
             setFormData(defaultFormData);
@@ -85,7 +82,6 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
             return;
         }
 
-        // Validación de nuevos campos obligatorios
         if (!formData.marca || !formData.modelo || !formData.tipo) {
             setStatusMessage('❌ Error: La Marca, Modelo y Tipo son obligatorios.');
             setIsLoading(false);
@@ -103,7 +99,6 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
                     marca: formData.marca,
                     modelo: formData.modelo,
                     tipo: formData.tipo,
-                    // Opcional: Podrías enviar descripcion_modelo como null para limpiar el registro legacy en Mongo
                     descripcion_modelo: formData.descripcion_modelo, 
                     nro_movil: formData.nro_movil,
                     tipo_combustible: formData.tipo_combustible,
@@ -129,15 +124,29 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
         }
     };
 
+    // Estilo base para los inputs para no repetir código
+    const inputStyle = { 
+        padding: '8px', 
+        width: '90%', 
+        borderRadius: '4px', 
+        border: '1px solid #ccc', 
+        backgroundColor: 'white',
+        color: '#1e293b' // <-- COLOR OSCURO FORZADO PARA EL TEXTO
+    };
+
     return (
-        <form onSubmit={handleSubmit} style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '5px', marginBottom: '20px', backgroundColor: '#fff' }}>
-            <h3 style={{ color: '#1D3557' }}>{isEditMode ? `Editando Vehículo (${formData.patente})` : 'Crear Nuevo Vehículo'}</h3>
+        // Se añade color: '#1e293b' al form para que las labels también sean oscuras
+        <form onSubmit={handleSubmit} style={{ padding: '20px', border: '1px solid #ccc', borderRadius: '5px', marginBottom: '20px', backgroundColor: '#fff', color: '#1e293b' }}>
+            <h3 style={{ color: '#1D3557', borderBottom: '1px solid #eee', paddingBottom: '10px', marginBottom: '15px' }}>
+                {isEditMode ? `Editando Vehículo (${formData.patente})` : 'Crear Nuevo Vehículo'}
+            </h3>
         
             {statusMessage && (
-                <p style={{ color: statusMessage.startsWith('❌') ? 'red' : 'green', fontWeight: 'bold' }}>{statusMessage}</p>
+                <p style={{ color: statusMessage.startsWith('❌') ? '#d93025' : '#0f9d58', fontWeight: 'bold', padding: '10px', backgroundColor: statusMessage.startsWith('❌') ? '#fce8e6' : '#e6f4ea', borderRadius: '4px' }}>
+                    {statusMessage}
+                </p>
             )}
 
-            {/* AVISO LEGACY UX */}
             {isEditMode && isLegacy && (
                 <div style={{ backgroundColor: '#fff3cd', color: '#856404', padding: '12px', borderRadius: '5px', marginBottom: '15px', border: '1px solid #ffeeba' }}>
                     <strong>⚠️ Formato Antiguo Detectado:</strong> Este vehículo usaba el formato unificado para modelo ({formData.descripcion_modelo}). Por favor, asigne la Marca, ajuste el Modelo y seleccione el Tipo de vehículo.
@@ -145,8 +154,9 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
             )}
         
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Patente*:
+                    <br/>
                     <input 
                         type="text" 
                         name="patente" 
@@ -154,26 +164,29 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
                         onChange={handleChange} 
                         required 
                         disabled={isEditMode} 
-                        style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc', backgroundColor: isEditMode ? '#eee' : 'white' }}
+                        style={{ ...inputStyle, backgroundColor: isEditMode ? '#f1f5f9' : 'white', marginTop: '5px' }}
                     />
                 </label>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Número Móvil:
-                    <input type="text" name="nro_movil" value={formData.nro_movil || ''} onChange={handleChange} style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }} />
+                    <br/>
+                    <input type="text" name="nro_movil" value={formData.nro_movil || ''} onChange={handleChange} style={{ ...inputStyle, marginTop: '5px' }} />
                 </label>
                 
-                {/* --- NUEVOS CAMPOS DESGLOSADOS --- */}
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Marca*:
-                    <input type="text" name="marca" placeholder="Ej. Renault" value={formData.marca || ''} onChange={handleChange} required style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }} />
+                    <br/>
+                    <input type="text" name="marca" placeholder="Ej. Renault" value={formData.marca || ''} onChange={handleChange} required style={{ ...inputStyle, marginTop: '5px' }} />
                 </label>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Modelo Específico*:
-                    <input type="text" name="modelo" placeholder="Ej. Clio 2.3" value={formData.modelo || ''} onChange={handleChange} required style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }} />
+                    <br/>
+                    <input type="text" name="modelo" placeholder="Ej. Clio 2.3" value={formData.modelo || ''} onChange={handleChange} required style={{ ...inputStyle, marginTop: '5px' }} />
                 </label>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Tipo*:
-                    <select name="tipo" value={formData.tipo || ''} onChange={handleChange} required style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }}>
+                    <br/>
+                    <select name="tipo" value={formData.tipo || ''} onChange={handleChange} required style={{ ...inputStyle, marginTop: '5px' }}>
                         <option value="">Seleccionar...</option>
                         <option value="Auto">Auto</option>
                         <option value="Pick-up">Pick-up</option>
@@ -183,32 +196,34 @@ const VehiculoForm: React.FC<VehiculoFormProps> = ({ onSuccess, initialData, isE
                         <option value="Otro">Otro</option>
                     </select>
                 </label>
-                {/* --------------------------------- */}
 
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Año:
-                    <input type="number" name="anio" value={formData.anio || ''} onChange={handleChange} style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }} />
+                    <br/>
+                    <input type="number" name="anio" value={formData.anio || ''} onChange={handleChange} style={{ ...inputStyle, marginTop: '5px' }} />
                 </label>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Color:
-                    <input type="text" name="color" value={formData.color || ''} onChange={handleChange} style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }} />
+                    <br/>
+                    <input type="text" name="color" value={formData.color || ''} onChange={handleChange} style={{ ...inputStyle, marginTop: '5px' }} />
                 </label>
-                <label>
+                <label style={{ fontWeight: 'bold' }}>
                     Combustible:
-                    <select name="tipo_combustible" value={formData.tipo_combustible || ''} onChange={handleChange} style={{ padding: '8px', width: '90%', borderRadius: '4px', border: '1px solid #ccc' }}>
+                    <br/>
+                    <select name="tipo_combustible" value={formData.tipo_combustible || ''} onChange={handleChange} style={{ ...inputStyle, marginTop: '5px' }}>
                         <option value="Nafta">Nafta</option>
                         <option value="Diesel">Diesel</option>
                         <option value="GNC">GNC</option>
                         <option value="Electrico">Eléctrico</option>
                     </select>
                 </label>
-                <label style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', marginTop: '10px' }}>
-                    <strong>Activo en Operación:</strong>
-                    <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} style={{ margin: '0 10px', transform: 'scale(1.5)' }} />
+                <label style={{ gridColumn: 'span 2', display: 'flex', alignItems: 'center', marginTop: '10px', fontWeight: 'bold', color: '#1D3557' }}>
+                    Activo en Operación:
+                    <input type="checkbox" name="activo" checked={formData.activo} onChange={handleChange} style={{ marginLeft: '10px', transform: 'scale(1.5)' }} />
                 </label>
             </div>
 
-            <button type="submit" disabled={isLoading} style={{ padding: '10px 20px', marginTop: '20px', fontWeight: 'bold', backgroundColor: '#457B9D', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>
+            <button type="submit" disabled={isLoading} style={{ padding: '10px 20px', marginTop: '25px', fontWeight: 'bold', backgroundColor: '#457B9D', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', width: '100%' }}>
                 {isLoading ? 'Guardando...' : (isEditMode ? 'Guardar Cambios' : 'Crear Vehículo')}
             </button>
         </form>
