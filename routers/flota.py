@@ -348,16 +348,34 @@ async def create_vehiculo(data: VehiculoCreateInput):
 # -------------------------------------------------------------------------
 # 2.3. PATCH /vehiculos/{patente} (Actualización)
 # -------------------------------------------------------------------------
+# 1. Creamos un modelo estricto en minúsculas para coincidir exactamente con el Frontend
+class VehiculoPatchInput(BaseModel):
+    activo: Optional[bool] = None
+    anio: Optional[int] = None
+    color: Optional[str] = None
+    marca: Optional[str] = None
+    modelo: Optional[str] = None
+    tipo: Optional[str] = None
+    descripcion_modelo: Optional[str] = None
+    nro_movil: Optional[str] = None
+    tipo_combustible: Optional[str] = None
+    model_config = ConfigDict(extra='ignore')
+
 @router.patch("/vehiculos/{patente}", response_model=Vehiculo, summary="Actualiza los campos editables de un vehículo existente.")
-async def update_vehiculo(patente: str, data: VehiculoUpdate):
+async def update_vehiculo(patente: str, data: VehiculoPatchInput):
+    # LOG para confirmar que FastAPI recibe los datos del Frontend:
+    logger.info(f"✏️ PATCH RECIBIDO ({patente}): {data.model_dump()}")
+    
     db_vehiculos = get_db_collection("Vehiculos")
     patente_normalizada = normalize_patente(patente)
     update_fields = data.model_dump(exclude_none=True, exclude_unset=True) 
 
     update_doc = {"$set": {}}
+    
+    # Mapeo: Lo que llega en minúscula (Pydantic/Front) se guarda en MAYÚSCULA (Mongo)
     field_mapping = {
         'activo': 'activo', 'anio': 'ANIO', 'color': 'COLOR', 
-        'marca': 'MARCA', 'modelo': 'MODELO', 'tipo': 'TIPO', # CORRECCIÓN: Mapeo DB
+        'marca': 'MARCA', 'modelo': 'MODELO', 'tipo': 'TIPO', 
         'descripcion_modelo': 'DESCRIPCION_MODELO', 'nro_movil': 'NRO_MOVIL', 
         'tipo_combustible': 'TIPO_COMBUSTIBLE',
     }
@@ -365,6 +383,9 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
     for pydantic_field, db_field in field_mapping.items():
         if pydantic_field in update_fields:
             update_doc['$set'][db_field] = update_fields[pydantic_field]
+            
+    # LOG para confirmar qué es lo que se le envía a MongoDB a guardar:
+    logger.info(f"💾 GUARDANDO EN MONGO ({patente}): {update_doc}")
             
     if not update_doc['$set']:
          updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada}) 
@@ -382,15 +403,16 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
             
         updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada}) 
 
+    # Mapeo de extracción para devolver al Frontend
     vehiculo_data = {
         "patente": updated_doc.get("_id"), 
         "patente_original": updated_doc.get("patente_original"),
         "activo": updated_doc.get("activo", False), 
         "anio": updated_doc.get("ANIO"),
         "color": updated_doc.get("COLOR"), 
-        "marca": updated_doc.get("MARCA") or updated_doc.get("marca"), # CORRECCIÓN: Devolución segura Pydantic
+        "marca": updated_doc.get("MARCA") or updated_doc.get("marca"), 
         "modelo": updated_doc.get("MODELO") or updated_doc.get("DESCRIPCION_MODELO") or updated_doc.get("modelo"), 
-        "tipo": updated_doc.get("TIPO") or updated_doc.get("tipo"),    # CORRECCIÓN: Devolución segura Pydantic
+        "tipo": updated_doc.get("TIPO") or updated_doc.get("tipo"),    
         "descripcion_modelo": updated_doc.get("DESCRIPCION_MODELO"),
         "nro_movil": updated_doc.get("NRO_MOVIL"), 
         "tipo_combustible": updated_doc.get("TIPO_COMBUSTIBLE"),
