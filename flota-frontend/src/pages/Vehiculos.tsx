@@ -169,11 +169,12 @@ const Vehiculos: React.FC = () => {
         }
     };
 
-    // --- EXTRACCIÓN DE DATOS PARA FILTROS ---
+    // --- EXTRACCIÓN DE DATOS PARA FILTROS (NORMALIZACIÓN AGRESIVA DE ESPACIOS) ---
     const uniqueModelos = useMemo(() => {
         const modelos = vehiculos.map(v => {
             const m = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '';
-            return m.toUpperCase().trim();
+            // Expresión regular para reemplazar dobles espacios o espacios invisibles por uno solo
+            return m.toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
         }).filter(m => m !== ''); 
         return Array.from(new Set(modelos)).sort();
     }, [vehiculos]);
@@ -183,7 +184,7 @@ const Vehiculos: React.FC = () => {
         return Array.from(new Set(anios as number[])).sort((a, b) => b - a);
     }, [vehiculos]);
 
-    // --- FILTRADO ---
+    // --- FILTRADO (BÚSQUEDA PARCIAL PARA EL MODELO) ---
     const filteredVehiculos = useMemo(() => {
         return vehiculos.filter(v => {
             const lowerCaseSearch = searchTerm.toLowerCase();
@@ -192,8 +193,10 @@ const Vehiculos: React.FC = () => {
             const modeloText = String(v.descripcion_modelo || v.DESCRIPCION_MODELO || '').toLowerCase();
             const matchesSearch = !searchTerm || id.includes(lowerCaseSearch) || movil.includes(lowerCaseSearch) || modeloText.includes(lowerCaseSearch);
 
-            const m = String(v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '').toUpperCase().trim();
-            const matchesModelo = filterModelo ? m === filterModelo : true;
+            const m = String(v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '').toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
+            const filterModeloUpper = filterModelo.toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
+            // AHORA BUSCA COINCIDENCIA PARCIAL (includes) EN LUGAR DE EXACTA (===)
+            const matchesModelo = filterModeloUpper ? m.includes(filterModeloUpper) : true;
 
             const a = v.anio || v.ANIO;
             const matchesAnio = filterAnio ? String(a) === String(filterAnio) : true;
@@ -251,14 +254,18 @@ const Vehiculos: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto flex-grow">
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Modelo</label>
-                            <select 
+                            {/* CAMBIO CLAVE: Input con Datalist en lugar de Select */}
+                            <input 
+                                type="text"
+                                list="modelos-list"
+                                placeholder="Escribir o seleccionar..."
                                 value={filterModelo} 
                                 onChange={(e) => setFilterModelo(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                            >
-                                <option value="">Todos los Modelos</option>
-                                {uniqueModelos.map((m) => <option key={m} value={m}>{m}</option>)}
-                            </select>
+                            />
+                            <datalist id="modelos-list">
+                                {uniqueModelos.map((m) => <option key={m} value={m} />)}
+                            </datalist>
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Año</label>
