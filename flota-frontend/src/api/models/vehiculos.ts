@@ -15,7 +15,6 @@ export interface DocumentoDigital {
 }
 
 // Interfaz unificada (Backend Response + Frontend Model)
-// Incluye tanto campos modernos (minúsculas) como legacy (mayúsculas)
 export interface Vehiculo {
     _id: string; 
     patente: string; 
@@ -25,17 +24,25 @@ export interface Vehiculo {
     // Campos Modernos (Minúsculas - Preferidos)
     anio?: number | null;
     color?: string | null;
+    
+    // --- NUEVOS CAMPOS ---
+    marca?: string | null;
+    modelo?: string | null; 
+    tipo?: string | null;
+    
+    // Campo Legacy
     descripcion_modelo?: string | null;
-    modelo?: string | null; // Alias común
+    
     nro_movil?: string | number | null;
     tipo_combustible?: string | null;
 
     // Campos Legacy (Mayúsculas - Soporte Retroactivo)
-    // Al definirlos aquí, TypeScript permite su uso sin 'as any'
     ANIO?: number | null;
     COLOR?: string | null;
-    DESCRIPCION_MODELO?: string | null;
+    MARCA?: string | null; // Nuevo legacy en mayúscula por si Mongo lo manda así
     MODELO?: string | null;
+    TIPO?: string | null;  // Nuevo legacy en mayúscula por si Mongo lo manda así
+    DESCRIPCION_MODELO?: string | null;
     NRO_MOVIL?: string | number | null;
     TIPO_COMBUSTIBLE?: string | null;
 
@@ -49,7 +56,15 @@ export type VehiculoBackendResponse = Vehiculo;
 export interface VehiculoInput {
     patente: string;
     nro_movil?: string | number | null;
+    
+    // --- NUEVOS CAMPOS ---
+    marca?: string | null;
+    modelo?: string | null;
+    tipo?: string | null;
+    
+    // Campo Legacy
     descripcion_modelo?: string | null;
+    
     anio?: number | null;
     color?: string | null;
     tipo_combustible?: string | null;
@@ -58,7 +73,15 @@ export interface VehiculoInput {
 
 export interface VehiculoUpdateInput {
     nro_movil?: string | number | null;
+    
+    // --- NUEVOS CAMPOS ---
+    marca?: string | null;
+    modelo?: string | null;
+    tipo?: string | null;
+    
+    // Campo Legacy
     descripcion_modelo?: string | null;
+    
     anio?: number | null;
     color?: string | null;
     tipo_combustible?: string | null;

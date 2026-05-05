@@ -68,6 +68,8 @@ class AlertaVencimiento(BaseModel):
     movil_nro: str | None = None
     descripcion_modelo: str | None = None
 
+# routers/flota.py
+
 async def get_vencimientos_criticos_alertas(
     dias_tolerancia: int = 30,
     skip: int = 0,
@@ -75,23 +77,27 @@ async def get_vencimientos_criticos_alertas(
     patente: str | None = None
 ) -> List[Alerta]:
     """
-    Genera alertas de vencimiento con:
-    - Paginación (skip/limit)
-    - Filtro opcional por patente
-    - Enriquecimiento de nro_movil y descripcion_modelo
-    - Prioridad a Documentacion, fallback a Vehiculos
+    Genera alertas de vencimiento optimizadas.
+    Filtra estrictamente desde MongoDB los próximos a vencer.
     """
     db_documentacion = get_db_collection("Documentacion")
     db_vehiculos = get_db_collection("Vehiculos")
 
     now = datetime.utcnow()
-    alertas_dict: Dict[str, Alerta] = {}  # patente + tipo → evita duplicados
+    # 1. Definimos la cota máxima de tiempo
+    fecha_limite = now + timedelta(days=dias_tolerancia)
+    
+    alertas_dict: Dict[str, Alerta] = {} 
 
-    # 1. PRIORIDAD: Documentacion (fechas manuales)
+    # =================================================================
+    # PRIORIDAD 1: Documentacion
+    # =================================================================
+    # 2. Aplicamos el filtro relacional $lte directo en la BD
     filtro_doc = {
         "tipo_documento": {"$in": ["SEGURO", "Poliza_Detalle", "VTV"]},
-        "fecha_vencimiento": {"$ne": None}
+        "fecha_vencimiento": {"$ne": None, "$lte": fecha_limite} 
     }
+    
     if patente:
         filtro_doc["patente"] = normalize_patente(patente)
 
@@ -106,24 +112,22 @@ async def get_vencimientos_criticos_alertas(
 
         tipo_norm = "SEGURO" if tipo in ["SEGURO", "Poliza_Detalle"] else tipo
 
-        # Prioridad
+        # Como ya filtramos en BD, solo categorizamos la criticidad
         if dias <= 0:
             prioridad = "CRÍTICA"
             mensaje = f"VENCIDO hace {-dias} días" if dias < 0 else "VENCE HOY"
-        elif dias <= dias_tolerancia:
+        else:
             prioridad = "ALTA"
             mensaje = f"Quedan {dias} días"
-        elif dias <= 60:
-            prioridad = "MEDIA"
-            mensaje = f"Atención: {dias} días restantes"
-        else:
-            prioridad = "BAJA"
-            mensaje = f"Vence en {dias} días"
 
-        # Enriquecimiento desde Vehiculos
+        # Enriquecimiento de datos relacionales
         veh = await db_vehiculos.find_one({"_id": patente_doc})
-        movil_nro = veh.get("nro_movil") or veh.get("NRO_MOVIL") or "Sin móvil"
-        desc_modelo = veh.get("descripcion_modelo") or veh.get("DESCRIPCION_MODELO") or "Sin modelo"
+        if veh:
+            movil_nro = veh.get("nro_movil") or veh.get("NRO_MOVIL") or "Sin móvil"
+            desc_modelo = veh.get("descripcion_modelo") or veh.get("DESCRIPCION_MODELO") or "Sin modelo"
+        else:
+            movil_nro = "Sin móvil"
+            desc_modelo = "Sin modelo"
 
         key = f"{patente_doc}_{tipo_norm}"
         alertas_dict[key] = Alerta(
@@ -137,12 +141,15 @@ async def get_vencimientos_criticos_alertas(
             descripcion_modelo=desc_modelo
         )
 
-    # 2. Fallback Vehiculos (solo si no hay dato manual y hay espacio)
+    # =================================================================
+    # PRIORIDAD 2: Fallback Vehiculos (Si la paginación lo permite)
+    # =================================================================
     remaining = limit - len(alertas_dict)
     if remaining > 0:
         filtro_veh = {}
         if patente:
             filtro_veh["_id"] = normalize_patente(patente)
+            
         cursor_veh = db_vehiculos.find(filtro_veh, 
             {'_id': 1, 'nro_movil': 1, 'descripcion_modelo': 1, 'documentos_digitales': 1}).skip(skip).limit(remaining)
         vehiculos = await cursor_veh.to_list(length=remaining)
@@ -167,20 +174,20 @@ async def get_vencimientos_criticos_alertas(
                 key = f"{patente_veh}_{tipo_norm}"
 
                 if key in alertas_dict:
-                    continue  # Prioridad a Documentacion
+                    continue 
 
                 dias = (fecha_vto - now).days
-                if dias > dias_tolerancia:
+                
+                # Descartamos inmediatamente lo que no urge
+                if dias > dias_tolerancia: 
                     continue
 
                 if dias <= 0:
                     prioridad = "CRÍTICA"
                     mensaje = f"VENCIDO hace {-dias} días" if dias < 0 else "VENCE HOY"
-                elif dias <= dias_tolerancia:
+                else:
                     prioridad = "ALTA"
                     mensaje = f"Quedan {dias} días"
-                else:
-                    continue
 
                 alertas_dict[key] = Alerta(
                     patente=patente_veh,
@@ -195,11 +202,12 @@ async def get_vencimientos_criticos_alertas(
 
     alertas = list(alertas_dict.values())
     alertas.sort(key=lambda a: (
-        0 if a.prioridad == "CRÍTICA" else 1 if a.prioridad == "ALTA" else 2,
+        0 if a.prioridad == "CRÍTICA" else 1,
         a.dias_restantes or 9999
     ))
 
     return alertas
+
 
 @router.get("/alertas/criticas")
 async def get_alertas_criticas(
@@ -209,25 +217,29 @@ async def get_alertas_criticas(
     patente: str | None = Query(None, description="Filtrar por patente (normalizada)")
 ):
     """
-    Devuelve alertas paginadas + total real (para paginación frontend).
+    Devuelve alertas paginadas + total real con filtro de fechas aplicado.
     """
-    logger.info(f"Alertas críticas solicitadas: dias={dias_tolerancia}, skip={skip}, limit={limit}, patente={patente or 'todas'}")
-
-    # Obtener alertas paginadas
     alertas = await get_vencimientos_criticos_alertas(dias_tolerancia, skip, limit, patente)
 
-    # Calcular total real (conteo sin paginación)
+    # =================================================================
+    # CÁLCULO DE TOTAL REAL (ESTRICTO)
+    # =================================================================
     db_documentacion = get_db_collection("Documentacion")
+    
+    now = datetime.utcnow()
+    fecha_limite = now + timedelta(days=dias_tolerancia)
+
     filtro_total = {
         "tipo_documento": {"$in": ["SEGURO", "Poliza_Detalle", "VTV"]},
-        "fecha_vencimiento": {"$ne": None}
+        "fecha_vencimiento": {"$ne": None, "$lte": fecha_limite} # ← EL FILTRO ASEGURA EL TOTAL EXACTO
     }
+    
     if patente:
         filtro_total["patente"] = normalize_patente(patente)
 
     total = await db_documentacion.count_documents(filtro_total)
 
-    # Enriquecimiento final (por si quedó N/A)
+    # Enriquecimiento final de metadatos (Si quedaron huérfanos)
     db_vehiculos = get_db_collection("Vehiculos")
     for alerta in alertas:
         if alerta.movil_nro in ("N/A", None) or alerta.descripcion_modelo in ("Vehículo", None):

@@ -279,15 +279,22 @@ class VencimientoUpdate(BaseModel):
 # 2.1. Modelo de Input Local para Creación (POST)
 # -------------------------------------------------------------------------
 class VehiculoCreateInput(BaseModel):
-    # Campos que se mapean a los de la colección Vehiculos
     patente: str = Field(..., description="Patente original del vehículo (Ej: AA123ZZ).")
     activo: bool = Field(True, description="Estado de actividad del vehículo.")
     anio: Optional[int] = Field(None, description="Año de fabricación.")
     color: Optional[str] = Field(None, description="Color del vehículo.")
-    descripcion_modelo: Optional[str] = Field(None, description="Descripción del modelo.")
+    
+    # --- NUEVOS CAMPOS ---
+    marca: Optional[str] = Field(None, description="Marca del vehículo (Ej: Renault)")
+    modelo: Optional[str] = Field(None, description="Modelo específico (Ej: Clio 2.3)")
+    tipo: Optional[str] = Field(None, description="Tipo de vehículo (Ej: Auto, Utilitario)")
+    
+    # Campo Legacy
+    descripcion_modelo: Optional[str] = Field(None, description="Descripción del modelo (Legacy).")
+    
     nro_movil: Optional[str] = Field(None, description="Número de móvil/interno.")
     tipo_combustible: Optional[str] = Field('Nafta', description="Tipo de combustible.")
-    model_config = ConfigDict(extra='ignore') 
+    model_config = ConfigDict(extra='ignore')
 
 # -------------------------------------------------------------------------
 # 2.2. POST /vehiculos (Creación) - Lógica de mapeo a UPPERCASE
@@ -315,6 +322,9 @@ async def create_vehiculo(data: VehiculoCreateInput):
         "activo": data.activo,
         "ANIO": data.anio,
         "COLOR": data.color,
+        "MARCA": data.marca,       # <-- NUEVO
+        "MODELO": data.modelo,     # <-- NUEVO
+        "TIPO": data.tipo,         # <-- NUEVO
         "DESCRIPCION_MODELO": data.descripcion_modelo,
         "NRO_MOVIL": data.nro_movil,
         "TIPO_COMBUSTIBLE": data.tipo_combustible,
@@ -349,7 +359,9 @@ async def create_vehiculo(data: VehiculoCreateInput):
         "activo": new_vehiculo.get("activo", False),
         "anio": new_vehiculo.get("ANIO"),
         "color": new_vehiculo.get("COLOR"),
-        "modelo": new_vehiculo.get("MODELO") or new_vehiculo.get("descripcion_modelo") or new_vehiculo.get("DESCRIPCION_MODELO"), 
+        "marca": new_vehiculo.get("MARCA"), # <-- NUEVO
+        "modelo": new_vehiculo.get("MODELO") or new_vehiculo.get("DESCRIPCION_MODELO"), 
+        "tipo": new_vehiculo.get("TIPO"),   # <-- NUEVO
         "descripcion_modelo": new_vehiculo.get("DESCRIPCION_MODELO"),
         "nro_movil": new_vehiculo.get("NRO_MOVIL"),
         "tipo_combustible": new_vehiculo.get("TIPO_COMBUSTIBLE"),
@@ -378,7 +390,7 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
     update_doc = {"$set": {}}
     field_mapping = {
         'activo': 'activo', 'anio': 'ANIO', 'color': 'COLOR', 
-        'modelo': 'MODELO', # 💡 FIX 2.C: Añadir mapeo para el campo 'modelo'
+        'marca': 'MARCA', 'modelo': 'MODELO', 'tipo': 'TIPO', # <-- NUEVOS
         'descripcion_modelo': 'DESCRIPCION_MODELO', 'nro_movil': 'NRO_MOVIL', 
         'tipo_combustible': 'TIPO_COMBUSTIBLE',
     }
@@ -463,13 +475,14 @@ async def get_vehiculos(
         query: Dict[str, Any] = {}
         
         if filtro:
-            # Note: Mejorar el rendimiento si el volumen de datos es alto.
             regex_query = {"$regex": filtro, "$options": "i"}
             query["$or"] = [
                 {"_id": regex_query},
                 {"patente_original": regex_query},
                 {"NRO_MOVIL": regex_query},
-                {"DESCRIPCION_MODELO": regex_query}
+                {"DESCRIPCION_MODELO": regex_query},
+                {"MARCA": regex_query},  # <-- NUEVO
+                {"MODELO": regex_query}  # <-- NUEVO
             ]
 
         cursor = db_vehiculos.find(query).skip(skip).limit(limit)

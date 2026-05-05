@@ -19,6 +19,34 @@ const Icons = {
     ExternalLink: () => <svg className="w-4 h-4 ml-1 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
 };
 
+// --- Lógica Auxiliar de Presentación ---
+type LegacyVehiculo = Record<string, unknown>;
+
+const getLegacyString = (v: Vehiculo, key: string): string | undefined => {
+    const value = (v as unknown as LegacyVehiculo)[key];
+    return typeof value === 'string' ? value : undefined;
+};
+
+const getLegacyNumberOrString = (v: Vehiculo, key: string): number | string | undefined => {
+    const value = (v as unknown as LegacyVehiculo)[key];
+    return typeof value === 'number' || typeof value === 'string' ? value : undefined;
+};
+
+const getDisplayModelo = (v: Vehiculo) => {
+    const legacyMarca = getLegacyString(v, 'MARCA');
+    const legacyModelo = getLegacyString(v, 'MODELO');
+
+    if (v.marca || legacyMarca) {
+        return `${v.marca || legacyMarca} ${v.modelo || legacyModelo}`.trim() || 'Sin Modelo';
+    }
+
+    return v.descripcion_modelo || v.modelo || getLegacyString(v, 'DESCRIPCION_MODELO') || legacyModelo || 'Sin Modelo';
+};
+
+const getDisplayTipo = (v: Vehiculo) => {
+    return v.tipo || getLegacyString(v, 'TIPO') || '-';
+};
+
 // --- Componente de Fila de Tabla ---
 const VehiculoTableRow: React.FC<{
   v: Vehiculo;
@@ -26,10 +54,11 @@ const VehiculoTableRow: React.FC<{
 }> = ({ v, handleDelete }) => {
   const canPerformAction = !!v._id;
   
-  const modelo = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Sin Modelo';
-  const anio = v.anio || v.ANIO || 'N/A';
-  const color = v.color || v.COLOR || 'N/A';
-  const nro_movil = v.nro_movil || v.NRO_MOVIL || 'N/A';
+  const displayModelo = getDisplayModelo(v);
+  const tipo = getDisplayTipo(v);
+  const anio = v.anio ?? getLegacyNumberOrString(v, 'ANIO') ?? 'N/A';
+  const color = v.color || getLegacyString(v, 'COLOR') || 'N/A';
+  const nro_movil = v.nro_movil || getLegacyString(v, 'NRO_MOVIL') || 'N/A';
 
   return (
     <tr className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors border-b border-slate-100 dark:border-slate-700/50 last:border-0">
@@ -42,7 +71,11 @@ const VehiculoTableRow: React.FC<{
         {nro_movil}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 capitalize">
-        {modelo.toLowerCase()}
+        {displayModelo.toLowerCase()}
+      </td>
+      {/* NUEVA COLUMNA TIPO */}
+      <td className="px-6 py-4 whitespace-nowrap text-sm text-center text-slate-600 dark:text-slate-400 capitalize">
+        {tipo.toLowerCase()}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-center">
         <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 px-2.5 py-1 rounded-md text-xs font-bold border border-blue-200 dark:border-blue-800/50">
@@ -88,9 +121,10 @@ const VehiculoTableRow: React.FC<{
 // --- Componente de Tarjeta Simple (Modo Lista) ---
 const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undefined, nro_movil: string | null) => void }> = ({ v, handleDelete }) => {
     const canPerformAction = !!v._id;
-    const modelo = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Sin Modelo';
-    const anio = v.anio || v.ANIO || 'N/A';
-    const nro_movil = v.nro_movil || v.NRO_MOVIL || 'N/A';
+    const displayModelo = getDisplayModelo(v);
+    const tipo = getDisplayTipo(v);
+    const anio = v.anio ?? getLegacyNumberOrString(v, 'ANIO') ?? 'N/A';
+    const nro_movil = v.nro_movil || getLegacyString(v, 'NRO_MOVIL') || 'N/A';
 
     return (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 flex justify-between items-center hover:shadow-md transition-shadow">
@@ -99,7 +133,11 @@ const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undef
                     Patente: {v._id || '⚠️ ID Desconocido'}
                 </Link>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 capitalize font-medium">
-                    Móvil: <span className="font-bold text-slate-800 dark:text-slate-200">{nro_movil}</span> | {modelo.toLowerCase()} ({anio})
+                    Móvil: <span className="font-bold text-slate-800 dark:text-slate-200">{nro_movil}</span> | {displayModelo.toLowerCase()} ({anio})
+                </p>
+                {/* INFO DEL TIPO AÑADIDA EN TARJETA */}
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5 capitalize">
+                    Tipo: {tipo.toLowerCase()}
                 </p>
             </div>
             <div className="flex gap-2">
@@ -169,36 +207,43 @@ const Vehiculos: React.FC = () => {
         }
     };
 
-    // --- EXTRACCIÓN DE DATOS PARA FILTROS (NORMALIZACIÓN AGRESIVA DE ESPACIOS) ---
+    // --- EXTRACCIÓN DE DATOS PARA FILTROS ---
     const uniqueModelos = useMemo(() => {
         const modelos = vehiculos.map(v => {
-            const m = v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '';
-            // Expresión regular para reemplazar dobles espacios o espacios invisibles por uno solo
+            const m = getDisplayModelo(v);
             return m.toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
         }).filter(m => m !== ''); 
         return Array.from(new Set(modelos)).sort();
     }, [vehiculos]);
 
     const uniqueAnios = useMemo(() => {
-        const anios = vehiculos.map(v => v.anio || v.ANIO).filter(Boolean);
-        return Array.from(new Set(anios as number[])).sort((a, b) => b - a);
+        const anios = vehiculos
+            .map(v => v.anio ?? getLegacyNumberOrString(v, 'ANIO'))
+            .filter((a): a is number | string => a !== undefined && a !== null);
+        return Array.from(new Set(anios.map((a) => String(a)))).sort((a, b) => Number(b) - Number(a));
     }, [vehiculos]);
 
-    // --- FILTRADO (BÚSQUEDA PARCIAL PARA EL MODELO) ---
+    // --- FILTRADO (BÚSQUEDA PARCIAL) ---
     const filteredVehiculos = useMemo(() => {
         return vehiculos.filter(v => {
             const lowerCaseSearch = searchTerm.toLowerCase();
             const id = (v._id || '').toLowerCase();
-            const movil = String(v.nro_movil || v.NRO_MOVIL || '').toLowerCase();
-            const modeloText = String(v.descripcion_modelo || v.DESCRIPCION_MODELO || '').toLowerCase();
-            const matchesSearch = !searchTerm || id.includes(lowerCaseSearch) || movil.includes(lowerCaseSearch) || modeloText.includes(lowerCaseSearch);
+            const movil = String(v.nro_movil || getLegacyString(v, 'NRO_MOVIL') || '').toLowerCase();
+            const displayModeloLower = getDisplayModelo(v).toLowerCase();
+            const tipoLower = getDisplayTipo(v).toLowerCase();
+            
+            // Busca en Patente, Móvil, Marca/Modelo y Tipo
+            const matchesSearch = !searchTerm || 
+                id.includes(lowerCaseSearch) || 
+                movil.includes(lowerCaseSearch) || 
+                displayModeloLower.includes(lowerCaseSearch) || 
+                tipoLower.includes(lowerCaseSearch);
 
-            const m = String(v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || '').toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
+            const m = getDisplayModelo(v).toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
             const filterModeloUpper = filterModelo.toUpperCase().trim().replace(/[\s\u00A0]+/g, ' ');
-            // AHORA BUSCA COINCIDENCIA PARCIAL (includes) EN LUGAR DE EXACTA (===)
             const matchesModelo = filterModeloUpper ? m.includes(filterModeloUpper) : true;
 
-            const a = v.anio || v.ANIO;
+            const a = v.anio ?? getLegacyNumberOrString(v, 'ANIO');
             const matchesAnio = filterAnio ? String(a) === String(filterAnio) : true;
 
             return matchesSearch && matchesModelo && matchesAnio;
@@ -254,7 +299,6 @@ const Vehiculos: React.FC = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto flex-grow">
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Modelo</label>
-                            {/* CAMBIO CLAVE: Input con Datalist en lugar de Select */}
                             <input 
                                 type="text"
                                 list="modelos-list"
@@ -354,6 +398,7 @@ const Vehiculos: React.FC = () => {
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Patente</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Móvil</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Modelo</th>
+                                            <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Tipo</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Año</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Color</th>
                                             <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Activo</th>

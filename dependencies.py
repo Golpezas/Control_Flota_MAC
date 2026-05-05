@@ -211,33 +211,35 @@ class UpdateMonto(BaseModel):
 
 # --- MODELO VEHICULOS ---
 
+# --- MODELO VEHICULOS ---
+
 class VehiculoBase(BaseModel):
-    nro_movil: Optional[str] = Field(None, alias="nro_movil", description="Número de móvil de la flota.") # 💡 CORRECCIÓN
-    modelo: Optional[str] = Field(None, alias="modelo") # 💡 CORRECCIÓN
+    nro_movil: Optional[str] = Field(None, alias="nro_movil", description="Número de móvil de la flota.")
     ubicacion: Optional[str] = Field(None, alias="UBICACION")
-    tipo: Optional[str] = Field(None, alias="TIPO", description="Tipo de vehículo (Ej: Camioneta, Auto).")
     area: Optional[str] = Field(None, alias="AREA", description="Área o sector asignado.")
     responsable: Optional[str] = Field(None, alias="RESPONSABLE", description="Nombre del responsable del vehículo.")
     
-    # anio es float para manejar 'nan' si viene de un proceso ETL
-    anio: Optional[float] = Field(None, alias="anio", description="Año de fabricación del vehículo.") # 💡 CORRECCIÓN
-    
+    anio: Optional[float] = Field(None, alias="anio", description="Año de fabricación del vehículo.")
     color: Optional[str] = Field(None, alias="COLOR", description="Color del vehículo.")
     tipo_combustible: Optional[str] = Field(None, alias="TIPO_COMBUSTIBLE", description="Tipo de combustible (Nafta/Diesel/GNC).")
-    descripcion_modelo: Optional[str] = Field(None, alias="descripcion_modelo", description="Descripción del modelo (Ej: Renault Clio).") # 💡 CORRECCIÓN
     medidas_cubiertas: Optional[str] = Field(None, alias="MEDIDAS_CUBIERTAS", description="Especificaciones de las cubiertas.")
-    clave_radio: Optional[str] = Field(None, alias="clave_radio", description="Clave de radio.") # Mapeado correctamente a 'clave_radio' minúscula
-    activo: Optional[bool] = Field(None, alias="activo", description="Estado de actividad del vehículo.") # Mapeado correctamente a 'activo' minúscula
+    clave_radio: Optional[str] = Field(None, alias="clave_radio", description="Clave de radio.")
+    activo: Optional[bool] = Field(None, alias="activo", description="Estado de actividad del vehículo.")
 
+    # --- NUEVOS CAMPOS DIVIDIDOS ---
+    marca: Optional[str] = Field(None, alias="MARCA", description="Marca del vehículo (Ej: Renault).")
+    modelo: Optional[str] = Field(None, alias="MODELO", description="Modelo específico (Ej: Clio 2.3).")
+    tipo: Optional[str] = Field(None, alias="TIPO", description="Tipo de vehículo (Ej: Auto, Camioneta).")
+    
+    # Campo Legacy (Se mantiene por compatibilidad hacia atrás)
+    descripcion_modelo: Optional[str] = Field(None, alias="descripcion_modelo", description="Descripción del modelo (Ej: Renault Clio).")
+    
     documentacion: Optional[Dict[str, Any]] = Field(None, alias="DOCUMENTACION", description="Fechas de vencimiento y datos de documentación.")
     documentos_digitales: Optional[List[DocumentoDigital]] = Field(None, alias="documentos_digitales", description="Lista de documentos digitales.")
     
-    # costo_adquisicion es float para manejar 'nan'
     costo_adquisicion: Optional[float] = Field(None, alias="COSTO_ADQUISICION", description="Costo inicial de compra.")
 
-    
 class Vehiculo(VehiculoBase):
-    # 💡 CORRECCIÓN CRÍTICA: Usa 'alias="_id"' para mapear el ID de Mongo a la Patente
     patente: str = Field(..., alias="_id", description="Patente o ID único del vehículo.")
     model_config = BASE_CONFIG_WITH_NUMERIC_FIX
 

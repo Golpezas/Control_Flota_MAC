@@ -35,8 +35,15 @@ const Icons = {
 };
 
 type VehiculoConLegacy = Vehiculo & {
-    ANIO?: number; COLOR?: string; NRO_MOVIL?: string;
-    DESCRIPCION_MODELO?: string; MODELO?: string; TIPO_COMBUSTIBLE?: string; _id?: string;
+    ANIO?: number;
+    COLOR?: string;
+    NRO_MOVIL?: string;
+    MARCA?: string; // <-- NUEVO
+    MODELO?: string;
+    TIPO?: string;  // <-- NUEVO
+    DESCRIPCION_MODELO?: string;
+    TIPO_COMBUSTIBLE?: string;
+    _id?: string;
 };
 
 const DOCUMENTOS_ESTANDAR = [
@@ -269,17 +276,27 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* 1. INFORMACIÓN BÁSICA */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Información Técnica</h2>
-                </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+            <div style={{ marginBottom: '30px' }}>
+                <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
-                    <DetailItem label="Modelo" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.MODELO } />
+                    
+                    {/* --- LÓGICA DE TRANSICIÓN NUEVO VS LEGACY --- */}
+                    {v.marca || v.MARCA ? (
+                        <>
+                            <DetailItem label="Marca" value={v.marca || v.MARCA} />
+                            <DetailItem label="Modelo" value={v.modelo || v.MODELO} />
+                            <DetailItem label="Tipo" value={v.tipo || v.TIPO} />
+                        </>
+                    ) : (
+                        <DetailItem label="Modelo/Descripción" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.modelo || v.MODELO} />
+                    )}
+                    {/* ------------------------------------------- */}
+
                     <DetailItem label="Año" value={v.anio || v.ANIO} />
                     <DetailItem label="Color" value={v.color || v.COLOR} />
                     <DetailItem label="Combustible" value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} />
-                    <DetailItem label="Estado Activo" value={v.activo ? 'Sí, en operación' : 'No, inactivo'} />
+                    <DetailItem label="Activo" value={v.activo ? 'Sí' : 'No'} />
                 </div>
             </div>
 

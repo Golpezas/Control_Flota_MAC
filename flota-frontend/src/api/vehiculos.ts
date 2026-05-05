@@ -32,33 +32,36 @@ interface FastAPIErrorResponse {
 // 🔑 FUNCIÓN DE MAPEO ACTUALIZADA
 function mapVehiculoResponse(data: VehiculoBackendResponse): Vehiculo { 
     const mappedVehiculo: Vehiculo = {
-        // Aseguramos que _id y patente tengan valor (redundancia por seguridad)
         _id: data._id || data.patente || '', 
         patente: data.patente || data._id || '', 
         patente_original: data.patente_original ?? data.patente ?? null, 
         activo: data.activo ?? false, 
-        
-        // 🔑 CORRECCIÓN ROBUSTA: Intenta todas las variantes posibles
         anio: data.ANIO || data.anio || null,
         color: data.COLOR || data.color || null,
         
-        // 🚨 MEJORA CRÍTICA AQUÍ: 
-        // A veces Mongo trae 'MODELO' y otras 'DESCRIPCION_MODELO'. Leemos ambas.
-        descripcion_modelo: (
-            data.DESCRIPCION_MODELO || 
-            data.descripcion_modelo || 
+        // --- NUEVOS CAMPOS ---
+        // Leemos primero la data nueva (Upper o Lowercase)
+        marca: data.MARCA || data.marca || null,
+        tipo: data.TIPO || data.tipo || null,
+
+        // 🚨 MEJORA CRÍTICA: 
+        // Prioridad 1: Nuevo campo Modelo
+        // Prioridad 2: Legacy Descripcion Modelo
+        modelo: (
             data.MODELO || 
             data.modelo || 
+            data.DESCRIPCION_MODELO || 
+            data.descripcion_modelo || 
             null
         ),
         
-        // Tu lógica para nro_movil es excelente, la mantenemos:
+        descripcion_modelo: data.DESCRIPCION_MODELO || data.descripcion_modelo || null,
+        
         nro_movil: (data.NRO_MOVIL !== undefined && data.NRO_MOVIL !== null) 
             ? String(data.NRO_MOVIL) 
             : (data.nro_movil || null),
         
         tipo_combustible: data.TIPO_COMBUSTIBLE || data.tipo_combustible || null, 
-        
         documentos_digitales: data.documentos_digitales || [],
     } as Vehiculo;
 
