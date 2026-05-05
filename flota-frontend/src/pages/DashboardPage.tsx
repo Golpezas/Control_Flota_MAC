@@ -1,86 +1,50 @@
 // src/pages/DashboardPage.tsx
-
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom'; // NUEVO: Para hacer las cards interactivas
 import type { Vehiculo, Alerta } from '../api/models/vehiculos';
 import { fetchVehiculos } from '../api/vehiculos';
 import { apiClient } from '../api/vehiculos';
 
 // =================================================================
-// COMPONENTE: TARJETA DE RESUMEN (sin cambios)
+// COMPONENTE: TARJETA DE RESUMEN (Refactorizado con Tailwind)
 // =================================================================
 interface SummaryCardProps {
     title: string;
     value: number;
-    color: string;
+    colorClass: string;
     icon: string;
+    onClick: () => void; // Hacemos las tarjetas interactivas
 }
 
-const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, color, icon }) => (
-    <div style={{ 
-        padding: '20px', 
-        borderRadius: '8px', 
-        backgroundColor: color, 
-        color: 'white', 
-        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        textAlign: 'center'
-    }}>
-        <div style={{ fontSize: '2.5em' }}>{icon}</div>
-        <h3 style={{ margin: '5px 0' }}>{title}</h3>
-        <p style={{ fontSize: '2.2em', fontWeight: 'bold', margin: 0 }}>{value}</p>
+const SummaryCard: React.FC<SummaryCardProps> = ({ title, value, colorClass, icon, onClick }) => (
+    <div 
+        onClick={onClick}
+        className={`p-6 rounded-xl text-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md cursor-pointer flex flex-col items-center text-center ${colorClass}`}
+    >
+        <div className="text-4xl mb-2">{icon}</div>
+        <h3 className="text-sm font-medium opacity-90 m-0">{title}</h3>
+        <p className="text-4xl font-bold m-0 mt-1">{value}</p>
     </div>
 );
 
 // =================================================================
-// COMPONENTE: ITEM DE ALERTA (sin cambios)
-// =================================================================
-interface AlertaItemProps {
-    alerta: Alerta;
-}
-
-const AlertaItem: React.FC<AlertaItemProps> = ({ alerta }) => {
-    console.log(`DEBUG ALERTA ITEM - Patente: ${alerta.patente}, Movil: ${alerta.movil_nro}, Modelo: ${alerta.descripcion_modelo}`);
-
-    return (
-        <div style={{ 
-            padding: '15px', 
-            borderBottom: '1px solid #eee', 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center', 
-            background: 'white' 
-        }}>
-            <div style={{ fontWeight: 'bold', color: alerta.prioridad === 'CRÍTICA' ? '#E63946' : '#F4A261' }}>
-                🚨 {alerta.tipo_documento}
-            </div>
-            <div>
-                Patente: **{alerta.patente || 'N/A'}** 
-                (Movil: {alerta.movil_nro || 'Sin móvil'}, {alerta.descripcion_modelo || 'Sin modelo'})
-            </div>
-        </div>
-    );
-};
-
-// =================================================================
 // COMPONENTE PRINCIPAL: DashboardPage
 // =================================================================
-
 const DashboardPage: React.FC = () => {
+    const navigate = useNavigate(); // Hook de navegación
     const [vehiculos, setVehiculos] = useState<Vehiculo[]>([]);
-    const [isLoadingVehiculos, setIsLoadingVehiculos] = useState(true); // Loader específico
+    const [isLoadingVehiculos, setIsLoadingVehiculos] = useState(true);
 
     const [alertasCriticas, setAlertasCriticas] = useState<Alerta[]>([]);
     const [alertasTotal, setAlertasTotal] = useState(0);
     const [alertasPage, setAlertasPage] = useState(1);
-    const [alertasLoading, setAlertasLoading] = useState(false); // Cambiado a false inicial
+    const [alertasLoading, setAlertasLoading] = useState(false);
     
     const [patenteFilter, setPatenteFilter] = useState('');
     const [debouncedPatente, setDebouncedPatente] = useState('');
     const ITEMS_PER_PAGE = 10;
 
-    // 1. Efecto solo para cargar Vehículos (Una sola vez al montar)
+    // 1. Efecto solo para cargar Vehículos
     useEffect(() => {
         const loadInitialData = async () => {
             setIsLoadingVehiculos(true);
@@ -100,12 +64,12 @@ const DashboardPage: React.FC = () => {
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedPatente(patenteFilter);
-            setAlertasPage(1); // Reset de página solo cuando cambia el texto de búsqueda
+            setAlertasPage(1);
         }, 500);
         return () => clearTimeout(timer);
     }, [patenteFilter]);
 
-    // 3. Fetch Alertas (Se dispara por página o por patente debounced)
+    // 3. Fetch Alertas
     const fetchAlertas = useCallback(async () => {
         setAlertasLoading(true);
         try {
@@ -129,66 +93,162 @@ const DashboardPage: React.FC = () => {
         fetchAlertas();
     }, [fetchAlertas]);
 
-    // Lógica de resumen
+    // Lógica de resumen general
     const summary = useMemo(() => {
         const total = vehiculos.length;
         const activos = vehiculos.filter(v => v.activo).length;
         return { total, activos, inactivos: total - activos };
     }, [vehiculos]);
 
+    // NUEVA LÓGICA: Procesamiento de unidades por modelo
+    const composicionFlota = useMemo(() => {
+        const conteo: Record<string, number> = {};
+        vehiculos.forEach(v => {
+            let modelo = (v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Desconocido').toUpperCase().trim();
+            // Normalización básica para agrupar similares
+            if (modelo.includes('CLIO')) modelo = 'RENAULT CLIO';
+            if (modelo.includes('KANGOO')) modelo = 'RENAULT KANGOO';
+            if (modelo.includes('ALASKAN')) modelo = 'RENAULT ALASKAN';
+            if (modelo.includes('SANDERO')) modelo = 'RENAULT SANDERO';
+            
+            conteo[modelo] = (conteo[modelo] || 0) + 1;
+        });
+        // Convertimos el objeto en array y ordenamos por cantidad descendente
+        return Object.entries(conteo).sort((a, b) => b[1] - a[1]);
+    }, [vehiculos]);
+
     const totalPages = Math.ceil(alertasTotal / ITEMS_PER_PAGE);
 
-    // Renderizado condicional solo para la carga inicial de la página
     if (isLoadingVehiculos && vehiculos.length === 0) {
-        return <div style={{ padding: '30px' }}>Cargando dashboard... ⏳</div>;
+        return (
+            <div className="flex justify-center items-center py-20">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1D3557]"></div>
+            </div>
+        );
     }
 
     return (
-        <div style={{ padding: '30px' }}>
-            <h1 style={{ color: '#1D3557' }}>Inicio (Dashboard)</h1>
+        <div className="space-y-8">
+            <h1 className="text-3xl font-bold text-[#1D3557]">Dashboard</h1>
 
-            {/* Resumen siempre visible */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '40px' }}>
-                <SummaryCard title="Vehículos Totales" value={summary.total} color="#1D3557" icon="🚚" />
-                <SummaryCard title="Vehículos Activos" value={summary.activos} color="#457B9D" icon="✅" />
-                <SummaryCard title="Vehículos Inactivos" value={summary.inactivos} color="#E63946" icon="🛑" />
-            </div>
-
-            <h2 style={{ color: '#457B9D' }}>
-                🚨 Alertas Críticas ({alertasTotal})
-                {alertasLoading && <span style={{ fontSize: '0.5em', marginLeft: '10px' }}>Actualizando...</span>}
-            </h2>
-
-            <div style={{ marginBottom: '20px' }}>
-                <input
-                    type="text"
-                    placeholder="Buscar por patente..."
-                    value={patenteFilter}
-                    onChange={(e) => setPatenteFilter(e.target.value.toUpperCase())}
-                    style={{ padding: '10px', width: '350px', borderRadius: '6px', border: '1px solid #ccc' }}
+            {/* GRÁFICO 1: Resumen (1 col en móvil, 3 en PC) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <SummaryCard 
+                    title="Vehículos Totales" 
+                    value={summary.total} 
+                    colorClass="bg-[#1D3557]" 
+                    icon="🚚" 
+                    onClick={() => navigate('/vehiculos')}
+                />
+                <SummaryCard 
+                    title="Vehículos Activos" 
+                    value={summary.activos} 
+                    colorClass="bg-[#2A9D8F]" 
+                    icon="✅" 
+                    onClick={() => navigate('/vehiculos')}
+                />
+                <SummaryCard 
+                    title="Vehículos Inactivos" 
+                    value={summary.inactivos} 
+                    colorClass="bg-[#E63946]" 
+                    icon="🛑" 
+                    onClick={() => navigate('/vehiculos')}
                 />
             </div>
 
-            <div style={{ 
-                border: '1px solid #ddd', 
-                borderRadius: '8px', 
-                opacity: alertasLoading ? 0.6 : 1, // Feedback visual sin quitar el contenido
-                transition: 'opacity 0.2s' 
-            }}>
-                {/* Controles de paginación arriba para mejor acceso */}
-                <div style={{ padding: '10px', display: 'flex', justifyContent: 'center', gap: '10px', background: '#f8fafc' }}>
-                    <button disabled={alertasPage === 1 || alertasLoading} onClick={() => setAlertasPage(p => p - 1)}>←</button>
-                    <span>Página {alertasPage} de {totalPages || 1}</span>
-                    <button disabled={alertasPage >= totalPages || alertasLoading} onClick={() => setAlertasPage(p => p + 1)}>→</button>
+            {/* ZONA INFERIOR: Alertas (Izquierda) + Composición (Derecha) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                
+                {/* Panel Izquierdo: Alertas (Ocupa 2 de 3 columnas en PC) */}
+                <div className="lg:col-span-2 space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <h2 className="text-2xl font-bold text-[#457B9D] flex items-center gap-2">
+                            🚨 Alertas Críticas 
+                            <span className="bg-red-100 text-red-700 text-sm py-1 px-3 rounded-full">{alertasTotal}</span>
+                            {alertasLoading && <span className="text-sm font-normal text-slate-400 animate-pulse">Actualizando...</span>}
+                        </h2>
+                        <input
+                            type="text"
+                            placeholder="Buscar por patente..."
+                            value={patenteFilter}
+                            onChange={(e) => setPatenteFilter(e.target.value.toUpperCase())}
+                            className="w-full sm:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#457B9D]"
+                        />
+                    </div>
+
+                    <div className={`bg-white border border-slate-200 rounded-xl shadow-sm transition-opacity ${alertasLoading ? 'opacity-60' : 'opacity-100'}`}>
+                        {/* Paginación Superior */}
+                        <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200 rounded-t-xl">
+                            <button 
+                                disabled={alertasPage === 1 || alertasLoading} 
+                                onClick={() => setAlertasPage(p => p - 1)}
+                                className="px-3 py-1 rounded bg-white border border-slate-300 text-sm font-medium hover:bg-slate-100 disabled:opacity-50"
+                            >
+                                ← Anterior
+                            </button>
+                            <span className="text-sm text-slate-600 font-medium">
+                                Página {alertasPage} de {totalPages || 1}
+                            </span>
+                            <button 
+                                disabled={alertasPage >= totalPages || alertasLoading} 
+                                onClick={() => setAlertasPage(p => p + 1)}
+                                className="px-3 py-1 rounded bg-white border border-slate-300 text-sm font-medium hover:bg-slate-100 disabled:opacity-50"
+                            >
+                                Siguiente →
+                            </button>
+                        </div>
+
+                        {/* Lista de Alertas tipo "Cards" internas */}
+                        <div className="divide-y divide-slate-100">
+                            {alertasCriticas.length === 0 && !alertasLoading ? (
+                                <div className="p-10 text-center text-slate-500">No se encontraron alertas.</div>
+                            ) : (
+                                alertasCriticas.map((alerta) => (
+                                    <div 
+                                        key={`${alerta.patente}-${alerta.tipo_documento}`} 
+                                        onClick={() => navigate(`/vehiculos/${alerta.patente}`)}
+                                        className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 cursor-pointer transition-colors"
+                                    >
+                                        <div>
+                                            <div className={`inline-block px-2 py-1 rounded text-xs font-bold mb-2 ${alerta.prioridad === 'CRÍTICA' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                🚨 {alerta.tipo_documento}
+                                            </div>
+                                            <p className="text-slate-800">
+                                                Patente: <span className="font-bold">{alerta.patente || 'N/A'}</span>
+                                            </p>
+                                        </div>
+                                        <div className="text-sm text-slate-600 sm:text-right">
+                                            <p>Móvil: <span className="font-semibold">{alerta.movil_nro || 'Sin móvil'}</span></p>
+                                            <p>{alerta.descripcion_modelo || 'Sin modelo'}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
                 </div>
 
-                {alertasCriticas.length === 0 && !alertasLoading ? (
-                    <div style={{ padding: '40px', textAlign: 'center' }}>No se encontraron alertas.</div>
-                ) : (
-                    alertasCriticas.map((alerta) => (
-                        <AlertaItem key={`${alerta.patente}-${alerta.tipo_documento}`} alerta={alerta} />
-                    ))
-                )}
+                {/* Panel Derecho: Composición de la Flota (Ocupa 1 de 3 columnas en PC) */}
+                <div className="space-y-4">
+                    <h2 className="text-2xl font-bold text-[#457B9D]">📊 Composición</h2>
+                    <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                        <div className="space-y-3">
+                            {composicionFlota.length === 0 ? (
+                                <p className="text-sm text-slate-500 text-center">Sin datos</p>
+                            ) : (
+                                composicionFlota.map(([modelo, cantidad]) => (
+                                    <div key={modelo} className="flex justify-between items-center border-b border-slate-100 pb-2 last:border-0 last:pb-0">
+                                        <span className="text-sm font-medium text-slate-700">{modelo}</span>
+                                        <span className="bg-slate-100 text-slate-800 text-xs font-bold px-2 py-1 rounded-md">
+                                            {cantidad} unid.
+                                        </span>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     );

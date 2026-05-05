@@ -1,43 +1,44 @@
-// src/App.tsx (Asegúrate de que tus importaciones y la estructura de Routes sean estas)
-
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+// src/App.tsx
+import { BrowserRouter as Router, Routes, Route, NavLink } from 'react-router-dom';
 import VehiculosPage from './pages/Vehiculos';
 import VehiculoEditPage from './pages/VehiculoEditPage';
 import VehiculoDetail from './pages/VehiculoDetail';
 import VehiculoCreatePage from './pages/VehiculoCreatePage';
 import DashboardPage from './pages/DashboardPage'; 
-// 👇 NUEVA IMPORTACIÓN
 import CostoCreatePage from './pages/CostoCreatePage'; 
 import PolizasList from './pages/PolizasList'; 
 
-// ... (resto de importaciones y definición de DashboardPage)
-
 function App() {
+  // Clase base para los links del menú, usando NavLink para detectar si está activo
+  const linkStyles = ({ isActive }: { isActive: boolean }) => 
+    `flex items-center gap-2 px-4 py-2 rounded-md font-bold transition-colors ${
+      isActive 
+        ? 'bg-slate-800 text-white shadow-inner' 
+        : 'text-slate-200 hover:bg-slate-700 hover:text-white'
+    }`;
+
   return (
     <Router>
-      <header style={{ 
-          background: '#1D3557', 
-          padding: '15px 30px', 
-          color: 'white',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-      }}>
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '40px' }}>
-          <Link to="/" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
-              🏠 Inicio (Dashboard)
-          </Link>
-          <Link to="/vehiculos" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
-              🚛 Gestión de Vehículos
-          </Link>
-          <Link to="/costos/crear" style={{ color: '#FFB703', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
-              💸 Registrar Gasto
-          </Link>
-          <Link to="/polizas" style={{ color: 'white', textDecoration: 'none', fontWeight: 'bold', fontSize: '1.1em' }}>
-              📜 Pólizas de Seguros
-          </Link>
-        </nav>
+      <header className="bg-[#1D3557] shadow-md sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <nav className="flex items-center gap-2 sm:gap-6 overflow-x-auto">
+              <NavLink to="/" className={linkStyles}>
+                🏠 <span className="hidden sm:inline">Inicio (Dashboard)</span>
+              </NavLink>
+              <NavLink to="/vehiculos" className={linkStyles}>
+                🚛 <span className="hidden sm:inline">Gestión de Vehículos</span>
+              </NavLink>
+              <NavLink to="/polizas" className={linkStyles}>
+                📜 <span className="hidden sm:inline">Pólizas de Seguros</span>
+              </NavLink>
+            </nav>
+          </div>
+        </div>
       </header>
       
-      <main style={{ padding: '30px' }}>
+      {/* Contenedor principal centrado, responsivo y sin fondo negro */}
+      <main className="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Routes>
           <Route path="/" element={<DashboardPage />} /> 
           <Route path="/vehiculos" element={<VehiculosPage />} />
@@ -45,16 +46,10 @@ function App() {
           
           <Route path="/costos/crear" element={<CostoCreatePage />} /> 
 
-          {/* Rutas dinámicas (Corregidas y ordenadas por prioridad) */}
-          {/* 1. RUTA DE EDICIÓN: Debe ir ANTES que la de Detalle para coincidir correctamente */}
           <Route path="/vehiculos/editar/:patente" element={<VehiculoEditPage />} />
-          
-          {/* 2. RUTA DE DETALLE: Captura el resto de patrones /vehiculos/ID */}
           <Route path="/vehiculos/:patente" element={<VehiculoDetail />} /> 
 
-          {/* RUTA DE PÓLIZAS DE SEGUROS */}
           <Route path="/polizas" element={<PolizasList />} />
-
         </Routes>
       </main>
     </Router>
