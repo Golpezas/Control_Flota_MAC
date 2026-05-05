@@ -1,21 +1,36 @@
-/* stylelint-disable at-rule-no-unknown */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-/* stylelint-enable at-rule-no-unknown */
+/* src/index.css */
+@import "tailwindcss";
 
-/* Mantenemos tu animación original intacta */
+/* 
+  Configuración base súper segura. Tailwind tomará el control, 
+  pero dejamos esto como respaldo (fallback) 
+*/
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-200 antialiased transition-colors duration-300;
+  margin: 0;
+  min-height: 100vh;
+}
+
+#root {
+  @apply flex flex-col min-h-screen w-full;
+}
+
+/* Animación del spinner original preservada */
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .spinner-documento {
-    border: 6px solid #e2e8f0;
-    border-top: 6px solid #2A9D8F;
-    border-radius: 50%;
-    width: 60px;
-    height: 60px;
-    animation: spin 1s linear infinite;
-    margin: 0 auto 24px;
+  border: 4px solid rgba(255,255,255,0.1);
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: auto;
 }
