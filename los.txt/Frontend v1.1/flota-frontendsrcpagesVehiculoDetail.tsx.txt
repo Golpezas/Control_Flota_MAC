@@ -1,3 +1,4 @@
+// src/pages/VehiculoDetail.tsx
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Modal from 'react-modal';
@@ -17,12 +18,15 @@ import axios from 'axios';
 import { normalizePatente } from '../utils/data-utils';
 import type { GastoUnificado } from '../api/models/gastos';
 
+// TIPO ACTUALIZADO CON MARCA Y TIPO
 type VehiculoConLegacy = Vehiculo & {
     ANIO?: number;
     COLOR?: string;
     NRO_MOVIL?: string;
-    DESCRIPCION_MODELO?: string;
+    MARCA?: string; 
     MODELO?: string;
+    TIPO?: string;  
+    DESCRIPCION_MODELO?: string;
     TIPO_COMBUSTIBLE?: string;
     _id?: string;
 };
@@ -109,7 +113,6 @@ const VehiculoDetail: React.FC = () => {
             const res = await apiClient.get(`/documentacion/${patente}`);
             const datosBD = Array.isArray(res.data) ? res.data : [];
             setVencimientosBD(datosBD);
-            // ¡Eliminamos el setFechasVencimiento de aquí para que no arrastre datos viejos!
         } catch (err) {
             console.error("Error cargando vencimientos desde documentacion:", err);
         }
@@ -220,20 +223,36 @@ const VehiculoDetail: React.FC = () => {
         }
     };
 
+    // =======================================================================
+    // 💡 LÓGICA CORREGIDA PARA GUARDAR VENCIMIENTOS
+    // =======================================================================
     const guardarVencimiento = async (tipoFrontend: string) => {
         const fecha = fechasVencimiento[tipoFrontend];
         if (!fecha || !patente) return;
 
-        // Ya no forzamos el nombre a Poliza_Detalle, enviamos lo que tenemos
-        const tipoBackend = tipoFrontend;
+        // 1. Buscamos CÓMO SE LLAMA exactamente este documento en la Base de Datos
+        const docExistente = vencimientosBD.find(d => 
+            d.tipo_documento === tipoFrontend || 
+            (tipoFrontend === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
+        );
+
+        // 2. Usamos el tipo exacto (ej. Poliza_Detalle). Así sobreescribe el original!
+        const tipoBackend = docExistente ? docExistente.tipo_documento : tipoFrontend;
 
         try {
+            // 3. Forzamos el horario a medio día UTC para evitar que baje 1 día por zona horaria
+            const fechaUTC = new Date(`${fecha}T12:00:00Z`).toISOString();
+
             await apiClient.put(`/documentacion/${patente}/${tipoBackend}`, {
-                fecha_vencimiento: new Date(fecha).toISOString()
+                fecha_vencimiento: fechaUTC
             });
-            alert(`Fecha de ${tipoFrontend} actualizada correctamente`);
+            
+            alert(`Fecha actualizada correctamente`);
             setEditingVencimientos(prev => ({ ...prev, [tipoFrontend]: false }));
+            
+            // 4. RECARGAMOS LA DATA para que la alerta desaparezca en vivo
             await cargarVencimientosBD();
+            await cargarDatos(); 
         } catch (err) {
             console.error("Error al guardar vencimiento:", err);
             alert("Error al actualizar la fecha.");
@@ -252,12 +271,22 @@ const VehiculoDetail: React.FC = () => {
                 Detalle del Vehículo: {vehiculo._id}
             </h1>
 
-            {/* 1. INFORMACIÓN BÁSICA */}
+            {/* 1. INFORMACIÓN BÁSICA (Con renderizado dinámico Nuevo vs Legacy) */}
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
-                    <DetailItem label="Modelo" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.MODELO } />
+                    
+                    {v.marca || v.MARCA ? (
+                        <>
+                            <DetailItem label="Marca" value={v.marca || v.MARCA} />
+                            <DetailItem label="Modelo" value={v.modelo || v.MODELO} />
+                            <DetailItem label="Tipo" value={v.tipo || v.TIPO} />
+                        </>
+                    ) : (
+                        <DetailItem label="Modelo/Descripción" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.modelo || v.MODELO} />
+                    )}
+
                     <DetailItem label="Año" value={v.anio || v.ANIO} />
                     <DetailItem label="Color" value={v.color || v.COLOR} />
                     <DetailItem label="Combustible" value={v.tipo_combustible || v.TIPO_COMBUSTIBLE} />
@@ -322,12 +351,18 @@ const VehiculoDetail: React.FC = () => {
                 { key: 'VTV', label: 'VTV' }
                 ].map(({ key, label }) => {
                 
-                const doc = vencimientosBD.find(d => 
+                // Si el bug anterior dejó un duplicado (SEGURO + Poliza_Detalle), agarramos el más reciente
+                const docsAsociados = vencimientosBD.filter(d => 
                     d.tipo_documento === key || 
                     (key === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
                 ); 
 
-                // CORRECCIÓN CRÍTICA: Solo leemos de la Base de Datos para mostrar
+                const doc = docsAsociados.sort((a, b) => {
+                    if (!a.fecha_vencimiento) return 1;
+                    if (!b.fecha_vencimiento) return -1;
+                    return new Date(b.fecha_vencimiento).getTime() - new Date(a.fecha_vencimiento).getTime();
+                })[0];
+
                 const fechaRaw = doc?.fecha_vencimiento;
                 
                 const fechaStr = fechaRaw
@@ -371,7 +406,6 @@ const VehiculoDetail: React.FC = () => {
                         <button
                             onClick={() => {
                                 setEditingVencimientos(prev => ({ ...prev, [key]: true }));
-                                // Carga la fecha actual en el input al momento de editar
                                 setFechasVencimiento(prev => ({ 
                                     ...prev, 
                                     [key]: doc?.fecha_vencimiento ? new Date(doc.fecha_vencimiento).toISOString().split('T')[0] : '' 

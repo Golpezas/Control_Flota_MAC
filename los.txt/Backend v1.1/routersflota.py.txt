@@ -68,8 +68,6 @@ class AlertaVencimiento(BaseModel):
     movil_nro: str | None = None
     descripcion_modelo: str | None = None
 
-# routers/flota.py
-
 async def get_vencimientos_criticos_alertas(
     dias_tolerancia: int = 30,
     skip: int = 0,
@@ -178,7 +176,6 @@ async def get_vencimientos_criticos_alertas(
 
                 dias = (fecha_vto - now).days
                 
-                # Descartamos inmediatamente lo que no urge
                 if dias > dias_tolerancia: 
                     continue
 
@@ -216,14 +213,8 @@ async def get_alertas_criticas(
     limit: int = Query(10, ge=1, le=200, description="Máximo de alertas por página"),
     patente: str | None = Query(None, description="Filtrar por patente (normalizada)")
 ):
-    """
-    Devuelve alertas paginadas + total real con filtro de fechas aplicado.
-    """
     alertas = await get_vencimientos_criticos_alertas(dias_tolerancia, skip, limit, patente)
 
-    # =================================================================
-    # CÁLCULO DE TOTAL REAL (ESTRICTO)
-    # =================================================================
     db_documentacion = get_db_collection("Documentacion")
     
     now = datetime.utcnow()
@@ -231,7 +222,7 @@ async def get_alertas_criticas(
 
     filtro_total = {
         "tipo_documento": {"$in": ["SEGURO", "Poliza_Detalle", "VTV"]},
-        "fecha_vencimiento": {"$ne": None, "$lte": fecha_limite} # ← EL FILTRO ASEGURA EL TOTAL EXACTO
+        "fecha_vencimiento": {"$ne": None, "$lte": fecha_limite}
     }
     
     if patente:
@@ -239,7 +230,6 @@ async def get_alertas_criticas(
 
     total = await db_documentacion.count_documents(filtro_total)
 
-    # Enriquecimiento final de metadatos (Si quedaron huérfanos)
     db_vehiculos = get_db_collection("Vehiculos")
     for alerta in alertas:
         if alerta.movil_nro in ("N/A", None) or alerta.descripcion_modelo in ("Vehículo", None):
@@ -297,34 +287,30 @@ class VehiculoCreateInput(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
 # -------------------------------------------------------------------------
-# 2.2. POST /vehiculos (Creación) - Lógica de mapeo a UPPERCASE
+# 2.2. POST /vehiculos (Creación)
 # -------------------------------------------------------------------------
 @router.post("/vehiculos", response_model=Vehiculo, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo vehículo en el sistema.")
 async def create_vehiculo(data: VehiculoCreateInput):
-    # [LOG 1] Ver qué datos llegan realmente desde el Frontend
     logger.info(f"🚀 CREATE VEHICULO - Payload Recibido: {data.model_dump()}")
     
     db_vehiculos = get_db_collection("Vehiculos")
     patente_normalizada = normalize_patente(data.patente)
     
-    # Verificación de existencia
     if await db_vehiculos.find_one({"_id": patente_normalizada}):
-        logger.warning(f"⚠️ Intento de crear duplicado: {patente_normalizada}")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Ya existe un vehículo con la patente {data.patente.upper()}."
         )
     
-    # Preparar el documento (Mapeo a DB UPPERCASE)
     vehiculo_doc = {
         "_id": patente_normalizada,
         "patente_original": data.patente.upper(),
         "activo": data.activo,
         "ANIO": data.anio,
         "COLOR": data.color,
-        "MARCA": data.marca,       # <-- NUEVO
-        "MODELO": data.modelo,     # <-- NUEVO
-        "TIPO": data.tipo,         # <-- NUEVO
+        "MARCA": data.marca,       
+        "MODELO": data.modelo,     
+        "TIPO": data.tipo,         
         "DESCRIPCION_MODELO": data.descripcion_modelo,
         "NRO_MOVIL": data.nro_movil,
         "TIPO_COMBUSTIBLE": data.tipo_combustible,
@@ -332,65 +318,64 @@ async def create_vehiculo(data: VehiculoCreateInput):
         "tipo_registro": "MANUAL_CREADO",
     }
     
-    # [LOG 2] Ver qué vamos a insertar exactamente en Mongo
-    logger.info(f"💾 Insertando en Mongo: {vehiculo_doc}")
-    
     try:
         await db_vehiculos.insert_one(vehiculo_doc)
     except Exception as e:
-        logger.error(f"❌ Error al insertar en Mongo: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Error al insertar: {str(e)}")
     
-    # Recuperar documento insertado
     new_vehiculo = await db_vehiculos.find_one({"_id": patente_normalizada})
     
     if not new_vehiculo:
-        logger.error("❌ Vehículo insertado pero no encontrado en find_one posterior.")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Vehículo insertado pero no encontrado inmediatamente después.")
 
-    # [LOG 3] Ver qué recuperamos de Mongo
-    logger.info(f"🔍 Recuperado de Mongo: {new_vehiculo}")
-
-    # Mapeo manual de vuelta para Pydantic (DB Uppercase -> Model Lowercase)
-    # IMPORTANTE: Aquí verificamos si 'new_vehiculo' tiene los datos esperados
     vehiculo_data = {
         "patente": new_vehiculo.get("_id"), 
         "patente_original": new_vehiculo.get("patente_original"),
         "activo": new_vehiculo.get("activo", False),
         "anio": new_vehiculo.get("ANIO"),
         "color": new_vehiculo.get("COLOR"),
-        "marca": new_vehiculo.get("MARCA"), # <-- NUEVO
-        "modelo": new_vehiculo.get("MODELO") or new_vehiculo.get("DESCRIPCION_MODELO"), 
-        "tipo": new_vehiculo.get("TIPO"),   # <-- NUEVO
+        "marca": new_vehiculo.get("MARCA") or new_vehiculo.get("marca"), # CORRECCIÓN: Extracción segura
+        "modelo": new_vehiculo.get("MODELO") or new_vehiculo.get("DESCRIPCION_MODELO") or new_vehiculo.get("modelo"), 
+        "tipo": new_vehiculo.get("TIPO") or new_vehiculo.get("tipo"),    # CORRECCIÓN: Extracción segura
         "descripcion_modelo": new_vehiculo.get("DESCRIPCION_MODELO"),
         "nro_movil": new_vehiculo.get("NRO_MOVIL"),
         "tipo_combustible": new_vehiculo.get("TIPO_COMBUSTIBLE"),
         "documentos_digitales": new_vehiculo.get("documentos_digitales", []),
     }
     
-    # [LOG 4] Ver el diccionario final antes de pasar a Pydantic
-    logger.info(f"📤 Respuesta preparada para Pydantic: {vehiculo_data}")
-
     return Vehiculo(**vehiculo_data)
 
 # -------------------------------------------------------------------------
-# 2.3. PATCH /vehiculos/{patente} (Actualización) - De PUT a PATCH
+# 2.3. PATCH /vehiculos/{patente} (Actualización)
 # -------------------------------------------------------------------------
-# Se cambia de PUT (reemplazo completo) a PATCH (actualización parcial) 
-# y se corrige el mapeo de campos.
+# 1. Creamos un modelo estricto en minúsculas para coincidir exactamente con el Frontend
+class VehiculoPatchInput(BaseModel):
+    activo: Optional[bool] = None
+    anio: Optional[int] = None
+    color: Optional[str] = None
+    marca: Optional[str] = None
+    modelo: Optional[str] = None
+    tipo: Optional[str] = None
+    descripcion_modelo: Optional[str] = None
+    nro_movil: Optional[str] = None
+    tipo_combustible: Optional[str] = None
+    model_config = ConfigDict(extra='ignore')
 
 @router.patch("/vehiculos/{patente}", response_model=Vehiculo, summary="Actualiza los campos editables de un vehículo existente.")
-async def update_vehiculo(patente: str, data: VehiculoUpdate):
+async def update_vehiculo(patente: str, data: VehiculoPatchInput):
+    # LOG para confirmar que FastAPI recibe los datos del Frontend:
+    logger.info(f"✏️ PATCH RECIBIDO ({patente}): {data.model_dump()}")
+    
     db_vehiculos = get_db_collection("Vehiculos")
     patente_normalizada = normalize_patente(patente)
-    # exclude_none=True, exclude_unset=True se usa para solo incluir campos provistos.
     update_fields = data.model_dump(exclude_none=True, exclude_unset=True) 
 
-    # 1. Mapeo de snake_case (Pydantic) a MongoDB (UPPER_CASE/minúscula)
     update_doc = {"$set": {}}
+    
+    # Mapeo: Lo que llega en minúscula (Pydantic/Front) se guarda en MAYÚSCULA (Mongo)
     field_mapping = {
         'activo': 'activo', 'anio': 'ANIO', 'color': 'COLOR', 
-        'marca': 'MARCA', 'modelo': 'MODELO', 'tipo': 'TIPO', # <-- NUEVOS
+        'marca': 'MARCA', 'modelo': 'MODELO', 'tipo': 'TIPO', 
         'descripcion_modelo': 'DESCRIPCION_MODELO', 'nro_movil': 'NRO_MOVIL', 
         'tipo_combustible': 'TIPO_COMBUSTIBLE',
     }
@@ -399,16 +384,15 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
         if pydantic_field in update_fields:
             update_doc['$set'][db_field] = update_fields[pydantic_field]
             
+    # LOG para confirmar qué es lo que se le envía a MongoDB a guardar:
+    logger.info(f"💾 GUARDANDO EN MONGO ({patente}): {update_doc}")
+            
     if not update_doc['$set']:
-         # No hay cambios, devolver el vehículo actual
-         # 🔑 CORRECCIÓN 1: Usar await
          updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada}) 
          if not updated_doc:
              raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con patente {patente} no encontrado.")
          
     else:
-        # 2. Ejecutar la actualización en MongoDB
-        # 🔑 CORRECCIÓN 2: Usar await
         update_result = await db_vehiculos.update_one( 
             {"_id": patente_normalizada},
             update_doc
@@ -417,18 +401,18 @@ async def update_vehiculo(patente: str, data: VehiculoUpdate):
         if update_result.matched_count == 0:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Vehículo con patente {patente} no encontrado.")
             
-        # 3. Devolver el documento actualizado
-        # 🔑 CORRECCIÓN 3: Usar await
         updated_doc = await db_vehiculos.find_one({"_id": patente_normalizada}) 
 
-    # Mapeo de vuelta para Pydantic
+    # Mapeo de extracción para devolver al Frontend
     vehiculo_data = {
         "patente": updated_doc.get("_id"), 
         "patente_original": updated_doc.get("patente_original"),
         "activo": updated_doc.get("activo", False), 
         "anio": updated_doc.get("ANIO"),
         "color": updated_doc.get("COLOR"), 
-        "modelo": updated_doc.get("MODELO"), 
+        "marca": updated_doc.get("MARCA") or updated_doc.get("marca"), 
+        "modelo": updated_doc.get("MODELO") or updated_doc.get("DESCRIPCION_MODELO") or updated_doc.get("modelo"), 
+        "tipo": updated_doc.get("TIPO") or updated_doc.get("tipo"),    
         "descripcion_modelo": updated_doc.get("DESCRIPCION_MODELO"),
         "nro_movil": updated_doc.get("NRO_MOVIL"), 
         "tipo_combustible": updated_doc.get("TIPO_COMBUSTIBLE"),
@@ -462,7 +446,7 @@ async def actualizar_vencimiento_digital(
     return {"message": "Fecha de vencimiento actualizada correctamente"}
 
 # -------------------------------------------------------------------------
-# 2.4. GET /vehiculos (Listado con filtros y paginación) - CORREGIDO
+# 2.4. GET /vehiculos (Listado con filtros y paginación)
 # -------------------------------------------------------------------------
 @router.get("/vehiculos", response_model=List[Vehiculo], summary="Lista todos los vehículos con opcional filtrado y paginación.")
 async def get_vehiculos(
@@ -481,19 +465,16 @@ async def get_vehiculos(
                 {"patente_original": regex_query},
                 {"NRO_MOVIL": regex_query},
                 {"DESCRIPCION_MODELO": regex_query},
-                {"MARCA": regex_query},  # <-- NUEVO
-                {"MODELO": regex_query}  # <-- NUEVO
+                {"MARCA": regex_query},  # CORRECCIÓN: Búsqueda
+                {"MODELO": regex_query}, 
+                {"TIPO": regex_query}    # CORRECCIÓN: Búsqueda
             ]
 
         cursor = db_vehiculos.find(query).skip(skip).limit(limit)
-        
-        # 🔑 CORRECCIÓN CLAVE: Obtener todos los documentos del cursor de forma asíncrona
         docs_list = await cursor.to_list(length=limit) 
         
         vehiculos_list = []
-        # El bucle ahora itera sobre la lista de documentos ya resuelta.
         for doc in docs_list: 
-            # Lógica de mapeo para manejar campos UPPERCASE/lowercase
             nro_movil = doc.get("NRO_MOVIL") or doc.get("nro_movil", "N/A")
             descripcion_modelo = doc.get("DESCRIPCION_MODELO") or doc.get("descripcion_modelo", "Sin Modelo")
             anio = doc.get("ANIO") or doc.get("anio", 0)
@@ -505,7 +486,9 @@ async def get_vehiculos(
                 "activo": doc.get("activo", False), 
                 "anio": anio,
                 "color": color, 
-                "modelo": doc.get("MODELO", "Sin Modelo"), 
+                "marca": doc.get("MARCA") or doc.get("marca"), # CORRECCIÓN: Extracción segura GET ALL
+                "modelo": doc.get("MODELO") or doc.get("modelo") or "Sin Modelo", 
+                "tipo": doc.get("TIPO") or doc.get("tipo"),    # CORRECCIÓN: Extracción segura GET ALL
                 "descripcion_modelo": descripcion_modelo,
                 "nro_movil": str(nro_movil), 
                 "tipo_combustible": doc.get("TIPO_COMBUSTIBLE", "N/A"),
@@ -523,7 +506,6 @@ async def get_vehiculo_by_patente(patente: str):
     db_vehiculos = get_db_collection("Vehiculos")
     patente_norm = normalize_patente(patente)
 
-    # Buscar por _id (patente normalizada)
     vehiculo = await db_vehiculos.find_one({"_id": patente_norm})
 
     if not vehiculo:
@@ -531,28 +513,23 @@ async def get_vehiculo_by_patente(patente: str):
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"Vehículo con patente {patente_norm} no encontrado"
         )
-
-    # --- MAPEO MANUAL DE SEGURIDAD (Upper -> Lower) ---
-    # Esto garantiza que aunque en Mongo esté como 'ANIO', 'COLOR', 
-    # la API devuelva 'anio', 'color' que es lo que el Frontend espera.
     
     vehiculo_data = {
         "patente": vehiculo.get("_id"),
         "patente_original": vehiculo.get("patente_original"),
         "activo": vehiculo.get("activo", True),
-        
-        # Prioridad: Minúscula (nuevo) -> Mayúscula (legacy) -> None
         "anio": vehiculo.get("anio") or vehiculo.get("ANIO"),
         "color": vehiculo.get("color") or vehiculo.get("COLOR"),
         "nro_movil": vehiculo.get("nro_movil") or vehiculo.get("NRO_MOVIL"),
         "tipo_combustible": vehiculo.get("tipo_combustible") or vehiculo.get("TIPO_COMBUSTIBLE"),
         
-        # El modelo es tramposo, a veces es 'MODELO', 'descripcion_modelo', etc.
+        "marca": vehiculo.get("marca") or vehiculo.get("MARCA"), # CORRECCIÓN: Extracción segura GET ONE
+        "tipo": vehiculo.get("tipo") or vehiculo.get("TIPO"),    # CORRECCIÓN: Extracción segura GET ONE
         "modelo": (
             vehiculo.get("modelo") or 
+            vehiculo.get("MODELO") or 
             vehiculo.get("descripcion_modelo") or 
-            vehiculo.get("DESCRIPCION_MODELO") or 
-            vehiculo.get("MODELO")
+            vehiculo.get("DESCRIPCION_MODELO")
         ),
         "descripcion_modelo": (
             vehiculo.get("descripcion_modelo") or 
@@ -567,38 +544,23 @@ async def get_vehiculo_by_patente(patente: str):
 
 @router.delete("/vehiculos/{patente}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina un vehículo y sus registros asociados.")
 async def delete_vehiculo(patente: str):
-    """
-    Elimina un vehículo de la colección 'Vehiculos' y todos sus registros
-    asociados en Documentacion, Mantenimiento, Finanzas, Componentes y Flota_Estado.
-    """
     patente_norm = normalize_patente(patente)
     db_vehiculos = get_db_collection("Vehiculos")
 
-    # 1. Eliminar de la colección principal
-    # 🔑 CORRECCIÓN 5: Usar await con delete_one
     delete_result = await db_vehiculos.delete_one({"_id": patente_norm})
     
     if delete_result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Vehículo con patente {patente} no encontrado.")
 
-    # 2. Eliminar registros asociados en otras colecciones
     for collection_name in ["Documentacion", "Mantenimiento", "Finanzas", "Componentes", "Flota_Estado"]:
         collection = get_db_collection(collection_name)
-        # 🔑 CORRECCIÓN 6: Usar await con delete_many
-        # Se asume que todas las colecciones tienen el campo 'patente'
         await collection.delete_many({"patente": patente_norm}) 
 
-    # No retorna contenido
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # =========================================================================
 # 3. ENDPOINTS: REPORTES DE VEHÍCULO Y COSTOS
 # =========================================================================
-
-#@router.get("/alertas/criticas", response_model=List[Alerta], summary="Obtiene todas las alertas críticas (expiradas o próximas a vencer).")
-#async def get_alertas_criticas(dias_tolerancia: int = Query(30, description="Días máximos de antelación para considerar una alerta 'ALTA'")):
-    # 🔑 CORRECCIÓN 1: await para la función asíncrona
-#    return await get_vencimientos_criticos_alertas(dias_tolerancia) 
 
 @router.get("/vehiculos/{patente}/reporte", response_model=ReporteCostosResponse)
 async def get_reporte_vehiculo(
@@ -608,28 +570,22 @@ async def get_reporte_vehiculo(
 ):
     patente_norm = normalize_patente(patente)
     
-    # === 1. Validar vehículo ===
     db_vehiculos = get_db_collection("Vehiculos")
-    # 🔑 CORRECCIÓN 2: await en find_one
     vehiculo = await db_vehiculos.find_one({"_id": patente_norm}) 
     if not vehiculo:
         raise HTTPException(status_code=404, detail=f"Vehículo {patente_norm} no encontrado")
 
-    # === 2. Parsear fechas ===
     try:
         start_dt = datetime.strptime(start_date, "%Y-%m-%d")
         end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
     except ValueError:
         raise HTTPException(status_code=400, detail="Formato de fecha inválido. Usa YYYY-MM-DD")
 
-    # === 3. Variables de totales ===
     costos_list: List[CostoItem] = []
     total_mantenimiento = 0.0
     total_infracciones = 0.0
 
-    # Definición de la función de parseo (puede ir fuera si se usa en varios lugares)
     def parse_fecha_segura(doc):
-        """Maneja cualquier formato de fecha que tengas en la base"""
         candidatos = [
             doc.get("fecha"),
             doc.get("dia"), 
@@ -646,7 +602,6 @@ async def get_reporte_vehiculo(
                 
             if isinstance(valor, str):
                 valor = valor.strip()
-                # Formato DD/M/YYYY o DD/MM/YYYY
                 match = re.match(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})", valor)
                 if match:
                     d, m, a = match.groups()
@@ -654,23 +609,19 @@ async def get_reporte_vehiculo(
                         return f"{a}-{int(m):02d}-{int(d):02d}"
                     except:
                         pass
-                # ISO normal
                 if "T" in valor:
                     return valor[:10]
-                # YYYY-MM-DD
                 if re.match(r"\d{4}-\d{2}-\d{2}", valor):
                     return valor[:10]
         
-        return "1900-01-01"  # fallback
+        return "1900-01-01"  
 
 
-    # === 4. MANTENIMIENTOS ===
     db_mantenimiento = get_db_collection("Mantenimiento")
     cursor_mantenimiento = db_mantenimiento.find({
         "patente": patente_norm,
         "fecha": {"$gte": start_dt, "$lte": end_dt}
     })
-    # 🔑 CORRECCIÓN 3: Reemplazar iteración síncrona por to_list() asíncrono
     docs_mantenimiento = await cursor_mantenimiento.to_list(length=None) 
 
     for doc in docs_mantenimiento:
@@ -687,30 +638,24 @@ async def get_reporte_vehiculo(
         origen="Mantenimiento"
     ))
 
-    # === 5. FINANZAS (infracciones + gastos manuales) - VERSIÓN CORREGIDA ===
     db_finanzas = get_db_collection("Finanzas")
     
-    # Traemos TODOS los registros de la patente (no filtramos por fecha en MongoDB)
     cursor_finanzas = db_finanzas.find({"patente": patente_norm})
     docs_finanzas = await cursor_finanzas.to_list(length=None)
 
     for doc in docs_finanzas:
         try:
-            # === PARSEO DE FECHA USANDO LA MISMA FUNCIÓN QUE EN MANTENIMIENTO ===
             fecha_iso = parse_fecha_segura(doc)
             try:
                 fecha_dt = datetime.strptime(fecha_iso, "%Y-%m-%d")
             except:
-                continue  # Si no se puede parsear, saltamos
+                continue 
 
-            # === FILTRO DE RANGO DE FECHAS ===
             if not (start_dt <= fecha_dt <= end_dt):
                 continue
 
-            # === MONTO ===
             monto = float(doc.get("MONTO") or doc.get("monto") or 0)
 
-            # === DETERMINAR SI ES MULTA ===
             motivo = str(doc.get("motivo") or doc.get("MOTIVO") or "").upper()
             tipo_registro = doc.get("tipo_registro", "").upper()
 
@@ -723,7 +668,6 @@ async def get_reporte_vehiculo(
             else:
                 tipo_final = doc.get("tipo_costo", "Otros")
 
-            # === AGREGAR A LA LISTA ===
             costos_list.append(CostoItem(
                 _id=str(doc["_id"]),
                 tipo=tipo_final,
@@ -737,11 +681,8 @@ async def get_reporte_vehiculo(
             print(f"Error procesando registro Finanzas {doc.get('_id')}: {e}")
             continue
 
-    # === 6. Ordenar por fecha descendente ===
     costos_list.sort(key=lambda x: x.fecha or "1900-01-01", reverse=True)
 
-    # === 7. Alertas ===
-    # 🔑 CORRECCIÓN 5: await para la función asíncrona de obtención de alertas.
     todas_alertas = await get_vencimientos_criticos_alertas(60)
     alertas = [a for a in todas_alertas if a.patente == patente_norm]
 
@@ -755,11 +696,10 @@ async def get_reporte_vehiculo(
     )
 
 # -------------------------------------------------------------------------
-# 3.2. GET /dashboard (Resumen de la Flota) - CORREGIDO
+# 3.2. GET /dashboard (Resumen de la Flota)
 # -------------------------------------------------------------------------
 
-# Función auxiliar (ahora ASÍNCRONA)
-async def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]: # 🔑 CORRECCIÓN 1: async def
+async def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, float]: 
     db_mant = get_db_collection("Mantenimiento")
     db_finanzas = get_db_collection("Finanzas")
 
@@ -768,29 +708,22 @@ async def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, fl
     start_date_iso = start_date.isoformat()
     end_date_iso = end_date.isoformat()
 
-    # Total Mantenimiento (campo 'fecha' BSON Date)
     pipeline_mant = [
         { "$match": { "fecha": { "$gte": start_date, "$lte": end_date } } },
         { "$group": { "_id": None, "total": { "$sum": "$costo_monto" } } }
     ]
-    # 🔑 CORRECCIÓN 2: await en aggregate y usar to_list()
     resumen_mant_result = await db_mant.aggregate(pipeline_mant).to_list(length=None) 
     total_mantenimiento = resumen_mant_result[0]["total"] if resumen_mant_result and resumen_mant_result[0].get("total") is not None else 0.0
 
-    # Total Infracciones (campo 'dia' string/date)
-    # Nota: Es mejor intentar filtrar por el campo BSON Date 'fecha' si existe, si no, mantener el filtro de string
-    # para 'dia' si así está en tu ETL.
     pipeline_infracciones = [
         { 
             "$match": { 
                 "tipo_registro": "Infraccion",
-                # Mantener 'dia' como string/iso para coincidir con tu BD
                 "dia": { "$gte": start_date_iso, "$lte": end_date_iso }
             }
         },
         { "$group": { "_id": None, "total": { "$sum": "$MONTO" } } }
     ]
-    # 🔑 CORRECCIÓN 3: await en aggregate y usar to_list()
     resumen_infr_result = await db_finanzas.aggregate(pipeline_infracciones).to_list(length=None) 
     total_infracciones = resumen_infr_result[0]["total"] if resumen_infr_result and resumen_infr_result[0].get("total") is not None else 0.0
     
@@ -803,14 +736,10 @@ async def get_resumen_costos_dashboard(dias_historia: int = 365) -> Dict[str, fl
 async def get_dashboard_data():
     db_vehiculos = get_db_collection("Vehiculos")
 
-    # 🔑 CORRECCIÓN 4 y 5: await en count_documents (operaciones asíncronas de Motor)
     total_vehiculos = await db_vehiculos.count_documents({})
     vehiculos_activos = await db_vehiculos.count_documents({"activo": True})
     
-    # 🔑 CORRECCIÓN 6: await en la función auxiliar de costos
     resumen_costos = await get_resumen_costos_dashboard(dias_historia=365)
-    
-    # 🔑 CORRECCIÓN 7: await en la función auxiliar de alertas
     alertas_criticas = await get_vencimientos_criticos_alertas(dias_tolerancia=30)
     
     total_general = resumen_costos["total_mantenimiento"] + resumen_costos["total_infracciones"]
@@ -826,58 +755,8 @@ async def get_dashboard_data():
 
 
 # =========================================================================
-# 4. ENDPOINTS: GESTIÓN DE COSTOS MANUALES (CRUD) - CORREGIDO
+# 4. ENDPOINTS: GESTIÓN DE COSTOS MANUALES (CRUD) 
 # =========================================================================
-
-"""@router.post("/costos/manual", response_model=CostoItem, status_code=status.HTTP_201_CREATED, summary="Registra un nuevo costo manual.")
-async def create_costo_manual(costo: CostoManualInput):
-    collection_name = costo.origen 
-    collection = get_db_collection(collection_name)
-    patente_norm = normalize_patente(costo.patente)
-
-    # Convertir fecha de date a datetime (agregando 00:00:00)
-    fecha_datetime = datetime.combine(costo.fecha, datetime.min.time())
-
-    doc_data = {
-        "_id": ObjectId(),  # Generar un nuevo ID
-        "patente": patente_norm,
-        "descripcion": costo.descripcion, 
-        "fecha": fecha_datetime,  # Usa datetime para BD
-        "origen_manual": True,  # Bandera
-    }
-
-    if collection_name == "Finanzas":
-        doc_data.update({
-            "MONTO": costo.importe,
-            "motivo": costo.tipo_costo,
-            "dia": costo.fecha.isoformat(),  # String para consistencia
-        })
-        tipo_para_response = costo.tipo_costo 
-    elif collection_name == "Mantenimiento":
-        doc_data.update({
-            "costo_monto": costo.importe,
-            "motivo": costo.tipo_costo,
-        })
-        tipo_para_response = "Reparación/Mantenimiento"
-    else:
-        raise HTTPException(status_code=400, detail="Origen de costo no válido.")
-
-    try:
-        # 🔑 CORRECCIÓN 1: await en insert_one
-        insert_result = await collection.insert_one(doc_data) 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al insertar el costo manual: {str(e)}")
-
-    # Nota: El _id en la respuesta del CostoItem es el generado por ObjectId()
-    return CostoItem(
-        _id=str(insert_result.inserted_id), # Aseguramos el ID insertado
-        tipo=tipo_para_response,
-        fecha=fecha_datetime.isoformat()[:10], # Corregido a formato YYYY-MM-DD
-        descripcion=costo.descripcion,
-        importe=costo.importe,
-        origen=collection_name,
-        metadata_adicional=None 
-    )"""
 
 @router.delete("/costos/manual/{id}", status_code=status.HTTP_204_NO_CONTENT, summary="Elimina cualquier costo por ID (modo limpieza total)")
 async def delete_costo_manual(
@@ -894,7 +773,6 @@ async def delete_costo_manual(
 
     collection = get_db_collection(origen)
     
-    # 🔑 CORRECCIÓN 2: await en delete_one
     delete_result = await collection.delete_one({"_id": obj_id})
     
     if delete_result.deleted_count == 0:
@@ -904,28 +782,22 @@ async def delete_costo_manual(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 # =========================================================================
-# 5. ENDPOINTS: DESCARGA DE ARCHIVOS - CORREGIDO
+# 5. ENDPOINTS: DESCARGA DE ARCHIVOS 
 # =========================================================================
 
 @router.get("/archivos/descargar", summary="Descarga un archivo digital dado su path_relativo.")
-# 🔑 CORRECCIÓN: Cambiar 'async def' a 'def' para que FastAPI ejecute el I/O bloqueante en un thread.
 def download_file(path_relativo: str = Query(..., description="Ruta relativa del archivo dentro del MEDIA_ROOT.")): 
     
-    # La lógica de seguridad de Path Traversal es PERFECTA y se mantiene.
     if '..' in path_relativo or path_relativo.startswith('/') or path_relativo.startswith('\\'):
         raise HTTPException(status_code=400, detail="Ruta de archivo no permitida.")
 
-    # Construir la ruta absoluta y ajustar el separador de ruta del sistema operativo
     file_path = os.path.join(MEDIA_ROOT, path_relativo.replace('/', os.sep))
     
-    # Esta es una llamada BLOQUEANTE (os.path.exists).
-    # Al estar en un 'def', FastAPI lo gestiona correctamente en el thread pool.
     if not os.path.exists(file_path): 
         raise HTTPException(status_code=404, detail="Archivo no encontrado en el servidor.")
         
     filename = os.path.basename(file_path)
     
-    # FileResponse (de Starlette) también maneja eficientemente la lectura del archivo en segundo plano.
     return FileResponse(
         file_path, 
         filename=filename, 
@@ -934,7 +806,7 @@ def download_file(path_relativo: str = Query(..., description="Ruta relativa del
     )
 
 # =========================================================================
-# 6. ENDPOINT: LIMPIEZA MASIVA DE COSTOS BASURA - CORREGIDO
+# 6. ENDPOINT: LIMPIEZA MASIVA DE COSTOS BASURA 
 # =========================================================================
 
 @router.post("/costos/limpiar-basura", status_code=status.HTTP_200_OK, summary="Elimina en bulk todos los costos con monto 0 (basura del ETL).")
@@ -942,11 +814,6 @@ async def limpiar_costos_basura(
     origen: Optional[str] = Query(None, description="Opcional: 'Finanzas' o 'Mantenimiento' para limitar la limpieza a una colección."),
     dry_run: bool = Query(False, description="Si True, simula la limpieza y solo cuenta cuántos se eliminarían (sin borrar).")
 ) -> Dict[str, Any]:
-    """
-    Limpia costos fantasma (monto == 0) de las colecciones Finanzas y Mantenimiento.
-    - Si 'origen' se especifica, limita a esa colección.
-    - Si 'dry_run=True', no borra nada, solo reporta el conteo.
-    """
     colecciones = ["Finanzas", "Mantenimiento"] if not origen else [origen]
     if origen and origen not in colecciones:
         raise HTTPException(status_code=400, detail="Origen inválido. Debe ser 'Finanzas' o 'Mantenimiento'.")
@@ -957,22 +824,16 @@ async def limpiar_costos_basura(
     for col_name in colecciones:
         collection = get_db_collection(col_name)
         
-        # Filtro base: monto == 0 (ajustado por colección)
         filtro = {}
         if col_name == "Mantenimiento":
             filtro = {"costo_monto": 0}
         elif col_name == "Finanzas":
-            # Nota: Se usa "MONTO" si es el campo real en mayúsculas de la BD Finanzas
             filtro = {"MONTO": 0} 
         
-        # Opcional: Agrega más filtros si quieres (ej: por fecha o tipo)
-        
         if dry_run:
-            # 🔑 CORRECCIÓN 1: await en count_documents
             count = await collection.count_documents(filtro) 
             detalles[col_name] = count
         else:
-            # 🔑 CORRECCIÓN 2: await en delete_many
             resultado = await collection.delete_many(filtro)
             eliminados = resultado.deleted_count
             detalles[col_name] = eliminados
