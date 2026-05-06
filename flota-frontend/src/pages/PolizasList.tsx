@@ -252,7 +252,7 @@ const PolizasList: React.FC = () => {
         <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10 print:max-w-none print:m-0 print:p-0 print:block">
             
             {/* ======================================================= */}
-            {/* ESTILOS DE IMPRESIÓN MEJORADOS                          */}
+            {/* ESTILOS DE IMPRESIÓN MEJORADOS Y MATA-MODO-OSCURO       */}
             {/* ======================================================= */}
             <style type="text/css" media="print">
                 {`
@@ -262,17 +262,35 @@ const PolizasList: React.FC = () => {
                 /* 2. Ocultar menús globales (nav, header) */
                 header, nav, [role="navigation"] { display: none !important; }
                 
-                /* 3. Evitar recortes horizontales forzando el ancho */
-                .overflow-x-auto { overflow: visible !important; }
-                table { width: 100% !important; font-size: 11px !important; }
-                th, td { padding: 8px 4px !important; }
+                /* 3. LIMPIEZA ABSOLUTA DE MODO OSCURO */
+                body, html, #root, main, div, table, thead, tbody, tr, th, td {
+                    background: white !important;
+                    background-color: white !important;
+                    color: black !important;
+                }
                 
-                /* 4. Evitar recortes verticales en las filas */
+                /* 4. Evitar recortes horizontales forzando el ancho y colapso de bordes */
+                .overflow-x-auto { overflow: visible !important; }
+                table { width: 100% !important; font-size: 11px !important; border-collapse: collapse !important; }
+                
+                /* Dibujar líneas grises finas para separar las filas */
+                th, td { 
+                    padding: 8px 4px !important; 
+                    border-bottom: 1px solid #e2e8f0 !important; 
+                }
+                
+                /* 5. Evitar recortes verticales en las filas y tablas divididas */
                 tr { page-break-inside: avoid !important; }
                 tfoot { display: table-row-group !important; }
                 
-                /* 5. Asegurar que los fondos se impriman (para la fila de totales) */
-                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                /* 6. Formatear la fila de TOTALES para que destaque sobre el blanco */
+                tfoot tr, tfoot td {
+                    border-top: 2px solid #000 !important;
+                    font-weight: 900 !important;
+                    background-color: #f1f5f9 !important; /* Gris súper claro que sí se imprime */
+                    -webkit-print-color-adjust: exact !important;
+                    print-color-adjust: exact !important;
+                }
                 `}
             </style>
             
@@ -386,12 +404,12 @@ const PolizasList: React.FC = () => {
                                 <h1 className="text-2xl font-extrabold text-black uppercase tracking-wide border-b-2 border-slate-900 pb-2 mb-4">
                                     MAC Servicios Empresarios - Reporte de Seguros
                                 </h1>
-                                <div className="flex justify-between text-sm font-semibold text-slate-800">
+                                <div className="flex justify-between text-sm font-semibold text-slate-800 mb-2">
                                     <p>Generado el: {new Date().toLocaleDateString('es-AR')}</p>
                                     <p>Unidades Reportadas: {filteredCostos.length}</p>
                                 </div>
                                 {(filterPatente || filterMarcaModelo || filterAnio) && (
-                                    <p className="text-sm text-slate-600 mt-1 italic">
+                                    <p className="text-sm text-slate-600 mb-4 italic border-l-4 border-slate-300 pl-2">
                                         Filtros aplicados: {[filterPatente, filterMarcaModelo, filterAnio].filter(Boolean).join(' | ')}
                                     </p>
                                 )}
@@ -460,39 +478,39 @@ const PolizasList: React.FC = () => {
                                     <table className="w-full text-left border-collapse print:text-black">
                                         <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 print:bg-transparent print:border-black print:border-b-2">
                                             <tr>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider print:text-black print:px-2">Móvil / Patente</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider print:text-black print:px-2">Vehículo</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center print:text-black print:px-2">Año</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Suma Asegurada</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Costo Semestral</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Costo Mensual</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Franquicia</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Móvil / Patente</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Vehículo</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Año</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Suma Asegurada</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Costo Semestral</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Costo Mensual</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Franquicia</th>
                                                 <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center print:hidden">Acciones</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 print:divide-slate-300">
                                             {filteredCostos.map((c) => (
                                                 <tr key={c.patente} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 print:break-inside-avoid">
-                                                    <td className="px-6 py-4 whitespace-nowrap print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap">
                                                         <div className="font-bold text-slate-900 dark:text-white print:text-black">{c.nro_movil}</div>
                                                         <div className="text-sm text-slate-500 print:text-slate-700">{c.patente}</div>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300 font-medium capitalize print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300 font-medium capitalize print:text-black">
                                                         {c.modelo.toLowerCase()}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 text-center font-semibold print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 text-center font-semibold print:text-black">
                                                         {c.anio}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-700 dark:text-slate-300 text-right print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-700 dark:text-slate-300 text-right print:text-black">
                                                         {c.suma_asegurada ? formatCurrency(c.suma_asegurada) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 dark:text-blue-400 text-right print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 dark:text-blue-400 text-right print:text-black">
                                                         {c.costo_semestral ? formatCurrency(c.costo_semestral) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right print:text-black">
                                                         {c.costo_mensual ? formatCurrency(c.costo_mensual) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-rose-600 dark:text-rose-400 text-right print:text-black print:px-2 print:py-2">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-rose-600 dark:text-rose-400 text-right print:text-black">
                                                         {c.monto_franquicia ? formatCurrency(c.monto_franquicia) : '-'}
                                                     </td>
                                                     <td className="px-6 py-4 whitespace-nowrap text-center print:hidden">
@@ -504,15 +522,15 @@ const PolizasList: React.FC = () => {
                                             ))}
                                         </tbody>
                                         {/* FILA DE TOTALES DINÁMICOS */}
-                                        <tfoot className="bg-slate-100 dark:bg-slate-900/80 border-t-2 border-slate-300 dark:border-slate-600 print:bg-transparent print:border-black print:border-t-2">
+                                        <tfoot className="bg-slate-100 dark:bg-slate-900/80 print:bg-transparent">
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-4 text-right text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider print:text-black print:px-2 print:py-4">
+                                                <td colSpan={4} className="px-6 py-4 text-right text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider print:text-black">
                                                     Totales (Filtrados)
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-blue-600 dark:text-blue-400 text-right bg-blue-50 dark:bg-blue-900/20 border-l border-r border-slate-200 dark:border-slate-700 print:text-black print:bg-transparent print:border-black print:px-2 print:py-4">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-blue-600 dark:text-blue-400 text-right bg-blue-50 dark:bg-blue-900/20 border-l border-r border-slate-200 dark:border-slate-700 print:text-black">
                                                     {formatCurrency(totalSemestral)}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50 dark:bg-emerald-900/20 border-r border-slate-200 dark:border-slate-700 print:text-black print:bg-transparent print:border-black print:px-2 print:py-4">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50 dark:bg-emerald-900/20 border-r border-slate-200 dark:border-slate-700 print:text-black">
                                                     {formatCurrency(totalMensual)}
                                                 </td>
                                                 <td colSpan={2} className="print:hidden"></td>
