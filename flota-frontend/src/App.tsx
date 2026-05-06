@@ -64,7 +64,7 @@ function App() {
               {/* Navegación Desktop y Mobile */}
               <nav className="flex space-x-1 sm:space-x-4 flex-nowrap flex-grow">
                 <NavLink to="/" className={linkStyles}>
-                  <HomeIcon /><span className="hidden sm:inline whitespace-nowrap">Dashboard</span>
+                  <HomeIcon /><span className="hidden sm:inline whitespace-nowrap">Info. General</span>
                 </NavLink>
                 <NavLink to="/vehiculos" className={linkStyles}>
                   <TruckIcon /><span className="hidden sm:inline whitespace-nowrap">Vehículos</span>
