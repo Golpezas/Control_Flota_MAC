@@ -7,12 +7,13 @@ from datetime import datetime
 import logging
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/polizas", tags=["Pólizas de Seguros"])
 
-# Modelo simple
+# ==========================================
+# MODELOS
+# ==========================================
 class PolizaResponse(BaseModel):
     id: str
     empresa: str
@@ -25,6 +26,15 @@ class PolizaInput(BaseModel):
     empresa: str = Field(..., description="Nombre de la empresa de seguros")
     numero_poliza: str = Field(..., description="Número único de póliza")
 
+class PolizaFinancieraUpdate(BaseModel):
+    suma_asegurada: float
+    costo_mensual: float
+    costo_semestral: float
+    monto_franquicia: float
+
+# ==========================================
+# ENDPOINTS DE ARCHIVOS (GridFS)
+# ==========================================
 @router.get("/", response_model=list[PolizaResponse])
 async def listar_polizas():
     collection = get_db_collection("polizas_seguros")
@@ -46,19 +56,16 @@ async def agregar_poliza(
     numero_poliza: str = Form(...),
     file: UploadFile = File(...)
 ):
-    # Validación básica
     if file.content_type not in {"application/pdf", "image/jpeg", "image/jpg", "image/png"}:
         raise HTTPException(400, "Solo PDF, JPG o PNG")
 
     collection = get_db_collection("polizas_seguros")
     bucket = await get_gridfs_bucket()
 
-    # Verificar si ya existe esa póliza (opcional, para evitar duplicados)
     existing = await collection.find_one({"numero_poliza": numero_poliza})
     if existing:
         raise HTTPException(400, f"Póliza {numero_poliza} ya existe")
 
-    # Subir archivo
     content = await file.read()
     file_id = await bucket.upload_from_stream(
         file.filename,
@@ -66,7 +73,6 @@ async def agregar_poliza(
         metadata={"empresa": empresa, "numero_poliza": numero_poliza}
     )
 
-    # Guardar en colección
     poliza_doc = {
         "empresa": empresa.strip(),
         "numero_poliza": numero_poliza.strip(),
@@ -91,7 +97,7 @@ async def modificar_poliza(
     poliza_id: str,
     empresa: str = Form(...),
     numero_poliza: str = Form(...),
-    file: Optional[UploadFile] = File(None)  # ← Ahora opcional
+    file: Optional[UploadFile] = File(None) 
 ):
     collection = get_db_collection("polizas_seguros")
 
@@ -101,7 +107,6 @@ async def modificar_poliza(
     }
 
     if file:
-        # Validaciones
         if file.content_type not in {"application/pdf", "image/jpeg", "image/jpg", "image/png"}:
             raise HTTPException(400, "Solo PDF, JPG o PNG")
 
@@ -142,13 +147,51 @@ async def eliminar_poliza(poliza_id: str):
     if not poliza:
         raise HTTPException(404, "Póliza no encontrada")
 
-    # Eliminar archivo de GridFS
     await bucket.delete(ObjectId(poliza["file_id"]))
-
-    # Eliminar registro
     await collection.delete_one({"_id": ObjectId(poliza_id)})
 
     return {"message": "Póliza eliminada correctamente"}
 
-# Reutiliza tu endpoint de descarga general
-# No hace falta uno nuevo, usamos /api/archivos/descargar/{file_id}
+# ==========================================
+# ENDPOINT DE COSTOS FINANCIEROS POR VEHÍCULO
+# ==========================================
+@router.put("/vehiculo/{patente}/financiero", summary="Actualiza los datos financieros del seguro de un vehículo")
+async def actualizar_poliza_financiera(patente: str, data: PolizaFinancieraUpdate):
+    patente_norm = normalize_patente(patente)
+    db_vehiculos = get_db_collection("Vehiculos")
+
+    # Intentamos actualizar el documento existente
+    result = await db_vehiculos.update_one(
+        {"_id": patente_norm},
+        {
+            "$set": {
+                "documentos_digitales.$[elem].suma_asegurada": data.suma_asegurada,
+                "documentos_digitales.$[elem].costo_mensual": data.costo_mensual,
+                "documentos_digitales.$[elem].costo_semestral": data.costo_semestral,
+                "documentos_digitales.$[elem].monto_franquicia": data.monto_franquicia
+            }
+        },
+        array_filters=[{"elem.tipo": {"$in": ["SEGURO", "Poliza_Detalle"]}}]
+    )
+
+    # Si no se modificó nada, podría ser porque no existe el array o no tiene el elemento "SEGURO"
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Vehículo no encontrado")
+
+    if result.modified_count == 0:
+        await db_vehiculos.update_one(
+            {"_id": patente_norm},
+            {
+                "$push": {
+                    "documentos_digitales": {
+                        "tipo": "SEGURO",
+                        "suma_asegurada": data.suma_asegurada,
+                        "costo_mensual": data.costo_mensual,
+                        "costo_semestral": data.costo_semestral,
+                        "monto_franquicia": data.monto_franquicia
+                    }
+                }
+            }
+        )
+
+    return {"message": "Datos financieros de la póliza actualizados correctamente"}
