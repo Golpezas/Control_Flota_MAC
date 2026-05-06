@@ -70,12 +70,13 @@ const Icons = {
     Edit: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
     Trash: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
     ArrowLeft: () => <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>,
-    // Nuevos iconos para las pestañas
     Folder: () => <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg>,
-    Currency: () => <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+    Currency: () => <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+    Printer: () => <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
 };
 
 const PolizasList: React.FC = () => {
+    // ESTADOS GENERALES
     const [activeTab, setActiveTab] = useState<'archivos' | 'costos'>('archivos');
     const [loading, setLoading] = useState(true);
     const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -181,7 +182,6 @@ const PolizasList: React.FC = () => {
     // LÓGICA TAB 2: COSTOS
     // ==========================================
 
-    // Listas únicas para los Datalist
     const uniqueMarcaModelos = useMemo(() => {
         const mm = vehiculosCostos.map(c => c.modelo.toUpperCase().trim()).filter(m => m !== '' && m !== 'SIN MODELO');
         return Array.from(new Set(mm)).sort();
@@ -192,7 +192,6 @@ const PolizasList: React.FC = () => {
         return Array.from(new Set(anios)).sort((a, b) => Number(b) - Number(a));
     }, [vehiculosCostos]);
 
-    // Filtrado de la tabla
     const filteredCostos = useMemo(() => {
         return vehiculosCostos.filter(c => {
             const matchPatente = filterPatente 
@@ -208,7 +207,6 @@ const PolizasList: React.FC = () => {
         });
     }, [vehiculosCostos, filterPatente, filterMarcaModelo, filterAnio]);
 
-    // Cálculo de Totales Filtrados
     const { totalMensual, totalSemestral } = useMemo(() => {
         return filteredCostos.reduce((acc, curr) => {
             acc.totalMensual += curr.costo_mensual;
@@ -247,11 +245,16 @@ const PolizasList: React.FC = () => {
         }
     };
 
+    // Función nativa para imprimir / guardar PDF
+    const handlePrint = () => {
+        window.print();
+    };
+
     return (
         <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
             
-            {/* ENCABEZADO */}
-            <div className="flex items-center gap-3">
+            {/* ENCABEZADO (Oculto al imprimir) */}
+            <div className="flex items-center gap-3 print:hidden">
                 <Icons.Shield />
                 <div>
                     <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Gestión de Seguros</h1>
@@ -259,8 +262,8 @@ const PolizasList: React.FC = () => {
                 </div>
             </div>
 
-            {/* PESTAÑAS (TABS) */}
-            <div className="flex border-b border-slate-200 dark:border-slate-700">
+            {/* PESTAÑAS (Oculto al imprimir) */}
+            <div className="flex border-b border-slate-200 dark:border-slate-700 print:hidden">
                 <button
                     onClick={() => setActiveTab('archivos')}
                     className={`py-3 px-6 text-sm font-bold border-b-2 transition-colors flex items-center ${
@@ -284,16 +287,16 @@ const PolizasList: React.FC = () => {
             </div>
 
             {loading ? (
-                <div className="flex justify-center items-center h-40">
+                <div className="flex justify-center items-center h-40 print:hidden">
                     <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
                 </div>
             ) : (
                 <>
                     {/* ======================================================= */}
-                    {/* TAB 1: ARCHIVOS */}
+                    {/* TAB 1: ARCHIVOS (Oculto al imprimir) */}
                     {/* ======================================================= */}
                     {activeTab === 'archivos' && (
-                        <div className="space-y-8 animate-fade-in">
+                        <div className="space-y-8 animate-fade-in print:hidden">
                             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-6 sm:p-8">
                                 <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-6">
                                     {editingId ? 'Modificar Archivo' : 'Subir Nueva Póliza General'}
@@ -353,9 +356,26 @@ const PolizasList: React.FC = () => {
                     {/* TAB 2: COSTOS POR VEHÍCULO */}
                     {/* ======================================================= */}
                     {activeTab === 'costos' && (
-                        <div className="space-y-6 animate-fade-in">
-                            {/* PANEL DE FILTROS SEPARADOS */}
-                            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                        <div className="space-y-6 animate-fade-in print:space-y-0">
+                            
+                            {/* MEMBRETE SOLO VISIBLE AL IMPRIMIR */}
+                            <div className="hidden print:block print:mb-6">
+                                <h1 className="text-2xl font-extrabold text-black uppercase tracking-wide border-b-2 border-slate-900 pb-2 mb-4">
+                                    MAC Servicios Empresarios - Reporte de Seguros
+                                </h1>
+                                <div className="flex justify-between text-sm font-semibold text-slate-800">
+                                    <p>Generado el: {new Date().toLocaleDateString('es-AR')}</p>
+                                    <p>Unidades Reportadas: {filteredCostos.length}</p>
+                                </div>
+                                {(filterPatente || filterMarcaModelo || filterAnio) && (
+                                    <p className="text-sm text-slate-600 mt-1 italic">
+                                        Filtros aplicados: {[filterPatente, filterMarcaModelo, filterAnio].filter(Boolean).join(' | ')}
+                                    </p>
+                                )}
+                            </div>
+
+                            {/* PANEL DE FILTROS (Oculto al imprimir) */}
+                            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 print:hidden">
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                                     <div className="space-y-2">
                                         <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Buscar por Patente / Móvil</label>
@@ -393,59 +413,66 @@ const PolizasList: React.FC = () => {
                                         </select>
                                     </div>
                                 </div>
-                                {(filterPatente || filterMarcaModelo || filterAnio) && (
-                                    <div className="mt-4 flex justify-end">
+                                <div className="mt-5 flex justify-between items-center">
+                                    <button 
+                                        onClick={handlePrint}
+                                        className="flex items-center px-5 py-2.5 text-sm font-bold text-white bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 rounded-lg transition-colors shadow-sm"
+                                    >
+                                        <Icons.Printer /> Imprimir / PDF
+                                    </button>
+
+                                    {(filterPatente || filterMarcaModelo || filterAnio) && (
                                         <button 
                                             onClick={() => { setFilterPatente(''); setFilterMarcaModelo(''); setFilterAnio(''); }}
-                                            className="px-4 py-2 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                                            className="px-4 py-2.5 text-sm font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
                                         >
                                             Limpiar Filtros
                                         </button>
-                                    </div>
-                                )}
+                                    )}
+                                </div>
                             </div>
 
-                            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
+                            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden print:border-none print:shadow-none">
+                                <div className="overflow-x-auto print:overflow-visible">
+                                    <table className="w-full text-left border-collapse print:text-black">
+                                        <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 print:bg-transparent print:border-black print:border-b-2">
                                             <tr>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Móvil / Patente</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Vehículo</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Año</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Suma Asegurada</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Costo Semestral</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Costo Mensual</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Franquicia</th>
-                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">Acciones</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider print:text-black print:px-2">Móvil / Patente</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider print:text-black print:px-2">Vehículo</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center print:text-black print:px-2">Año</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Suma Asegurada</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Costo Semestral</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Costo Mensual</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right print:text-black print:px-2">Franquicia</th>
+                                                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-center print:hidden">Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50 print:divide-slate-300">
                                             {filteredCostos.map((c) => (
-                                                <tr key={c.patente} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
-                                                    <td className="px-6 py-4 whitespace-nowrap">
-                                                        <div className="font-bold text-slate-900 dark:text-white">{c.nro_movil}</div>
-                                                        <div className="text-sm text-slate-500">{c.patente}</div>
+                                                <tr key={c.patente} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 print:break-inside-avoid">
+                                                    <td className="px-6 py-4 whitespace-nowrap print:px-2 print:py-2">
+                                                        <div className="font-bold text-slate-900 dark:text-white print:text-black">{c.nro_movil}</div>
+                                                        <div className="text-sm text-slate-500 print:text-slate-700">{c.patente}</div>
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300 font-medium capitalize">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300 font-medium capitalize print:text-black print:px-2 print:py-2">
                                                         {c.modelo.toLowerCase()}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 text-center font-semibold">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 text-center font-semibold print:text-black print:px-2 print:py-2">
                                                         {c.anio}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-700 dark:text-slate-300 text-right">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-slate-700 dark:text-slate-300 text-right print:text-black print:px-2 print:py-2">
                                                         {c.suma_asegurada ? formatCurrency(c.suma_asegurada) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 dark:text-blue-400 text-right">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-blue-600 dark:text-blue-400 text-right print:text-black print:px-2 print:py-2">
                                                         {c.costo_semestral ? formatCurrency(c.costo_semestral) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-emerald-600 dark:text-emerald-400 text-right print:text-black print:px-2 print:py-2">
                                                         {c.costo_mensual ? formatCurrency(c.costo_mensual) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-rose-600 dark:text-rose-400 text-right">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-rose-600 dark:text-rose-400 text-right print:text-black print:px-2 print:py-2">
                                                         {c.monto_franquicia ? formatCurrency(c.monto_franquicia) : '-'}
                                                     </td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                                                    <td className="px-6 py-4 whitespace-nowrap text-center print:hidden">
                                                         <button onClick={() => setModalCostosData({ ...c })} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg" title="Editar Valores Financieros">
                                                             <Icons.Edit />
                                                         </button>
@@ -454,18 +481,19 @@ const PolizasList: React.FC = () => {
                                             ))}
                                         </tbody>
                                         {/* FILA DE TOTALES DINÁMICOS */}
-                                        <tfoot className="bg-slate-100 dark:bg-slate-900/80 border-t-2 border-slate-300 dark:border-slate-600">
+                                        <tfoot className="bg-slate-100 dark:bg-slate-900/80 border-t-2 border-slate-300 dark:border-slate-600 print:bg-transparent print:border-black print:border-t-2">
                                             <tr>
-                                                <td colSpan={4} className="px-6 py-4 text-right text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider">
+                                                <td colSpan={4} className="px-6 py-4 text-right text-sm font-extrabold text-slate-900 dark:text-white uppercase tracking-wider print:text-black print:px-2 print:py-4">
                                                     Totales (Filtrados)
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-blue-600 dark:text-blue-400 text-right bg-blue-50 dark:bg-blue-900/20 border-l border-r border-slate-200 dark:border-slate-700">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-blue-600 dark:text-blue-400 text-right bg-blue-50 dark:bg-blue-900/20 border-l border-r border-slate-200 dark:border-slate-700 print:text-black print:bg-transparent print:border-black print:px-2 print:py-4">
                                                     {formatCurrency(totalSemestral)}
                                                 </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50 dark:bg-emerald-900/20 border-r border-slate-200 dark:border-slate-700">
+                                                <td className="px-6 py-4 whitespace-nowrap text-sm font-extrabold text-emerald-600 dark:text-emerald-400 text-right bg-emerald-50 dark:bg-emerald-900/20 border-r border-slate-200 dark:border-slate-700 print:text-black print:bg-transparent print:border-black print:px-2 print:py-4">
                                                     {formatCurrency(totalMensual)}
                                                 </td>
-                                                <td colSpan={2}></td>
+                                                <td colSpan={2} className="print:hidden"></td>
+                                                <td className="hidden print:table-cell"></td>
                                             </tr>
                                         </tfoot>
                                     </table>
@@ -476,17 +504,17 @@ const PolizasList: React.FC = () => {
                 </>
             )}
 
-            <div className="pt-4">
+            <div className="pt-4 print:hidden">
                 <Link to="/" className="inline-flex items-center text-sm font-semibold text-blue-600 hover:text-blue-800 transition-colors">
                     <Icons.ArrowLeft /> Volver al Dashboard
                 </Link>
             </div>
 
             {/* ======================================================= */}
-            {/* MODAL TAILWIND PARA EDITAR COSTOS                       */}
+            {/* MODAL TAILWIND PARA EDITAR COSTOS (Oculto al imprimir)  */}
             {/* ======================================================= */}
             {modalCostosData && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 print:hidden">
                     <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-xl overflow-hidden animate-fade-in">
                         <form onSubmit={saveCostos}>
                             <div className="p-6">
