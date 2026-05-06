@@ -1,5 +1,4 @@
 // src/pages/VehiculoDetail.tsx
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Modal from 'react-modal';
@@ -15,48 +14,34 @@ import {
     apiClient 
 } from '../api/vehiculos';
 import CostoForm from '../components/CostoForm';
-// Eliminamos la importación de axios que no se usaba
+import axios from 'axios';
 import { normalizePatente } from '../utils/data-utils';
 import type { GastoUnificado } from '../api/models/gastos';
 
-// =================================================================
-// ICONOS SVG CORPORATIVOS
-// =================================================================
-const Icons = {
-    ArrowLeft: () => <svg className="w-5 h-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>,
-    Download: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
-    Upload: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>,
-    Edit: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>,
-    Trash: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>,
-    Eye: () => <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>,
-    Document: () => <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>,
-    Calendar: () => <svg className="w-6 h-6 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
-    Alert: () => <svg className="w-6 h-6 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-};
-
+// TIPO ACTUALIZADO CON MARCA Y TIPO
 type VehiculoConLegacy = Vehiculo & {
     ANIO?: number;
     COLOR?: string;
     NRO_MOVIL?: string;
-    MARCA?: string; // <-- NUEVO
+    MARCA?: string; 
     MODELO?: string;
-    TIPO?: string;  // <-- NUEVO
+    TIPO?: string;  
     DESCRIPCION_MODELO?: string;
     TIPO_COMBUSTIBLE?: string;
     _id?: string;
 };
 
+// Configuración de documentos estándar
 const DOCUMENTOS_ESTANDAR = [
-  { tipo: 'TITULO_AUTOMOTOR', label: 'TÍTULO AUTOMOTOR' },
-  { tipo: 'CEDULA_VERDE', label: 'CÉDULA VERDE DIGITAL' },
-  { tipo: 'SEGURO', label: 'PÓLIZA SEGURO DIGITAL' },
-  { tipo: 'FACTURA_VEHICULO', label: 'FACTURA VEHÍCULO' } 
+  { tipo: 'TITULO_AUTOMOTOR',     label: 'TÍTULO AUTOMOTOR' },
+  { tipo: 'CEDULA_VERDE',         label: 'CÉDULA VERDE DIGITAL' },
+  { tipo: 'SEGURO',               label: 'PÓLIZA SEGURO DIGITAL' },
+  { tipo: 'FACTURA_VEHICULO',     label: 'FACTURA VEHÍCULO' } 
 ];
 
 const DetailItem: React.FC<{ label: string; value: string | number | null | undefined }> = ({ label, value }) => (
-    <div className="flex flex-col sm:flex-row sm:justify-between py-3 border-b border-slate-100 dark:border-slate-700/50 last:border-0">
-        <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">{label}</span>
-        <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{value ?? 'N/A'}</span>
+    <div style={{ borderBottom: '1px dotted #ccc', padding: '5px 0' }}>
+        <span style={{ fontWeight: 'bold', color: '#457B9D' }}>{label}:</span> {value ?? 'N/A'}
     </div>
 );
 
@@ -95,6 +80,7 @@ const VehiculoDetail: React.FC = () => {
         if (!patente) return;
         setLoading(true);
         setError(null);
+
         try {
             const vehData = await fetchVehiculoByPatente(patente);
             setVehiculo(vehData);
@@ -110,6 +96,7 @@ const VehiculoDetail: React.FC = () => {
             setTotalGeneral(data.total_general || 0);
             setTotalMantenimiento(data.total_mantenimiento || 0);
             setTotalMultas(data.total_multas || 0);
+
         } catch (error: unknown) {
             console.error("Error en cargarDatos:", error);
             let mensaje = 'Error al cargar los datos.';
@@ -124,9 +111,10 @@ const VehiculoDetail: React.FC = () => {
         if (!patente) return;
         try {
             const res = await apiClient.get(`/documentacion/${patente}`);
-            setVencimientosBD(Array.isArray(res.data) ? res.data : []);
-        } catch (error) {
-            console.error("Error cargando vencimientos:", error);
+            const datosBD = Array.isArray(res.data) ? res.data : [];
+            setVencimientosBD(datosBD);
+        } catch (err) {
+            console.error("Error cargando vencimientos desde documentacion:", err);
         }
     }, [patente]);
 
@@ -163,8 +151,8 @@ const VehiculoDetail: React.FC = () => {
                 const blob = await response.blob();
                 setPreviewUrl(URL.createObjectURL(blob));
             }
-        } catch (error) {
-            console.error("Error preview:", error);
+        } catch (err) {
+            console.error("Error preview:", err);
         } finally {
             setLoadingPreview(false);
         }
@@ -177,6 +165,7 @@ const VehiculoDetail: React.FC = () => {
 
     const subirDocumento = async () => {
         if (!docSeleccionado || !archivoNuevo || !vehiculo) return;
+
         const formData = new FormData();
         formData.append("patente", normalizePatente(vehiculo._id));
         formData.append("tipo", docSeleccionado.tipo);
@@ -192,8 +181,12 @@ const VehiculoDetail: React.FC = () => {
             setArchivoNuevo(null);
             await cargarDatos(); 
         } catch (error) {
-            console.error("Error al subir el documento:", error);
-            alert("❌ Error al subir el documento.");
+            console.error("Error al subir:", error);
+            let msg = "Error al subir.";
+            if (axios.isAxiosError(error) && error.response?.data?.detail) {
+                msg += ` ${JSON.stringify(error.response.data.detail)}`;
+            }
+            alert(`❌ ${msg}`);
         }
     };
 
@@ -206,8 +199,8 @@ const VehiculoDetail: React.FC = () => {
             const response = await fetch(url);
             const blob = await response.blob();
             setComprobantePreviewUrl(URL.createObjectURL(blob));
-        } catch (error) {
-            console.error("Error abriendo comprobante", error);
+        } catch (err) {
+            console.error("Error abriendo comprobante", err);
         } finally {
             setComprobanteLoading(false);
         }
@@ -224,64 +217,66 @@ const VehiculoDetail: React.FC = () => {
             const coleccion = origen === 'mantenimiento' ? 'costos' : 'finanzas';
             await borrarGastoUniversal(id, coleccion);
             await cargarDatos();
-        } catch (error) {
-            console.error("Error al borrar el gasto:", error);
+        } catch (err) {
+            console.error(err);
             alert("Error al borrar el gasto");
         }
     };
 
+    // =======================================================================
+    // 💡 LÓGICA CORREGIDA PARA GUARDAR VENCIMIENTOS
+    // =======================================================================
     const guardarVencimiento = async (tipoFrontend: string) => {
         const fecha = fechasVencimiento[tipoFrontend];
         if (!fecha || !patente) return;
+
+        // 1. Buscamos CÓMO SE LLAMA exactamente este documento en la Base de Datos
+        const docExistente = vencimientosBD.find(d => 
+            d.tipo_documento === tipoFrontend || 
+            (tipoFrontend === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
+        );
+
+        // 2. Usamos el tipo exacto (ej. Poliza_Detalle). Así sobreescribe el original!
+        const tipoBackend = docExistente ? docExistente.tipo_documento : tipoFrontend;
+
         try {
-            await apiClient.put(`/documentacion/${patente}/${tipoFrontend}`, {
-                fecha_vencimiento: new Date(fecha).toISOString()
+            // 3. Forzamos el horario a medio día UTC para evitar que baje 1 día por zona horaria
+            const fechaUTC = new Date(`${fecha}T12:00:00Z`).toISOString();
+
+            await apiClient.put(`/documentacion/${patente}/${tipoBackend}`, {
+                fecha_vencimiento: fechaUTC
             });
+            
+            alert(`Fecha actualizada correctamente`);
             setEditingVencimientos(prev => ({ ...prev, [tipoFrontend]: false }));
+            
+            // 4. RECARGAMOS LA DATA para que la alerta desaparezca en vivo
             await cargarVencimientosBD();
-        } catch (error) {
-            console.error("Error al guardar vencimiento:", error);
+            await cargarDatos(); 
+        } catch (err) {
+            console.error("Error al guardar vencimiento:", err);
             alert("Error al actualizar la fecha.");
         }
     };
 
-    if (loading) {
-        return (
-            <div className="flex justify-center items-center h-64">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>
-        );
-    }
-    if (error) return <div className="p-6 bg-red-50 text-red-700 rounded-xl max-w-2xl mx-auto mt-8">Error: {error}</div>;
-    if (!vehiculo) return <div className="p-6 text-center text-slate-500">Vehículo no encontrado.</div>;
+    if (loading) return <div>Cargando... ⏳</div>;
+    if (error) return <div style={{ color: 'red', padding: '20px' }}>❌ {error}</div>;
+    if (!vehiculo) return <div>No encontrado.</div>;
 
     const v = vehiculo as VehiculoConLegacy;
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 animate-fade-in pb-12">
-            
-            {/* ENCABEZADO Y BOTÓN VOLVER */}
-            <div className="flex flex-col gap-4">
-                <Link to="/vehiculos" className="inline-flex items-center text-sm font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors w-fit">
-                    <Icons.ArrowLeft /> Volver al Directorio
-                </Link>
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                            Detalle de Unidad: <span className="text-blue-600 dark:text-blue-400">{vehiculo._id}</span>
-                        </h1>
-                        <p className="text-slate-500 dark:text-slate-400 mt-1">Ficha técnica, documentación y costos asociados</p>
-                    </div>
-                </div>
-            </div>
+        <div style={{ padding: '30px', maxWidth: '900px', margin: '0 auto', backgroundColor: '#f8fafc', color: '#1e293b' }}>
+            <h1 style={{ borderBottom: '2px solid #ccc', paddingBottom: '10px', marginBottom: '20px', color: '#1D3557' }}>
+                Detalle del Vehículo: {vehiculo._id}
+            </h1>
 
-            {/* 1. INFORMACIÓN BÁSICA */}
+            {/* 1. INFORMACIÓN BÁSICA (Con renderizado dinámico Nuevo vs Legacy) */}
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{ color: '#457B9D' }}>Información Básica</h2>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                     <DetailItem label="Nº Móvil" value={v.nro_movil || v.NRO_MOVIL} />
                     
-                    {/* --- LÓGICA DE TRANSICIÓN NUEVO VS LEGACY --- */}
                     {v.marca || v.MARCA ? (
                         <>
                             <DetailItem label="Marca" value={v.marca || v.MARCA} />
@@ -291,7 +286,6 @@ const VehiculoDetail: React.FC = () => {
                     ) : (
                         <DetailItem label="Modelo/Descripción" value={v.descripcion_modelo || v.DESCRIPCION_MODELO || v.modelo || v.MODELO} />
                     )}
-                    {/* ------------------------------------------- */}
 
                     <DetailItem label="Año" value={v.anio || v.ANIO} />
                     <DetailItem label="Color" value={v.color || v.COLOR} />
@@ -300,35 +294,43 @@ const VehiculoDetail: React.FC = () => {
                 </div>
             </div>
 
-            {/* 2. DOCUMENTOS DIGITALES */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2">
-                    <Icons.Document />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Documentos Digitales</h2>
-                </div>
-                <div className="p-6 space-y-4">
+            {/* 2. DOCUMENTOS DIGITALES (CHECKLIST) */}
+            <div style={{ backgroundColor: '#f8fafc', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0', marginTop: '32px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1e293b', marginBottom: '20px' }}>
+                    Documentos Digitales
+                </h2>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {DOCUMENTOS_ESTANDAR.map((itemEstandar) => {
                         const docExistente = (v.documentos_digitales || []).find(
-                            d => d.tipo.toUpperCase() === itemEstandar.tipo || d.tipo.toUpperCase().replace(/_/g, ' ') === itemEstandar.label
+                            d => d.tipo.toUpperCase() === itemEstandar.tipo || 
+                                 d.tipo.toUpperCase().replace(/_/g, ' ') === itemEstandar.label
                         );
                         const tieneArchivo = !!docExistente?.file_id;
 
                         return (
-                            <div key={itemEstandar.tipo} className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${tieneArchivo ? 'border-l-4 border-l-emerald-500 bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700' : 'border-l-4 border-l-rose-500 bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700'}`}>
+                            <div key={itemEstandar.tipo} style={{ 
+                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', 
+                                padding: '16px', backgroundColor: 'white', borderRadius: '8px',
+                                border: '1px solid #e2e8f0',
+                                borderLeft: `5px solid ${tieneArchivo ? '#059669' : '#ef4444'}`
+                            }}>
                                 <div>
-                                    <strong className="text-slate-900 dark:text-white block font-bold">{itemEstandar.label}</strong>
-                                    <span className={`text-sm font-medium mt-1 inline-block ${tieneArchivo ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                                        {tieneArchivo ? '✅ Archivo disponible en la nube' : '⚠️ Pendiente de carga'}
+                                    <strong style={{ color: '#1e293b', fontSize: '1.1em', display: 'block' }}>
+                                        {itemEstandar.label}
+                                    </strong>
+                                    <span style={{ fontSize: '0.85em', color: tieneArchivo ? '#059669' : '#ef4444' }}>
+                                        {tieneArchivo ? '✅ Documento cargado' : '❌ Pendiente de carga'}
                                     </span>
                                 </div>
-                                <div className="flex gap-2 w-full sm:w-auto">
+                                <div style={{ display: 'flex', gap: '10px' }}>
                                     {tieneArchivo && (
-                                        <button onClick={() => handleDownload(docExistente!.file_id!)} className="flex-1 sm:flex-none flex items-center justify-center px-4 py-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium">
-                                            <Icons.Download />
+                                        <button onClick={() => handleDownload(docExistente!.file_id!)} style={{ padding: '8px 12px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>
+                                            📥
                                         </button>
                                     )}
-                                    <button onClick={() => abrirModalDocumento(docExistente || { tipo: itemEstandar.tipo })} className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-medium text-white transition-colors ${tieneArchivo ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}>
-                                        <Icons.Upload /> {tieneArchivo ? "Reemplazar" : "Subir Archivo"}
+                                    <button onClick={() => abrirModalDocumento(docExistente || { tipo: itemEstandar.tipo })} style={{ padding: '8px 16px', backgroundColor: tieneArchivo ? '#d97706' : '#ef4444', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                        {tieneArchivo ? "Reemplazar" : "SUBIR"}
                                     </button>
                                 </div>
                             </div>
@@ -338,199 +340,194 @@ const VehiculoDetail: React.FC = () => {
             </div>
 
             {/* 3. VENCIMIENTOS CRÍTICOS */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 flex items-center gap-2">
-                    <Icons.Calendar />
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-white">Vencimientos Críticos</h2>
-                </div>
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {[
-                        { key: 'SEGURO', label: 'Póliza de Seguro' },
-                        { key: 'VTV', label: 'VTV Anual' }
-                    ].map(({ key, label }) => {
-                        const doc = vencimientosBD.find(d => d.tipo_documento === key || (key === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')); 
-                        const fechaRaw = doc?.fecha_vencimiento;
-                        const fechaStr = fechaRaw ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' }) : 'Sin fecha asignada';
-                        const isEditing = editingVencimientos[key];
+            <div style={{ backgroundColor: '#fff', padding: '24px', borderRadius: '12px', border: '2px solid #457B9D', marginTop: '32px', boxShadow: '0 4px 10px rgba(69, 123, 157, 0.2)' }}>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#1D3557', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                📅 Vencimientos Críticos
+            </h2>
 
-                        return (
-                            <div key={key} className="p-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50">
-                                <strong className="text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wide">{label}</strong>
-                                
-                                {isEditing ? (
-                                    <div className="mt-3 space-y-3">
-                                        <input
-                                            type="date"
-                                            value={fechasVencimiento[key] || ''}
-                                            onChange={(e) => setFechasVencimiento(prev => ({ ...prev, [key]: e.target.value }))}
-                                            className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                        />
-                                        <div className="flex gap-2">
-                                            <button onClick={() => guardarVencimiento(key)} className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors">
-                                                Guardar
-                                            </button>
-                                            <button onClick={() => setEditingVencimientos(prev => ({ ...prev, [key]: false }))} className="flex-1 py-2 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors">
-                                                Cancelar
-                                            </button>
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="mt-1 flex justify-between items-end">
-                                        <div className={`text-xl font-bold ${fechaStr.includes('Sin') ? 'text-rose-500' : 'text-slate-900 dark:text-white'}`}>
-                                            {fechaStr}
-                                        </div>
-                                        <button onClick={() => {
-                                            setEditingVencimientos(prev => ({ ...prev, [key]: true }));
-                                            setFechasVencimiento(prev => ({ ...prev, [key]: doc?.fecha_vencimiento ? new Date(doc.fecha_vencimiento).toISOString().split('T')[0] : '' }));
-                                        }} className="p-2 text-amber-600 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-900/30 rounded-lg transition-colors" title="Modificar Fecha">
-                                            <Icons.Edit />
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
-                </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {[
+                { key: 'SEGURO', label: 'Póliza de Seguro' },
+                { key: 'VTV', label: 'VTV' }
+                ].map(({ key, label }) => {
+                
+                // Si el bug anterior dejó un duplicado (SEGURO + Poliza_Detalle), agarramos el más reciente
+                const docsAsociados = vencimientosBD.filter(d => 
+                    d.tipo_documento === key || 
+                    (key === 'SEGURO' && d.tipo_documento === 'Poliza_Detalle')
+                ); 
+
+                const doc = docsAsociados.sort((a, b) => {
+                    if (!a.fecha_vencimiento) return 1;
+                    if (!b.fecha_vencimiento) return -1;
+                    return new Date(b.fecha_vencimiento).getTime() - new Date(a.fecha_vencimiento).getTime();
+                })[0];
+
+                const fechaRaw = doc?.fecha_vencimiento;
+                
+                const fechaStr = fechaRaw
+                    ? new Date(fechaRaw).toLocaleDateString('es-AR', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
+                    : 'Sin fecha asignada';
+
+                const isEditing = editingVencimientos[key];
+
+                return (
+                    <div key={key} style={{ padding: '15px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                        <div>
+                        <strong style={{ fontSize: '1.1em', color: '#1D3557' }}>{label}</strong>
+                        <div style={{ marginTop: '5px', fontSize: '1.2em', fontWeight: 'bold', color: fechaStr.includes('Sin') ? '#E63946' : '#059669' }}>
+                            {fechaStr}
+                        </div>
+                        </div>
+
+                        {isEditing ? (
+                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <input
+                            type="date"
+                            value={fechasVencimiento[key] || ''}
+                            onChange={(e) => setFechasVencimiento(prev => ({ ...prev, [key]: e.target.value }))}
+                            style={{ padding: '10px', borderRadius: '6px', border: '1px solid #ccc', minWidth: '180px' }}
+                            />
+                            <button
+                            onClick={() => guardarVencimiento(key)}
+                            style={{ background: '#059669', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                            >
+                            Guardar
+                            </button>
+                            <button
+                            onClick={() => setEditingVencimientos(prev => ({ ...prev, [key]: false }))}
+                            style={{ background: '#64748b', color: 'white', padding: '10px 16px', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+                            >
+                            Cancelar
+                            </button>
+                        </div>
+                        ) : (
+                        <button
+                            onClick={() => {
+                                setEditingVencimientos(prev => ({ ...prev, [key]: true }));
+                                setFechasVencimiento(prev => ({ 
+                                    ...prev, 
+                                    [key]: doc?.fecha_vencimiento ? new Date(doc.fecha_vencimiento).toISOString().split('T')[0] : '' 
+                                }));
+                            }}
+                            style={{ background: '#f59e0b', color: 'white', padding: '10px 20px', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                        >
+                            ✏️ Modificar
+                        </button>
+                        )}
+                    </div>
+                    </div>
+                );
+                })}
+            </div>
             </div>
 
             {/* 4. ALERTAS */}
             {alertas.length > 0 && (
-                <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/50 rounded-2xl p-6">
-                    <div className="flex items-center gap-2 mb-4">
-                        <Icons.Alert />
-                        <h2 className="text-lg font-bold text-rose-700 dark:text-rose-400">Atención Requerida</h2>
-                    </div>
-                    <div className="space-y-2">
-                        {alertas.map((alerta, index) => (
-                            <div key={index} className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-rose-100 dark:border-rose-800/30">
-                                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                                <strong className="text-slate-700 dark:text-slate-200 text-sm">{alerta.mensaje}</strong>
-                            </div>
-                        ))}
-                    </div>
+                <div style={{ marginTop: '40px' }}>
+                    <h2 style={{ color: '#E63946', fontSize: '1.6rem', fontWeight: 'bold', marginBottom: '20px' }}>
+                        ⚠️ Alertas Activas
+                    </h2>
+                    {alertas.map((alerta, index) => (
+                        <div key={index} style={{ padding: '15px', backgroundColor: '#fff5f5', borderLeft: '5px solid #E63946', marginBottom: '10px', borderRadius: '4px' }}>
+                            <strong>{alerta.mensaje}</strong>
+                        </div>
+                    ))}
                 </div>
             )}
 
             {/* 5. HISTORIAL DE COSTOS Y FORMULARIO */}
-            <div className="space-y-6 pt-6 border-t border-slate-200 dark:border-slate-800">
-                <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Finanzas y Mantenimiento</h2>
+            <div style={{ marginTop: '40px' }}>
+                <h2 style={{ color: '#457B9D', borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>Historial de Costos</h2>
                 
-                {/* Tarjetas de Totales */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Costo Total General</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1">${totalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                <div style={{ display: 'flex', gap: '20px', marginBottom: '20px', flexWrap: 'wrap' }}>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Total General</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#1D3557' }}>
+                            ${totalGeneral.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm border-b-4 border-b-emerald-500">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Mantenimiento</p>
-                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">${totalMantenimiento.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Mantenimiento</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#2d6a4f' }}>
+                            ${totalMantenimiento.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm border-b-4 border-b-rose-500">
-                        <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Infracciones</p>
-                        <p className="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1">${totalMultas.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</p>
+                    <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', border: '1px solid #ddd', flex: 1 }}>
+                        <div style={{ fontSize: '0.9em', color: '#666' }}>Infracciones</div>
+                        <div style={{ fontSize: '1.2em', fontWeight: 'bold', color: '#E63946' }}>
+                            ${totalMultas.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </div>
                     </div>
                 </div>
 
-                {/* Tabla de Costos */}
-                <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700">
-                                <tr>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Fecha</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Tipo</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Descripción</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Importe</th>
-                                    <th className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Acciones</th>
+                <div style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'white', marginBottom: '30px' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead style={{ backgroundColor: '#f8f9fa' }}>
+                            <tr>
+                                <th style={{ padding: '12px' }}>Fecha</th>
+                                <th style={{ padding: '12px' }}>Tipo</th>
+                                <th style={{ padding: '12px' }}>Descripción</th>
+                                <th style={{ padding: '12px', textAlign: 'right' }}>Importe</th>
+                                <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {gastosUnificados.map((gasto) => (
+                                <tr key={gasto.id} style={{ borderBottom: '1px solid #eee' }}>
+                                    <td style={{ padding: '12px' }}>{gasto.fecha.split('T')[0]}</td>
+                                    <td style={{ padding: '12px' }}>
+                                        <span style={{ padding: '4px 8px', borderRadius: '12px', backgroundColor: '#e6f4ea', color: '#2d6a4f', fontSize: '0.9em', fontWeight: 'bold' }}>
+                                            {gasto.tipo}
+                                        </span>
+                                    </td>
+                                    <td style={{ padding: '12px' }}>
+                                        {gasto.descripcion}
+                                        {gasto.comprobante_file_id && (
+                                            <button onClick={() => abrirComprobante(gasto.comprobante_file_id!)} style={{ marginLeft: '10px', border: 'none', background: 'none', color: '#2563eb', cursor: 'pointer' }}>👁️</button>
+                                        )}
+                                    </td>
+                                    <td style={{ padding: '12px', textAlign: 'right' }}>${gasto.importe.toLocaleString('es-AR')}</td>
+                                    <td style={{ padding: '12px', textAlign: 'center' }}>
+                                        <button onClick={() => editarGasto(gasto)} style={{ marginRight: '5px', border: 'none', background: 'none', cursor: 'pointer' }}>✏️</button>
+                                        <button onClick={() => handleBorrarGasto(gasto.id, gasto.origen)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'red' }}>🗑️</button>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                                {gastosUnificados.map((gasto) => (
-                                    <tr key={gasto.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
-                                        <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-slate-200">{gasto.fecha.split('T')[0]}</td>
-                                        <td className="px-6 py-4 text-sm">
-                                            <span className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-md text-xs font-bold border border-slate-200 dark:border-slate-600">
-                                                {gasto.tipo}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400 max-w-xs truncate">
-                                            {gasto.descripcion}
-                                            {gasto.comprobante_file_id && (
-                                                <button onClick={() => abrirComprobante(gasto.comprobante_file_id!)} className="ml-2 text-blue-500 hover:text-blue-700 inline-flex align-middle" title="Ver comprobante">
-                                                    <Icons.Eye />
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-4 text-sm font-bold text-slate-900 dark:text-white text-right">${gasto.importe.toLocaleString('es-AR')}</td>
-                                        <td className="px-6 py-4 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button onClick={() => editarGasto(gasto)} className="p-1.5 text-amber-600 hover:bg-amber-50 dark:text-amber-500 dark:hover:bg-amber-900/30 rounded-lg transition-colors" title="Editar Gasto">
-                                                    <Icons.Edit />
-                                                </button>
-                                                <button onClick={() => handleBorrarGasto(gasto.id, gasto.origen)} className="p-1.5 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Eliminar Gasto">
-                                                    <Icons.Trash />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {gastosUnificados.length === 0 && <div className="p-8 text-center text-slate-500 dark:text-slate-400">No hay costos registrados en este período.</div>}
-                    </div>
+                            ))}
+                        </tbody>
+                    </table>
+                    {gastosUnificados.length === 0 && <div style={{ padding: '20px', textAlign: 'center' }}>No hay costos registrados.</div>}
                 </div>
 
-                {/* Formulario de Costos Embebido */}
-                <div className="pt-8">
-                    <CostoForm 
-                        initialPatente={patente || ''}
-                        initialGasto={editingGasto}
-                        onSuccess={() => { cargarDatos(); setEditingGasto(null); }}
-                    />
-                </div>
+                <h2 style={{ color: '#457B9D' }}>{editingGasto ? 'Editar Costo' : 'Agregar Nuevo Costo'}</h2>
+                <CostoForm 
+                    initialPatente={patente || ''}
+                    initialGasto={editingGasto}
+                    onSuccess={() => { cargarDatos(); setEditingGasto(null); }}
+                />
             </div>
 
-            {/* MODAL DE SUBIDA DE DOCUMENTOS */}
-            <Modal 
-                isOpen={modalIsOpen} 
-                onRequestClose={() => setModalIsOpen(false)} 
-                ariaHideApp={false} 
-                className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl max-w-xl w-full mx-auto mt-20 outline-none border border-slate-200 dark:border-slate-700 relative"
-                overlayClassName="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-start z-50 overflow-y-auto px-4"
-            >
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4 pr-8">{docSeleccionado?.tipo}</h2>
-                <button onClick={() => setModalIsOpen(false)} className="absolute top-6 right-6 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><Icons.Trash /></button> 
-                
-                <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-700 mb-6">
-                    {loadingPreview ? <p className="text-center text-slate-500 py-10">Cargando vista previa...</p> : 
-                     previewUrl ? <iframe src={previewUrl} className="w-full h-64 rounded-lg bg-white" /> : 
-                     <p className="text-center text-slate-500 py-10">Sube un archivo en formato PDF o Imagen.</p>}
-                </div>
+            <Link to="/vehiculos" style={{ display: 'block', marginTop: '30px', color: '#457B9D', fontWeight: 'bold', textDecoration: 'none' }}>← Volver al Listado</Link>
 
-                <input type="file" onChange={handleFileChange} className="w-full text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 dark:file:bg-slate-700 dark:file:text-slate-200 cursor-pointer mb-6" />
-                
-                <div className="flex justify-end gap-3">
-                    <button onClick={() => setModalIsOpen(false)} className="px-5 py-2.5 rounded-lg font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">Cancelar</button>
-                    <button onClick={subirDocumento} disabled={!archivoNuevo} className="px-6 py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"><Icons.Upload /> Subir</button>
+            {/* MODALES */}
+            <Modal isOpen={modalIsOpen} onRequestClose={() => setModalIsOpen(false)} ariaHideApp={false} style={{ content: { maxWidth: '600px', margin: 'auto', borderRadius: '12px' } }}>
+                <h2 style={{textAlign: 'center'}}>{docSeleccionado?.tipo}</h2>
+                {loadingPreview ? <p style={{textAlign: 'center'}}>Cargando...</p> : previewUrl ? <iframe src={previewUrl} style={{width:'100%', height:'400px'}} /> : <p style={{textAlign: 'center'}}>Sube un archivo</p>}
+                <input type="file" onChange={handleFileChange} style={{marginTop:'20px', width: '100%'}} />
+                <div style={{marginTop:'20px', display:'flex', justifyContent:'flex-end', gap:'10px'}}>
+                    <button onClick={() => setModalIsOpen(false)} style={{padding:'10px', background:'#ccc', border:'none', borderRadius:'6px', cursor:'pointer'}}>Cancelar</button>
+                    <button onClick={subirDocumento} disabled={!archivoNuevo} style={{padding:'10px 20px', background:'#059669', color:'white', border:'none', borderRadius:'6px', cursor:'pointer'}}>Subir</button>
                 </div>
             </Modal>
 
-            {/* MODAL DE COMPROBANTE DE GASTO */}
-            <Modal 
-                isOpen={modalComprobanteOpen} 
-                onRequestClose={() => setModalComprobanteOpen(false)} 
-                ariaHideApp={false} 
-                className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-2xl max-w-3xl w-full mx-auto mt-10 outline-none border border-slate-200 dark:border-slate-700"
-                overlayClassName="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex justify-center items-start z-50 overflow-y-auto px-4"
-            >
+            <Modal isOpen={modalComprobanteOpen} onRequestClose={() => setModalComprobanteOpen(false)} ariaHideApp={false} style={{ content: { maxWidth: '800px', margin: 'auto' } }}>
                 {comprobanteLoading ? (
-                    <p className="text-center py-20 text-slate-500">Cargando comprobante...</p>
+                    <p style={{textAlign: 'center', padding: '20px'}}>Cargando comprobante...</p>
                 ) : (
-                    comprobantePreviewUrl && <img src={comprobantePreviewUrl} className="w-full h-auto rounded-lg" alt="Comprobante" />
+                    comprobantePreviewUrl && <img src={comprobantePreviewUrl} style={{width: '100%'}} alt="Comprobante"/>
                 )}
-                <div className="mt-6 flex justify-end">
-                    <button onClick={() => setModalComprobanteOpen(false)} className="px-6 py-2.5 rounded-lg font-medium text-white bg-slate-800 hover:bg-slate-900 transition-colors">Cerrar Visor</button>
-                </div>
+                <button onClick={() => setModalComprobanteOpen(false)} style={{marginTop:'20px', padding:'10px', width:'100%'}}>Cerrar</button>
             </Modal>
         </div>
     );
