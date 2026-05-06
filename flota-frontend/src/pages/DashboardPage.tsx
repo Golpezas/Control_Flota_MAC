@@ -5,6 +5,17 @@ import type { Vehiculo, Alerta } from '../api/models/vehiculos';
 import { fetchVehiculos, apiClient } from '../api/vehiculos';
 
 // =================================================================
+// TIPO AUXILIAR PARA EVITAR EL USO DE 'any'
+// =================================================================
+type VehiculoLegacy = Partial<{
+    MARCA: string;
+    MODELO: string;
+    DESCRIPCION_MODELO: string;
+}>;
+
+const getLegacy = (v: Vehiculo): VehiculoLegacy => v as unknown as VehiculoLegacy;
+
+// =================================================================
 // ICONOS SVG CORPORATIVOS (Sin Emojis)
 // =================================================================
 const Icons = {
@@ -47,9 +58,8 @@ const DashboardPage: React.FC = () => {
     
     const [patenteFilter, setPatenteFilter] = useState('');
     const [debouncedPatente, setDebouncedPatente] = useState('');
-    const ITEMS_PER_PAGE = 8; // Ajustado a 8 para que cuadre mejor visualmente
+    const ITEMS_PER_PAGE = 8;
 
-    // LÓGICA INTACTA: Cargar Vehículos
     useEffect(() => {
         const loadInitialData = async () => {
             setIsLoadingVehiculos(true);
@@ -65,7 +75,6 @@ const DashboardPage: React.FC = () => {
         loadInitialData();
     }, []);
 
-    // LÓGICA INTACTA: Debounce
     useEffect(() => {
         const timer = setTimeout(() => {
             setDebouncedPatente(patenteFilter);
@@ -74,7 +83,6 @@ const DashboardPage: React.FC = () => {
         return () => clearTimeout(timer);
     }, [patenteFilter]);
 
-    // LÓGICA INTACTA: Fetch Alertas
     const fetchAlertas = useCallback(async () => {
         setAlertasLoading(true);
         try {
@@ -98,29 +106,34 @@ const DashboardPage: React.FC = () => {
         fetchAlertas();
     }, [fetchAlertas]);
 
-    // MÉTRICAS: Resumen
     const summary = useMemo(() => {
         const total = vehiculos.length;
         const activos = vehiculos.filter(v => v.activo).length;
         return { total, activos, inactivos: total - activos };
     }, [vehiculos]);
 
-    // MÉTRICAS NUEVAS: Agrupación por Modelo
+    // MÉTRICAS NUEVAS: Agrupación por Marca y Modelo de forma segura sin "any"
     const composicionFlota = useMemo(() => {
         const conteo: Record<string, number> = {};
+        
         vehiculos.forEach(v => {
-            let modelo = (v.descripcion_modelo || v.modelo || v.DESCRIPCION_MODELO || v.MODELO || 'Desconocido').toUpperCase().trim();
-            // Normalizamos para no separar variantes del mismo modelo
-            if (modelo.includes('CLIO')) modelo = 'Renault Clio';
-            else if (modelo.includes('KANGOO')) modelo = 'Renault Kangoo';
-            else if (modelo.includes('ALASKAN')) modelo = 'Renault Alaskan';
-            else if (modelo.includes('SANDERO')) modelo = 'Renault Sandero';
-            else if (modelo.includes('OROCH')) modelo = 'Renault Oroch';
-            else if (modelo.includes('CRONOS')) modelo = 'Fiat Cronos';
-            else modelo = modelo.charAt(0) + modelo.slice(1).toLowerCase(); // Capitalize basic
+            const legacy = getLegacy(v);
             
-            conteo[modelo] = (conteo[modelo] || 0) + 1;
+            const marcaRaw = String(v.marca || legacy.MARCA || '').trim();
+            const modeloRaw = String(v.modelo || legacy.MODELO || v.descripcion_modelo || legacy.DESCRIPCION_MODELO || 'Desconocido').trim();
+            
+            // Unimos Marca y Modelo, si marca no existe, solo usamos el modelo
+            let nombreCompleto = marcaRaw ? `${marcaRaw} ${modeloRaw}` : modeloRaw;
+            
+            // Capitalización Inteligente (Title Case) para que se vea estético
+            nombreCompleto = nombreCompleto
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                .join(' ');
+            
+            conteo[nombreCompleto] = (conteo[nombreCompleto] || 0) + 1;
         });
+        
         return Object.entries(conteo).sort((a, b) => b[1] - a[1]);
     }, [vehiculos]);
 

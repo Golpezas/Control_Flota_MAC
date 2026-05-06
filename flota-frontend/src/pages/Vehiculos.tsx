@@ -5,6 +5,9 @@ import { Link } from 'react-router-dom';
 import { fetchVehiculos, deleteVehiculo } from '../api/vehiculos';
 import type { Vehiculo } from '../api/models/vehiculos';
 
+// =================================================================
+// TIPO AUXILIAR PARA EVITAR EL USO DE 'any'
+// =================================================================
 type VehiculoLegacy = Partial<{
     MARCA: string;
     MODELO: string;
@@ -15,7 +18,7 @@ type VehiculoLegacy = Partial<{
     NRO_MOVIL: string | number;
 }>;
 
-const getLegacyVehiculo = (v: Vehiculo): VehiculoLegacy => v as VehiculoLegacy;
+const getLegacy = (v: Vehiculo): VehiculoLegacy => v as unknown as VehiculoLegacy;
 
 // =================================================================
 // ICONOS SVG CORPORATIVOS
@@ -32,14 +35,13 @@ const Icons = {
 };
 
 // --- Lógica Auxiliar de Presentación ---
-const getDisplayMarca = (v: Vehiculo) => v.marca || getLegacyVehiculo(v).MARCA || '-';
+const getDisplayMarca = (v: Vehiculo) => v.marca || getLegacy(v).MARCA || '-';
 
 const getDisplayModelo = (v: Vehiculo) => {
-    const legacy = getLegacyVehiculo(v);
-    return v.modelo || legacy.MODELO || v.descripcion_modelo || legacy.DESCRIPCION_MODELO || 'Sin Modelo';
+    return v.modelo || getLegacy(v).MODELO || v.descripcion_modelo || getLegacy(v).DESCRIPCION_MODELO || 'Sin Modelo';
 };
 
-const getDisplayTipo = (v: Vehiculo) => v.tipo || getLegacyVehiculo(v).TIPO || '-';
+const getDisplayTipo = (v: Vehiculo) => v.tipo || getLegacy(v).TIPO || '-';
 
 // --- Componente de Fila de Tabla ---
 const VehiculoTableRow: React.FC<{
@@ -47,7 +49,7 @@ const VehiculoTableRow: React.FC<{
   handleDelete: (patente: string | undefined, nro_movil: string | null) => void;
 }> = ({ v, handleDelete }) => {
   const canPerformAction = !!v._id;
-  const legacy = getLegacyVehiculo(v);
+  const legacy = getLegacy(v);
   
   const marca = getDisplayMarca(v);
   const modelo = getDisplayModelo(v);
@@ -66,7 +68,6 @@ const VehiculoTableRow: React.FC<{
       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-700 dark:text-slate-300">
         {nro_movil}
       </td>
-      {/* NUEVA COLUMNA MARCA */}
       <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-400 capitalize">
         {marca.toLowerCase()}
       </td>
@@ -120,7 +121,8 @@ const VehiculoTableRow: React.FC<{
 // --- Componente de Tarjeta Simple (Modo Lista) ---
 const SimpleCard: React.FC<{ v: Vehiculo; handleDelete: (patente: string | undefined, nro_movil: string | null) => void }> = ({ v, handleDelete }) => {
     const canPerformAction = !!v._id;
-    const legacy = getLegacyVehiculo(v);
+    const legacy = getLegacy(v);
+    
     const marca = getDisplayMarca(v);
     const modelo = getDisplayModelo(v);
     const tipo = getDisplayTipo(v);
@@ -168,8 +170,9 @@ const Vehiculos: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isListMode, setIsListMode] = useState(false);
 
-    // Nuevo estado para el filtro general (Marca, Modelo o Tipo)
-    const [filterVehiculoData, setFilterVehiculoData] = useState<string>('');
+    // FILTROS SEPARADOS POR MARCA Y MODELO
+    const [filterMarca, setFilterMarca] = useState<string>('');
+    const [filterModelo, setFilterModelo] = useState<string>('');
     const [filterAnio, setFilterAnio] = useState<string>('');
 
     const loadVehiculos = useCallback(async () => {
@@ -208,56 +211,44 @@ const Vehiculos: React.FC = () => {
         }
     };
 
-    // --- EXTRACCIÓN DE DATOS PARA FILTROS AVANZADOS ---
-    // Recopila todas las marcas, modelos y tipos para sugerir en el Datalist
-    const uniqueVehiculoData = useMemo(() => {
-        const dataSet = new Set<string>();
-        vehiculos.forEach(v => {
-            const marca = getDisplayMarca(v).toUpperCase().trim();
-            const modelo = getDisplayModelo(v).toUpperCase().trim();
-            const tipo = getDisplayTipo(v).toUpperCase().trim();
+    // --- DATALISTS (MENÚS DESPLEGABLES INTELIGENTES) ---
+    const uniqueMarcas = useMemo(() => {
+        const marcas = vehiculos.map(v => getDisplayMarca(v).toUpperCase().trim()).filter(m => m !== '' && m !== '-');
+        return Array.from(new Set(marcas)).sort();
+    }, [vehiculos]);
 
-            if (marca && marca !== '-') dataSet.add(marca);
-            if (modelo && modelo !== 'SIN MODELO') dataSet.add(modelo);
-            if (tipo && tipo !== '-') dataSet.add(tipo);
-        });
-        return Array.from(dataSet).sort();
+    const uniqueModelos = useMemo(() => {
+        const modelos = vehiculos.map(v => getDisplayModelo(v).toUpperCase().trim()).filter(m => m !== '' && m !== 'SIN MODELO');
+        return Array.from(new Set(modelos)).sort();
     }, [vehiculos]);
 
     const uniqueAnios = useMemo(() => {
-        const anios = vehiculos.map(v => v.anio ?? getLegacyVehiculo(v).ANIO).filter(Boolean);
+        const anios = vehiculos.map(v => v.anio ?? getLegacy(v).ANIO).filter(Boolean);
         return Array.from(new Set(anios as number[])).sort((a, b) => b - a);
     }, [vehiculos]);
 
-    // --- FILTRADO (BÚSQUEDA PARCIAL Y MÚLTIPLE) ---
+    // --- LÓGICA DE FILTRADO ---
     const filteredVehiculos = useMemo(() => {
         return vehiculos.filter(v => {
-            // 1. Filtro General (SearchTerm - Patente o Móvil)
             const lowerCaseSearch = searchTerm.toLowerCase();
             const id = (v._id || '').toLowerCase();
-            const movil = String(v.nro_movil ?? getLegacyVehiculo(v).NRO_MOVIL ?? '').toLowerCase();
-            
+            const movil = String(v.nro_movil ?? getLegacy(v).NRO_MOVIL ?? '').toLowerCase();
             const matchesSearch = !searchTerm || id.includes(lowerCaseSearch) || movil.includes(lowerCaseSearch);
 
-            // 2. Filtro de Categoría (Marca, Modelo o Tipo)
             const marcaUpper = getDisplayMarca(v).toUpperCase();
+            const filterMarcaUpper = filterMarca.toUpperCase().trim();
+            const matchesMarca = filterMarcaUpper ? marcaUpper.includes(filterMarcaUpper) : true;
+
             const modeloUpper = getDisplayModelo(v).toUpperCase();
-            const tipoUpper = getDisplayTipo(v).toUpperCase();
-            const filterUpper = filterVehiculoData.toUpperCase().trim();
+            const filterModeloUpper = filterModelo.toUpperCase().trim();
+            const matchesModelo = filterModeloUpper ? modeloUpper.includes(filterModeloUpper) : true;
 
-            const matchesCategoria = filterUpper ? (
-                marcaUpper.includes(filterUpper) || 
-                modeloUpper.includes(filterUpper) || 
-                tipoUpper.includes(filterUpper)
-            ) : true;
-
-            // 3. Filtro de Año
-            const a = v.anio ?? getLegacyVehiculo(v).ANIO;
+            const a = v.anio ?? getLegacy(v).ANIO;
             const matchesAnio = filterAnio ? String(a) === String(filterAnio) : true;
 
-            return matchesSearch && matchesCategoria && matchesAnio;
+            return matchesSearch && matchesMarca && matchesModelo && matchesAnio;
         });
-    }, [vehiculos, searchTerm, filterVehiculoData, filterAnio]);
+    }, [vehiculos, searchTerm, filterMarca, filterModelo, filterAnio]);
 
     if (isLoading) {
         return (
@@ -304,22 +295,42 @@ const Vehiculos: React.FC = () => {
             <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
                 <div className="flex flex-col lg:flex-row gap-6 justify-between items-end">
                     
-                    {/* Filtros */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto flex-grow">
+                    {/* FILTROS (Malla de 4 columnas) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 w-full lg:w-auto flex-grow">
+                        
+                        {/* FILTRO 1: MARCA */}
                         <div className="space-y-2">
-                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Marca / Modelo / Tipo</label>
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Marca</label>
                             <input 
                                 type="text"
-                                list="datos-vehiculo-list"
-                                placeholder="Escribir o seleccionar..."
-                                value={filterVehiculoData} 
-                                onChange={(e) => setFilterVehiculoData(e.target.value)}
+                                list="marcas-list"
+                                placeholder="Ej. Renault"
+                                value={filterMarca} 
+                                onChange={(e) => setFilterMarca(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             />
-                            <datalist id="datos-vehiculo-list">
-                                {uniqueVehiculoData.map((dato) => <option key={dato} value={dato} />)}
+                            <datalist id="marcas-list">
+                                {uniqueMarcas.map((m) => <option key={m} value={m} />)}
                             </datalist>
                         </div>
+
+                        {/* FILTRO 2: MODELO */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Modelo</label>
+                            <input 
+                                type="text"
+                                list="modelos-list"
+                                placeholder="Ej. Alaskan"
+                                value={filterModelo} 
+                                onChange={(e) => setFilterModelo(e.target.value)}
+                                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                            />
+                            <datalist id="modelos-list">
+                                {uniqueModelos.map((m) => <option key={m} value={m} />)}
+                            </datalist>
+                        </div>
+
+                        {/* FILTRO 3: AÑO */}
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Año</label>
                             <select 
@@ -327,10 +338,12 @@ const Vehiculos: React.FC = () => {
                                 onChange={(e) => setFilterAnio(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                             >
-                                <option value="">Todos los Años</option>
+                                <option value="">Todos</option>
                                 {uniqueAnios.map((a) => <option key={a} value={a}>{a}</option>)}
                             </select>
                         </div>
+
+                        {/* FILTRO 4: BÚSQUEDA GENERAL */}
                         <div className="space-y-2">
                             <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">Buscar</label>
                             <input
@@ -349,9 +362,9 @@ const Vehiculos: React.FC = () => {
                             Mostrando <span className="font-bold text-slate-900 dark:text-white">{filteredVehiculos.length}</span>
                         </div>
                         
-                        {(filterVehiculoData || filterAnio || searchTerm) && (
+                        {(filterMarca || filterModelo || filterAnio || searchTerm) && (
                             <button 
-                                onClick={() => { setFilterVehiculoData(''); setFilterAnio(''); setSearchTerm(''); }}
+                                onClick={() => { setFilterMarca(''); setFilterModelo(''); setFilterAnio(''); setSearchTerm(''); }}
                                 className="px-4 py-2.5 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors"
                             >
                                 Limpiar
@@ -382,7 +395,7 @@ const Vehiculos: React.FC = () => {
                         No se encontraron vehículos con estos criterios.
                     </p>
                     <button 
-                        onClick={() => { setFilterVehiculoData(''); setFilterAnio(''); setSearchTerm(''); }}
+                        onClick={() => { setFilterMarca(''); setFilterModelo(''); setFilterAnio(''); setSearchTerm(''); }}
                         className="mt-3 text-blue-600 dark:text-blue-400 hover:underline font-medium"
                     >
                         Ver todos los vehículos
