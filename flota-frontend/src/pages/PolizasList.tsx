@@ -89,7 +89,6 @@ const PolizasList: React.FC = () => {
     // ESTADOS TAB 2: COSTOS DE VEHÍCULOS
     const [vehiculosCostos, setVehiculosCostos] = useState<CostoPoliza[]>([]);
     
-    // Filtros Específicos
     const [filterPatente, setFilterPatente] = useState('');
     const [filterMarcaModelo, setFilterMarcaModelo] = useState('');
     const [filterAnio, setFilterAnio] = useState('');
@@ -245,30 +244,35 @@ const PolizasList: React.FC = () => {
         }
     };
 
-    // Función nativa para imprimir / guardar PDF
     const handlePrint = () => {
         window.print();
     };
 
     return (
-        <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
+        <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10 print:max-w-none print:m-0 print:p-0 print:block">
             
             {/* ======================================================= */}
-            {/* ESTILOS DE IMPRESIÓN INYECTADOS                         */}
+            {/* ESTILOS DE IMPRESIÓN MEJORADOS                          */}
             {/* ======================================================= */}
             <style type="text/css" media="print">
                 {`
-                /* 1. Ocultar menús de navegación globales (header, nav, modo oscuro) */
+                /* 1. Forzar formato HORIZONTAL (Landscape) y ajustar márgenes */
+                @page { size: landscape; margin: 10mm; }
+                
+                /* 2. Ocultar menús globales (nav, header) */
                 header, nav, [role="navigation"] { display: none !important; }
                 
-                /* 2. Evitar que la fila de totales se repita en cada página */
+                /* 3. Evitar recortes horizontales forzando el ancho */
+                .overflow-x-auto { overflow: visible !important; }
+                table { width: 100% !important; font-size: 11px !important; }
+                th, td { padding: 8px 4px !important; }
+                
+                /* 4. Evitar recortes verticales en las filas */
+                tr { page-break-inside: avoid !important; }
                 tfoot { display: table-row-group !important; }
                 
-                /* 3. Evitar recortes de filas de la tabla entre páginas */
-                tr { page-break-inside: avoid !important; }
-                
-                /* 4. Ajustar márgenes para que se vea como un documento oficial */
-                @page { margin: 1.5cm; }
+                /* 5. Asegurar que los fondos se impriman (para la fila de totales) */
+                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
                 `}
             </style>
             
@@ -353,7 +357,7 @@ const PolizasList: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
                                         {polizas.map(p => (
-                                            <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                                            <tr key={p.id} className="hover:bg-slate-50 dark:bg-slate-800 transition-colors">
                                                 <td className="px-6 py-4 text-sm font-medium text-slate-900 dark:text-white">{p.empresa}</td>
                                                 <td className="px-6 py-4 text-sm font-bold text-slate-700 dark:text-slate-300">{p.numero_poliza}</td>
                                                 <td className="px-6 py-4 whitespace-nowrap text-center">
