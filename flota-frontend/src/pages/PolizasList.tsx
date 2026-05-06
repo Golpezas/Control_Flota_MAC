@@ -253,6 +253,25 @@ const PolizasList: React.FC = () => {
     return (
         <div className="space-y-6 animate-fade-in max-w-7xl mx-auto pb-10">
             
+            {/* ======================================================= */}
+            {/* ESTILOS DE IMPRESIÓN INYECTADOS                         */}
+            {/* ======================================================= */}
+            <style type="text/css" media="print">
+                {`
+                /* 1. Ocultar menús de navegación globales (header, nav, modo oscuro) */
+                header, nav, [role="navigation"] { display: none !important; }
+                
+                /* 2. Evitar que la fila de totales se repita en cada página */
+                tfoot { display: table-row-group !important; }
+                
+                /* 3. Evitar recortes de filas de la tabla entre páginas */
+                tr { page-break-inside: avoid !important; }
+                
+                /* 4. Ajustar márgenes para que se vea como un documento oficial */
+                @page { margin: 1.5cm; }
+                `}
+            </style>
+            
             {/* ENCABEZADO (Oculto al imprimir) */}
             <div className="flex items-center gap-3 print:hidden">
                 <Icons.Shield />
